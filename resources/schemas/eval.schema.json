@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "prompt": {"type": "string"},
+    "expected_output": {"type": "string"}
+  }
+}
