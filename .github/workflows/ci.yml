@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate schemas & scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install jsonschema pyyaml
+
+      - name: Validate JSON schemas parse
+        run: |
+          python -c "
+          import json, glob, sys
+          ok = True
+          for p in glob.glob('resources/schemas/*.json'):
+              try: json.load(open(p))
+              except Exception as e:
+                  print(f'FAIL {p}: {e}'); ok = False
+          for p in glob.glob('resources/examples/*.json') + glob.glob('resources/datasets/*.json') + ['agents/registry.json', 'evals/evals.json']:
+              try: json.load(open(p))
+              except Exception as e:
+                  print(f'FAIL {p}: {e}'); ok = False
+          sys.exit(0 if ok else 1)
+          "
+
+      - name: Validate YAML configs
+        run: |
+          python -c "
+          import yaml, glob, sys
+          ok = True
+          for p in glob.glob('config/*.yaml') + glob.glob('config/*.yml'):
+              try: yaml.safe_load(open(p))
+              except Exception as e:
+                  print(f'FAIL {p}: {e}'); ok = False
+          sys.exit(0 if ok else 1)
+          "
+
+      - name: Compile Python scripts
+        run: python -m compileall -q scripts
