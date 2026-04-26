@@ -20,7 +20,6 @@ import json
 import os
 import re
 import urllib.parse
-from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -56,11 +55,21 @@ def fetch_url(url: str, max_chars: int = 8000) -> dict[str, Any]:
             "truncated": len(text) > max_chars}
 
 
-def dedupe_jobs(jobs: list[dict]) -> list[dict]:
-    """Remove duplicates by (title, company, location)."""
+def dedupe_jobs(jobs: Any) -> list[dict]:
+    """Remove duplicates by (title, company, location).
+
+    Accepts either a flat list of jobs or a search-tool response object
+    (`{"results": [...]}`) — agents tend to forward the whole response.
+    """
+    if isinstance(jobs, dict):
+        jobs = jobs.get("results") or jobs.get("jobs") or []
+    if not isinstance(jobs, list):
+        return []
     seen: set[tuple[str, str, str]] = set()
     out: list[dict] = []
-    for j in jobs or []:
+    for j in jobs:
+        if not isinstance(j, dict):
+            continue
         key = (
             (j.get("title") or "").strip().lower(),
             (j.get("company") or "").strip().lower(),
@@ -184,51 +193,129 @@ def lookup_comp_band(role: str, location: str) -> dict[str, Any]:
             "source": f"fallback:{fallback_role}"}
 
 
-# ----- SAMPLE ------------------------------------------------------------
+# ----- REAL: Greenhouse-backed search -----------------------------------
 
-def _sample_jobs(query: str, location: str, source: str) -> list[dict]:
-    today = date.today()
-    base = [
-        {"title": "Senior Data Engineer", "company": "Northwind Analytics",
-         "url_path": "/jobs/123"},
-        {"title": "Staff Data Engineer", "company": "Helio Health",
-         "url_path": "/jobs/456"},
-        {"title": "Senior Data Engineer, Platform", "company": "Lumen AI",
-         "url_path": "/jobs/789"},
-    ]
-    return [
-        {
-            "id": f"{source}-{i+1}",
-            "title": j["title"],
-            "company": j["company"],
-            "location": location or "Remote-US",
-            "source": source,
-            "source_url": f"https://{source}.example.com{j['url_path']}",
-            "posted_at": (today - timedelta(days=i * 3 + 1)).isoformat(),
-            "raw_description": (
-                f"{j['title']} role at {j['company']}. Stack: Python, Spark, "
-                f"Airflow, Snowflake, AWS. Query was: {query}."
-            ),
-            "salary_hint": None,
-            "_stub": True,
-        }
-        for i, j in enumerate(base)
-    ]
+# Curated list of public Greenhouse boards. The Greenhouse Job Board API is
+# free, public, no auth, no rate limiting beyond reasonable use. Add boards
+# here to broaden `search_linkedin`'s coverage.
+KNOWN_GREENHOUSE_BOARDS = [
+    "anthropic", "openai", "stripe", "datadog", "discord", "figma",
+    "ramp", "brex", "vercel", "scale", "perplexityai", "mistralai",
+    "huggingface", "cohere", "writer", "pinecone", "weaviate",
+    "snowflake", "databricks", "duckdb", "airbyte", "dbtlabs",
+    "airbnb", "doordash", "robinhood", "coinbase", "instacart",
+]
+
+GREENHOUSE_BASE = "https://boards-api.greenhouse.io/v1/boards"
 
 
-def search_linkedin(query: str, location: str = "Remote-US") -> dict[str, Any]:
-    return {"query": query, "location": location, "results": _sample_jobs(query, location, "linkedin"),
-            "_stub_note": "LinkedIn has no free public search API. Wire to a real provider (SerpAPI, Apify, scraping service) for production."}
+def _gh_fetch_board(company: str, timeout: int = 10) -> list[dict]:
+    """Fetch a single Greenhouse board's jobs. Returns [] on any error."""
+    try:
+        r = requests.get(f"{GREENHOUSE_BASE}/{company}/jobs", timeout=timeout,
+                         headers={"User-Agent": "ROBOPORT/0.1"})
+        if r.status_code != 200:
+            return []
+        return r.json().get("jobs", []) or []
+    except Exception:  # noqa: BLE001
+        return []
 
 
-def search_indeed(query: str, location: str = "Remote-US") -> dict[str, Any]:
-    return {"query": query, "location": location, "results": _sample_jobs(query, location, "indeed"),
-            "_stub_note": "Indeed deprecated its public Job Search API in 2023. Wire a real provider for production."}
+def _gh_normalize(job: dict, company: str) -> dict[str, Any]:
+    return {
+        "id": f"gh-{company}-{job.get('id')}",
+        "title": job.get("title", ""),
+        "company": company,
+        "location": (job.get("location") or {}).get("name", "") or "",
+        "source": "greenhouse",
+        "source_url": job.get("absolute_url", ""),
+        "posted_at": (job.get("updated_at") or "")[:10],
+        "raw_description": "",  # populate via fetch_url if needed
+        "salary_hint": None,
+    }
 
 
-def search_company_careers(company: str, query: str = "") -> dict[str, Any]:
-    return {"company": company, "query": query, "results": _sample_jobs(query, "Remote-US", "careers"),
-            "_stub_note": "Company careers pages have heterogeneous schemas. For production, integrate fetch_url + a parser per ATS (Greenhouse, Lever, Workday)."}
+_STOPWORDS = {"the", "and", "for", "with", "any", "all", "job", "jobs"}
+
+
+def _job_matches(job: dict, query: str, location: str) -> bool:
+    q = (query or "").lower().strip()
+    title = (job.get("title") or "").lower()
+    if q:
+        if q in title:
+            pass  # full-phrase hit
+        else:
+            # Multi-word query: ALL meaningful tokens (>2 chars, not stop-only)
+            # must appear in the title.
+            toks = [t for t in re.split(r"\s+", q) if len(t) > 2]
+            meaningful = [t for t in toks if t not in _STOPWORDS] or toks
+            if not all(tok in title for tok in meaningful):
+                return False
+    loc_filter = (location or "").lower().strip()
+    if loc_filter and loc_filter not in ("remote-us", "remote us", "us", ""):
+        if loc_filter not in (job.get("location") or "").lower():
+            return False
+    return True
+
+
+def search_linkedin(query: str, location: str = "Remote-US",
+                    limit: int = 25) -> dict[str, Any]:
+    """Search across curated Greenhouse boards for matching jobs.
+
+    Note on naming: kept as `search_linkedin` so existing agent specs +
+    config/agent_config.yaml whitelists work unchanged. LinkedIn has no
+    free public job-search API; this aggregates Greenhouse boards instead.
+    """
+    results: list[dict] = []
+    boards_hit = 0
+    for company in KNOWN_GREENHOUSE_BOARDS:
+        jobs = _gh_fetch_board(company)
+        if jobs:
+            boards_hit += 1
+        for j in jobs:
+            if _job_matches(j, query, location):
+                results.append(_gh_normalize(j, company))
+    results = results[:limit]
+    return {
+        "query": query,
+        "location": location,
+        "boards_searched": boards_hit,
+        "boards_total": len(KNOWN_GREENHOUSE_BOARDS),
+        "results": results,
+        "source": "greenhouse-aggregator",
+    }
+
+
+def search_company_careers(company: str, query: str = "",
+                           limit: int = 25) -> dict[str, Any]:
+    """Look up a single company's Greenhouse board.
+
+    The `company` arg is the Greenhouse board slug (e.g. 'anthropic'). If
+    the slug doesn't exist on Greenhouse the result is empty.
+    """
+    slug = (company or "").strip().lower().replace(" ", "")
+    jobs = _gh_fetch_board(slug)
+    matched = [j for j in jobs if _job_matches(j, query, "")][:limit]
+    return {
+        "company": company,
+        "slug": slug,
+        "query": query,
+        "results": [_gh_normalize(j, slug) for j in matched],
+        "source": "greenhouse" if jobs else "greenhouse:not-found",
+    }
+
+
+def search_indeed(query: str, location: str = "Remote-US",
+                  limit: int = 25) -> dict[str, Any]:
+    """Indeed has no free public API; this aggregates Greenhouse instead.
+
+    Same backend as `search_linkedin` so the agent gets real results
+    regardless of which search tool it picks. Source labelled distinctly
+    so dedupe still works.
+    """
+    out = search_linkedin(query, location, limit)
+    out["source_alias"] = "indeed-via-greenhouse"
+    return out
 
 
 # ----- REGISTRY + JSON SCHEMAS ------------------------------------------
