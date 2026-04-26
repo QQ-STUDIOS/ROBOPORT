@@ -135,7 +135,30 @@ def main() -> int:
     ap.add_argument("--label", default=None, help="Output folder label; defaults to timestamp")
     ap.add_argument("--out", default=None, help="Override benchmark output dir")
     ap.add_argument("--grade", action="store_true", help="Run grader after each run")
+    ap.add_argument("--live", action="store_true",
+                    help="Use the local Ollama runtime (scripts/roboport_runtime) "
+                         "instead of the stubs. Requires Ollama at OLLAMA_HOST "
+                         "(default http://localhost:11434).")
     args = ap.parse_args()
+
+    if args.live:
+        try:
+            from roboport_runtime import (  # type: ignore
+                call_planner as _live_planner,
+                call_executor as _live_executor,
+                call_grader as _live_grader,
+            )
+            from roboport_runtime.client import health_check  # type: ignore
+        except ImportError as e:
+            print(f"--live requires `pip install -r requirements.txt`: {e}", file=sys.stderr)
+            return 2
+        try:
+            health_check()
+        except RuntimeError as e:
+            print(f"--live preflight failed: {e}", file=sys.stderr)
+            return 2
+        global call_planner, call_executor, call_grader
+        call_planner, call_executor, call_grader = _live_planner, _live_executor, _live_grader
 
     registry_path = REPO / "agents" / "registry.json"
     if not registry_path.exists():

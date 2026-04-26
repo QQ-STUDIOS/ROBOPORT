@@ -1,0 +1,4 @@
+# Core runtime
+requests>=2.31         # Ollama HTTP client (scripts/roboport_runtime)
+jsonschema>=4.0        # validate.py — schema + registry validation
+pyyaml>=6.0            # config/ loaders
