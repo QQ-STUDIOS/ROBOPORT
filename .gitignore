@@ -48,3 +48,40 @@ dist/
 
 # Logs
 *.log
+
+# Secrets / credentials
+*.pem
+*.key
+secrets/
+.secrets/
+
+# More OS / editor noise
+desktop.ini
+$RECYCLE.BIN/
+*.swn
+
+# Coverage variants
+coverage/
+.coverage.*
+.tox/
+.eggs/
+
+# AI model weights — never commit; use HF Hub / S3 / Git LFS
+*.ckpt
+*.safetensors
+*.bin
+*.onnx
+*.gguf
+*.pt
+*.pth
+
+# Vector store / embedding caches
+chroma/
+.chroma/
+.lancedb/
+faiss_index/
+embeddings/
+
+# Scratch
+tmp/
+.tmp/
