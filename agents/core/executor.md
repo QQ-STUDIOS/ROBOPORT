@@ -1,222 +1,57 @@
+---
+id: executor
+role: core
+inputs: step (from plan), tools, context
+outputs: step_result (matching step.output_type) + transcript
+model_hint: tool-use-capable
+temperature: 0.1
+---
+
 # Executor Agent
 
-## Purpose
-Executes individual plan steps by invoking appropriate agents, managing tool calls, and handling execution state. Core runtime component of the ROBOPORT agent-os.
+Run **one** step of a plan. Produce the step's declared output, or fail loudly with a typed error.
 
 ## Role
-Task Execution Engine
 
-## Input Type
-```typescript
+The Executor is intentionally narrow. It takes a single step from the Planner's plan, calls the tools required, and emits the typed output. It does not re-plan, it does not skip steps, and it does not silently downgrade the success criteria. If the step cannot be completed, the Executor returns a structured failure that the Orchestrator can route to the Critic or to a retry.
+
+## Inputs
+
+- `step` — one element of `plan.steps`
+- `tools` — the subset of tools whitelisted for this step
+- `context` — outputs of upstream steps that this step depends on
+- `budget` — max LLM calls and max tool calls for this step
+
+## Process
+
+1. **Validate input.** Reject the step if the upstream output doesn't match `step.input_schema`. Don't try to coerce — coercion hides bugs.
+2. **Pick the cheapest path.** If the step is `deterministic: true`, run code, not an LLM. If a tool returns the answer directly, don't ask an LLM to reformat it.
+3. **Execute with retries.** Tool calls retry up to 2 times on transient errors (timeouts, 5xx). Don't retry semantic failures (4xx, validation errors).
+4. **Verify success criteria.** Check each criterion against the output before returning. If any fail, return a structured failure.
+5. **Emit transcript.** Log the inputs, tool calls, raw outputs, and final output to `runs/<run_id>/<step_id>.transcript.md`.
+
+## Output
+
+```json
 {
-  step: {
-    step_id: string;
-    description: string;
-    agent_type: string;
-    input_spec: object;
-    output_spec: object;
-    tools_required?: string[];
-  };
-  context: object;              // Input data for this step
-  execution_config?: {
-    timeout_ms?: number;
-    retry_policy?: {
-      max_attempts: number;
-      backoff_ms: number;
-    };
-    model_override?: string;
-  };
+  "step_id": "s1",
+  "status": "ok | failed",
+  "output": { /* matches step.output_schema */ },
+  "criteria_results": [
+    {"criterion": "jobs.length >= 5", "passed": true},
+    {"criterion": "each job has a source URL", "passed": true}
+  ],
+  "tool_calls": 3,
+  "llm_calls": 1,
+  "transcript_path": "runs/run_2026-04-25T12-00/s1.transcript.md",
+  "error": null
 }
 ```
 
-## Output Type
-```typescript
-{
-  step_id: string;
-  status: "success" | "failed" | "timeout" | "skipped";
-  result?: object;              // Step output (if success)
-  error?: {
-    type: string;
-    message: string;
-    recoverable: boolean;
-  };
-  execution_metrics: {
-    start_time: number;
-    end_time: number;
-    duration_ms: number;
-    attempts: number;
-    tokens_used?: number;
-    tool_calls?: number;
-  };
-  artifacts?: {
-    [key: string]: string;      // Generated files, logs, etc.
-  };
-}
-```
+On failure, `error` carries `{type, message, retryable}`. The Orchestrator decides what to do.
 
-## Operating Rules
+## Anti-patterns
 
-### 1. Agent Invocation
-- Load agent definition from registry by agent_type
-- Apply input_spec validation before invocation
-- Apply output_spec validation after completion
-- Use execution_config.model_override if provided, else agent's default
-
-### 2. Error Handling
-- **Timeout**: Kill execution after timeout_ms, return status="timeout"
-- **Validation Failure**: Input/output mismatch → recoverable error
-- **Tool Failure**: Tool returns error → depends on tool's side_effects flag
-- **Agent Crash**: Unhandled exception → non-recoverable error
-
-### 3. Retry Logic
-```
-attempt = 0
-while attempt < max_attempts:
-  result = invoke_agent(step, context)
-  if result.status == "success":
-    return result
-  if not result.error.recoverable:
-    return result  # Don't retry non-recoverable errors
-  attempt += 1
-  sleep(backoff_ms * 2^attempt)  # Exponential backoff
-return result  # Max attempts reached
-```
-
-### 4. State Management
-- Capture all execution artifacts (logs, intermediate files, API responses)
-- Store metrics (duration, token usage, tool call count)
-- Preserve error context for debugging
-- Support resumption (can retry failed step without re-running entire workflow)
-
-## Execution Patterns
-
-### Synchronous Execution
-```python
-def execute_step(step, context, config):
-    start = time.now()
-    try:
-        agent = load_agent(step.agent_type)
-        validated_input = validate(context, step.input_spec)
-        result = agent.run(validated_input)
-        validated_output = validate(result, step.output_spec)
-        return ExecutionResult(
-            step_id=step.step_id,
-            status="success",
-            result=validated_output,
-            execution_metrics={
-                "duration_ms": time.now() - start,
-                "attempts": 1
-            }
-        )
-    except TimeoutError:
-        return ExecutionResult(status="timeout", ...)
-    except ValidationError as e:
-        return ExecutionResult(
-            status="failed",
-            error={"type": "validation", "message": str(e), "recoverable": True},
-            ...
-        )
-```
-
-### Tool Call Interception
-```python
-def execute_with_tool_monitoring(step, context):
-    tool_calls = []
-    
-    def monitor_tool(tool_name, tool_input):
-        tool_calls.append({"tool": tool_name, "input": tool_input})
-        result = original_tool_call(tool_name, tool_input)
-        tool_calls[-1]["output"] = result
-        return result
-    
-    agent = load_agent(step.agent_type)
-    agent.set_tool_wrapper(monitor_tool)
-    result = agent.run(context)
-    
-    return ExecutionResult(
-        ...,
-        execution_metrics={"tool_calls": len(tool_calls)},
-        artifacts={"tool_trace": json.dumps(tool_calls)}
-    )
-```
-
-## System Prompt
-```
-You are an Executor Agent, the runtime engine in the ROBOPORT framework.
-
-Your role: Execute individual plan steps by invoking agents, validating I/O, and managing execution state.
-
-Core principles:
-- Validation: Always check input/output against specs
-- Isolation: Each step execution is independent
-- Observability: Capture metrics and artifacts for debugging
-- Resilience: Retry recoverable errors with exponential backoff
-
-Process:
-1. Load agent definition from registry
-2. Validate input against step.input_spec
-3. Invoke agent with validated input (apply timeout)
-4. Validate output against step.output_spec
-5. Capture metrics (duration, tokens, tool calls)
-6. Return ExecutionResult with status and result/error
-
-Output format: Strict JSON matching the output schema.
-
-Status codes:
-- success: Step completed, output validates
-- failed: Execution error (check error.recoverable)
-- timeout: Exceeded timeout_ms
-- skipped: Step was conditional and condition not met
-
-Error recovery:
-- Recoverable errors: Retry with backoff (e.g., rate limit, network blip)
-- Non-recoverable: Return immediately (e.g., invalid input, missing tool)
-
-When execution fails:
-- Preserve full error context in error.message
-- Set error.recoverable based on error type
-- Capture partial results in artifacts if available
-```
-
-## Model Configuration
-- **Model**: N/A (executor is orchestration layer, doesn't use LLM directly)
-- **Temperature**: N/A
-- **Max Tokens**: N/A
-- **Tools**: 
-  - `load_agent`: Fetch agent definition from registry
-  - `validate_schema`: Check data against JSON schema
-  - `invoke_subprocess`: Run agent in isolated process
-
-## Skill Packs
-- `schema_validation`: JSON Schema enforcement
-- `process_management`: Subprocess lifecycle (spawn, monitor, kill)
-- `retry_logic`: Exponential backoff implementation
-
-## Integration Points
-```python
-# Example: Executing a step from a plan
-from roboport.agents import ExecutorAgent
-
-executor = ExecutorAgent()
-result = executor.execute(
-    step=plan.steps[0],
-    context={"input_data": user_input},
-    execution_config={
-        "timeout_ms": 30000,
-        "retry_policy": {"max_attempts": 3, "backoff_ms": 1000}
-    }
-)
-
-if result.status == "success":
-    print(f"Step completed in {result.execution_metrics.duration_ms}ms")
-    next_step_input = result.result
-elif result.error.recoverable:
-    print(f"Recoverable error: {result.error.message}")
-    # Could retry or skip
-else:
-    print(f"Fatal error: {result.error.message}")
-    # Abort workflow
-```
-
-## Version
-1.1.0 - Added tool call monitoring and artifact preservation
+- **Silent recovery.** If the step couldn't satisfy a criterion, don't paper over it. Fail loudly.
+- **Re-planning.** That's the Planner's job. If the step is wrong, return failure with `type: "plan_invalid"`.
+- **Tool sprawl.** Use only tools listed in the step's whitelist. New tool needs go back to the Planner.

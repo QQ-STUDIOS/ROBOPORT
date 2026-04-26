@@ -1,125 +1,126 @@
-# Evaluation Pipeline
+# Workflow: Evaluation Pipeline
 
-## Purpose
-Systematic evaluation framework for testing agent performance across multiple dimensions.
+How ROBOPORT measures whether changes are improvements, regressions, or noise.
 
-## Pipeline Stages
+```mermaid
+flowchart TD
+    EV[evals.json] --> RUN[scripts/benchmark.py]
+    RUN -->|N runs per eval| RA[Run artifacts]
+    RA --> G[Grader]
+    G --> GR[Grading results]
+    GR --> AGG[scripts/aggregate.py]
+    AGG --> BM[Benchmark report]
+    BM --> CMP{Compare to baseline}
+    CMP -->|win| PROMOTE[Promote change]
+    CMP -->|loss| ANALYZE[Analyzer]
+    CMP -->|noise| RESAMPLE[Resample with N×2]
+    ANALYZE --> EDIT[Recommended edits]
+```
 
-### 1. Test Generation
-```python
-# Create or load evaluation config
-eval_config = {
-    "eval_id": "code_gen_python",
-    "prompts": [
-        "Write a function to calculate Fibonacci numbers",
-        "Create a REST API endpoint for user login",
-        "Implement binary search algorithm"
-    ],
-    "criteria": [
-        {"name": "correctness", "weight": 0.5, "scoring_guide": "..."},
-        {"name": "readability", "weight": 0.3, "scoring_guide": "..."},
-        {"name": "efficiency", "weight": 0.2, "scoring_guide": "..."}
-    ],
-    "pass_threshold": 75
+---
+
+## Phase 1 — Benchmark
+
+```bash
+python scripts/benchmark.py \
+  --target jd_crew \
+  --eval-set evals/evals.json \
+  --runs 3 \
+  --out evals/benchmarks/$(date +%Y-%m-%d)-pre-change
+```
+
+Three runs per eval is the floor. For tighter signals on small differences, use 5 or 10. Costs scale linearly — budget accordingly.
+
+The benchmark writes:
+
+```
+evals/benchmarks/<date>-<label>/
+├── summary.json        # rolled-up pass rates per eval
+├── eval_1/
+│   ├── run_1/
+│   │   ├── plan.json
+│   │   ├── final_output.json
+│   │   └── run.log
+│   ├── run_2/
+│   └── run_3/
+└── ...
+```
+
+## Phase 2 — Grade
+
+```bash
+python scripts/aggregate.py \
+  --grade \
+  --benchmark evals/benchmarks/<date>-<label>
+```
+
+For each run, the Grader produces a `GradingResult` (per `resources/schemas/grading.schema.json`). The aggregator rolls these into:
+
+- **Per-eval pass rate** (across N runs)
+- **Per-expectation pass rate** (across all evals × runs)
+- **Blocker failure rate** (any blocker failed counts the whole run as failed)
+- **Meta-critiques** (every Grader's `meta_critique` collated and deduped)
+
+The meta-critiques section is what makes the eval set itself improve over time. Read it.
+
+## Phase 3 — Compare
+
+To decide whether a change is a real improvement:
+
+```bash
+python scripts/aggregate.py \
+  --compare \
+  --baseline evals/benchmarks/<date>-pre-change \
+  --candidate evals/benchmarks/<date>-post-change
+```
+
+The comparator (using `agents/evaluation/comparator.md` as its spec) outputs:
+
+```json
+{
+  "criteria": [
+    {"name": "blocker_pass_rate", "winner": "candidate", "baseline": 0.91, "candidate": 0.97, "blocker": true},
+    {"name": "overall_pass_rate", "winner": "candidate", "baseline": 0.83, "candidate": 0.88, "blocker": false},
+    {"name": "llm_calls_per_run", "winner": "baseline",  "baseline": 4.0,  "candidate": 4.7,  "blocker": false}
+  ],
+  "verdict": "candidate wins on blocker quality, regresses on cost. Decide if cost regression is acceptable."
 }
 ```
 
-### 2. Execution
-```python
-from roboport.eval import run_evaluation
+## Phase 4 — Decide
 
-results = run_evaluation(
-    agent_id="code_generator_v1",
-    eval_config=eval_config,
-    num_runs=10  # Run each prompt 10 times for variance
-)
+| Verdict | Action |
+|---|---|
+| Candidate wins on blockers, doesn't lose on any blocker | **Promote**: merge the change, update the baseline pointer |
+| Candidate ties or loses on blockers | **Analyzer**: produce a diagnosis + recommended edits |
+| Differences are within noise margin (rule of thumb: <2σ on N=3 runs) | **Resample**: rerun with N×2 |
+
+The "noise" case is real and common. Don't merge changes that the data can't distinguish from variance — that's how you accumulate cruft that nobody understands.
+
+---
+
+## Tracking the eval set itself
+
+The eval set is a *living artifact*. Every release should:
+
+1. Audit the meta-critiques from the latest benchmark
+2. Strengthen weak expectations (the Grader will tell you which)
+3. Add new expectations for failure modes seen in production
+4. Retire expectations that have been green for ≥10 consecutive benchmarks (they're not exercising anything)
+
+Run `python scripts/validate.py --evals evals/evals.json` before committing to ensure the schema stays valid.
+
+---
+
+## Trigger optimization (separate, optional pass)
+
+Once an agent works, optimize *when* it gets called. The Planner reads agent descriptions to decide ownership; weak descriptions cause under-triggering even on good agents.
+
+```bash
+python scripts/benchmark.py \
+  --mode trigger-optimize \
+  --target <agent_id> \
+  --max-iterations 5
 ```
 
-### 3. Grading
-```python
-from roboport.agents import GraderAgent
-
-grader = GraderAgent()
-grades = []
-
-for result in results:
-    grade = grader.evaluate(
-        output=result.output,
-        criteria=eval_config["criteria"],
-        context={"prompt": result.prompt}
-    )
-    grades.append(grade)
-```
-
-### 4. Analysis
-```python
-from roboport.agents import AnalyzerAgent
-
-analyzer = AnalyzerAgent()
-analysis = analyzer.analyze(
-    evaluation_results=grades,
-    analysis_type="failure_modes"
-)
-
-print(f"Mean score: {analysis.summary.mean_score}")
-print(f"Pass rate: {analysis.summary.pass_rate*100}%")
-for rec in analysis.recommendations:
-    print(f"  [{rec.priority}] {rec.action}")
-```
-
-### 5. Iteration
-```python
-# Apply top recommendations
-if analysis.recommendations:
-    top_rec = analysis.recommendations[0]
-    # Update agent config based on recommendation
-    # Re-run evaluation
-```
-
-## Output Artifacts
-
-```
-evals/
-└── code_gen_python/
-    ├── config.json              # Evaluation definition
-    ├── results_v1.jsonl         # Raw outputs
-    ├── grades_v1.json           # Grading results
-    ├── analysis_v1.json         # Analyzer output
-    └── report_v1.md             # Human-readable summary
-```
-
-## Benchmarking
-
-### Variance Analysis
-```python
-# Run same eval 10 times to measure consistency
-variance_results = []
-for i in range(10):
-    result = run_evaluation(agent_id, eval_config)
-    variance_results.append(result)
-
-mean_score = np.mean([r.mean_score for r in variance_results])
-std_dev = np.std([r.mean_score for r in variance_results])
-
-print(f"Mean: {mean_score:.1f} ± {std_dev:.1f}")
-```
-
-### A/B Comparison
-```python
-from roboport.agents import ComparatorAgent
-
-comparator = ComparatorAgent()
-comparison = comparator.compare(
-    candidates=[
-        {"id": "gpt-4o", "output": results_gpt4},
-        {"id": "claude-sonnet", "output": results_claude},
-        {"id": "qwen3", "output": results_qwen}
-    ],
-    comparison_axes=["accuracy", "speed", "cost"]
-)
-
-print(f"Winner: {comparison.winner.overall}")
-```
-
-## Version
-1.0.0 - Initial evaluation pipeline framework
+This runs a separate loop: split the trigger-eval set 60/40, propose description variants, score on held-out, pick the winner by held-out score (not train, to avoid overfitting). Output: a `best_description` field. Apply it to the registry, commit.

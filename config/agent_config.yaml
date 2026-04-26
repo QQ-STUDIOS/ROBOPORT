@@ -1,0 +1,144 @@
+# ROBOPORT Agent Configuration
+#
+# Single source of truth for runtime knobs: which model serves which role,
+# default temperatures, budget caps, and where secrets live.
+#
+# This file is read by scripts/benchmark.py (and any future runner). The
+# Orchestrator does NOT read it directly — it reads agents/registry.json
+# and the runner injects model bindings from here based on each agent's
+# `model_hint`.
+#
+# Override locally with config/agent_config.local.yaml (gitignored).
+
+version: "0.1.0"
+
+# -----------------------------------------------------------------------------
+# Model bindings: maps a model_hint (declared in registry.json) to a real
+# provider/model. Swap these to A/B different models against the eval set
+# without touching agent specs.
+# -----------------------------------------------------------------------------
+models:
+  reasoning-strong:
+    provider: ollama
+    model: qwen3:14b
+    base_url: http://localhost:11434
+    # Used by: planner, critic, grader, comparator, analyzer,
+    #          technical_analyst, compliance_risk, application_strategist,
+    #          salary_estimator, resume_tailor
+
+  tool-use-capable:
+    provider: ollama
+    model: qwen3:14b
+    base_url: http://localhost:11434
+    # Used by: executor, data_engineering, automation, devops, job_scout
+
+  writing-strong:
+    provider: ollama
+    model: qwen3:14b
+    base_url: http://localhost:11434
+    # Used by: cover_letter_writer
+
+  any:
+    provider: ollama
+    model: qwen3:14b
+    base_url: http://localhost:11434
+    # Used by: orchestrator (mostly deterministic), reporting
+
+  none:
+    # Sentinel: agent is fully deterministic, no model call.
+    # Used by: synthesizer
+    provider: null
+    model: null
+
+# -----------------------------------------------------------------------------
+# Per-agent overrides. Use sparingly — prefer adjusting the model binding
+# above. These exist for the cases where one agent legitimately needs a
+# different temperature or a tighter ceiling than its peers.
+# -----------------------------------------------------------------------------
+agent_overrides:
+  planner:
+    temperature: 0.2
+    max_tokens: 2048
+  critic:
+    temperature: 0.0
+    max_tokens: 1024
+  grader:
+    temperature: 0.0
+    max_tokens: 1024
+  technical_analyst:
+    temperature: 0.3
+    max_tokens: 2048
+  compliance_risk:
+    temperature: 0.2  # lower than peers — citations require precision
+    max_tokens: 2048
+  application_strategist:
+    temperature: 0.4
+    max_tokens: 2048
+  cover_letter_writer:
+    temperature: 0.7  # voice work; needs more freedom
+    max_tokens: 1024
+  salary_estimator:
+    temperature: 0.2
+    max_tokens: 1024
+  resume_tailor:
+    temperature: 0.3
+    max_tokens: 2048
+  job_scout:
+    temperature: 0.3
+    max_tokens: 2048
+
+# Defaults applied when an agent has no override.
+defaults:
+  temperature: 0.3
+  max_tokens: 2048
+  top_p: 0.95
+  timeout_seconds: 60
+  retries: 2  # call-level only — step-level retries are decided by orchestrator
+
+# -----------------------------------------------------------------------------
+# Budget caps. The runner aborts the run (and writes a failure record) if
+# any of these are exceeded. Tune to taste; defaults err on the safe side.
+# -----------------------------------------------------------------------------
+budgets:
+  per_run:
+    max_llm_calls: 25
+    max_tool_calls: 50
+    max_wall_seconds: 600
+    max_usd: 5.00  # ignored for local models
+  per_agent:
+    max_llm_calls: 5
+    max_tool_calls: 15
+
+# -----------------------------------------------------------------------------
+# Tool registry. Names here must match what agent specs reference. The runner
+# refuses to dispatch a tool not whitelisted for the current agent.
+# -----------------------------------------------------------------------------
+tools:
+  job_scout:        [search_linkedin, search_indeed, search_company_careers, fetch_url, dedupe_jobs]
+  technical_analyst:[fetch_url, parse_jd_skills]
+  compliance_risk:  [fetch_url, lookup_jurisdiction]
+  application_strategist: [load_profile, fetch_url]
+  synthesizer:      []  # deterministic — no tools
+  salary_estimator: [lookup_comp_band, fetch_url]
+  resume_tailor:    [load_profile, ats_score]
+  cover_letter_writer: [load_profile]
+
+# -----------------------------------------------------------------------------
+# Secrets — never inline. The runner resolves these from env vars at start;
+# missing required secrets fail fast with a useful error.
+# -----------------------------------------------------------------------------
+secrets:
+  required: []
+  optional:
+    - LINKEDIN_API_KEY
+    - INDEED_API_KEY
+    - SERPAPI_KEY
+
+# -----------------------------------------------------------------------------
+# Run output settings.
+# -----------------------------------------------------------------------------
+output:
+  runs_dir: runs
+  log_level: info       # debug | info | warn | error
+  save_intermediate: true   # write each agent's output as runs/<id>/<step>.json
+  save_prompts: true        # write the literal prompt sent to each model call

@@ -1,23 +1,33 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Grading Result Schema",
-  "description": "Standard output format for grader agent evaluations",
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://roboport.dev/schemas/grading.schema.json",
+  "title": "GradingResult",
   "type": "object",
-  "required": ["score", "breakdown", "overall_assessment"],
+  "required": ["run_id", "results", "pass_rate"],
   "properties": {
-    "score": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 100,
-      "description": "Normalized weighted score (0-100)"
-    },
-    "breakdown": {
-      "type": "object",
-      "description": "Per-criterion scores and rationales"
-    },
-    "overall_assessment": {
+    "run_id": { "type": "string" },
+    "target": {
       "type": "string",
-      "minLength": 20
-    }
+      "description": "Agent or crew under evaluation."
+    },
+    "eval_id": { "type": "integer" },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["expectation", "verdict", "evidence"],
+        "properties": {
+          "expectation": { "type": "string" },
+          "verdict":     { "type": "string", "enum": ["PASS", "FAIL", "INCONCLUSIVE"] },
+          "evidence":    { "type": "string" },
+          "blocker":     { "type": "boolean", "default": false }
+        }
+      }
+    },
+    "pass_rate":      { "type": "number", "minimum": 0, "maximum": 1 },
+    "blocker_failed": { "type": "boolean" },
+    "meta_critique":  { "type": "array", "items": { "type": "string" } },
+    "graded_at":      { "type": "string", "format": "date-time" }
   }
 }

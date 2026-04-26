@@ -1,321 +1,166 @@
-# ROBOPORT 🤖
+# ROBOPORT
 
-**Enterprise-Grade Multi-Agent System Framework**
+An agent orchestration framework with typed contracts, deterministic-when-possible execution, and a non-negotiable error stack.
 
-ROBOPORT is a production-ready framework for building, evaluating, and deploying multi-agent AI systems. Born from real-world needs in data engineering, recruiting, and automation, it provides the infrastructure to create reliable, scalable agent workflows.
-
----
-
-## 🎯 What Makes ROBOPORT Different
-
-Most AI agent frameworks stop at orchestration. ROBOPORT goes further:
-
-- **Self-Improving**: Built-in evaluation pipeline (Grader → Comparator → Analyzer) identifies failure modes and generates actionable improvements
-- **Production-Ready**: Not just agent definitions—includes execution engine, dependency resolution, error handling, and observability
-- **Enterprise Patterns**: Based on proven patterns from CrewAI, LangChain, and AutoGen, distilled into reusable components
-- **Agent-OS Architecture**: Planner → Executor → Orchestrator → Critic forms a self-managing system layer
-
----
-
-## 📁 Repository Structure
+The flagship example shipped with the repo is **JD-Crew** — the eight-agent sequential job-description analyzer pictured in the Crew Builder UI: `scout → (technical, compliance) → strategist → synth (+ optional resume_tailor, cover_letter_writer, salary_estimator)`.
 
 ```
-ROBOPORT/
-│
-├── agents/                      # Agent Definitions
-│   ├── core/                   # Core agent-os components
-│   │   ├── planner.md         # Task decomposition & strategy
-│   │   ├── executor.md        # Step execution engine
-│   │   ├── orchestrator.md    # Workflow coordination
-│   │   └── critic.md          # Quality assurance gate
-│   │
-│   ├── evaluation/            # Quality & benchmarking agents
-│   │   ├── grader.md         # Quantitative scoring
-│   │   ├── comparator.md     # A/B testing & ranking
-│   │   └── analyzer.md       # Pattern detection & recommendations
-│   │
-│   └── domain/                # Industry-specific agents
-│       ├── data_engineering.md
-│       ├── reporting.md
-│       ├── automation.md
-│       └── devops.md
-│
-├── workflows/                  # Execution Patterns
-│   ├── agent_execution_flow.md
-│   ├── evaluation_pipeline.md
-│   └── skill_creation_flow.md
-│
-├── resources/
-│   ├── prompts/               # Reusable prompt patterns
-│   ├── schemas/               # JSON schemas for validation
-│   ├── templates/             # Output templates
-│   └── examples/              # Reference implementations
-│
-├── evals/                     # Evaluation configs & results
-│   ├── evals.json            # Eval definitions
-│   └── benchmarks/           # Benchmark results
-│
-├── scripts/                   # Automation utilities
-│   ├── validate.py           # Schema validation
-│   ├── benchmark.py          # Run benchmarks
-│   └── aggregate.py          # Metrics aggregation
-│
-├── runs/                      # Execution artifacts
-│   ├── iteration-1/
-│   └── iteration-2/
-│
-└── docs/
-    ├── architecture.md
-    ├── agent_design_principles.md
-    └── onboarding.md
+┌──────────┐   ┌─────────────────┐   ┌──────────────────┐   ┌─────────────┐
+│ job      │──▶│ technical_      │──┐                                       
+│ scout    │   │ analyst         │  │                                       
+│          │   └─────────────────┘  ├─▶ application_  ─▶ synthesizer ──┬──▶ resume_tailor
+│ list[Job]│   ┌─────────────────┐  │   strategist        (FinalReport)│
+│          │──▶│ compliance_     │──┘                                  ├──▶ cover_letter_writer
+└──────────┘   │ risk            │                                     │
+               └─────────────────┘                                     └──▶ salary_estimator
 ```
+
+Canonical run hits the flow stats from the Crew Builder UI: `llm_calls=4, deterministic=2, triggers=2, tools_attached=10`.
 
 ---
 
-## 🚀 Quick Start
+## Why this exists
 
-### Installation
+Most "agent frameworks" optimize for the demo. ROBOPORT optimizes for the second week — when the agent that worked on Tuesday is producing nonsense on Friday and you need to figure out which step regressed.
+
+The opinions baked in:
+
+- **Typed contracts at every boundary.** Every output is JSON-Schema-validated before handoff. No untyped blobs.
+- **Deterministic when possible.** The Synthesizer is pure Python. The Job Scout's dedupe is pure Python. If you can write it as `def f(x) -> y`, you don't get to call an LLM.
+- **One agent, one job.** No agent both "analyzes and recommends" — those are two agents.
+- **Fail loudly.** The forbidden pattern is the *quiet 200* — a structurally-valid response that semantically failed. Empty arrays don't mean "no results"; they mean the search broke.
+- **The spec is the prompt.** Agent Markdown bodies are the literal prompts. No drift, no template assembly logic.
+- **Evals are part of the agent.** No agent lands without at least one blocker assertion in `evals/evals.json`.
+
+The full philosophy is in [`docs/agent_design_principles.md`](docs/agent_design_principles.md).
+
+---
+
+## Quick start
+
 ```bash
-git clone https://github.com/RustyRich020/ROBOPORT.git
-cd ROBOPORT
-pip install -e .
+# Prereqs: Python 3.11+, Ollama running qwen3:14b (or edit config/agent_config.yaml)
+pip install jsonschema pyyaml
+
+# Sanity-check the repo
+python scripts/validate.py --all
+
+# Dry-run the JD crew (no LLM calls — synthetic schema-valid stubs)
+python scripts/benchmark.py --target jd_crew --dry-run
+
+# Real run
+python scripts/benchmark.py \
+  --target jd_crew \
+  --input "Senior backend engineer roles at health-tech companies, remote, US"
+
+# See the artifacts
+ls runs/<run_id>/
 ```
 
-### Run Your First Agent Workflow
-```python
-from roboport.agents import PlannerAgent, ExecutorAgent, CriticAgent
-
-# 1. Create a plan
-planner = PlannerAgent()
-plan = planner.create_plan(
-    task="Analyze sales data and generate Q4 report",
-    constraints={"max_steps": 5}
-)
-
-# 2. Execute plan
-executor = ExecutorAgent()
-results = []
-for step in plan.steps:
-    result = executor.execute(step, context={})
-    results.append(result)
-
-# 3. Review output
-critic = CriticAgent()
-review = critic.review(
-    output=results[-1].result,
-    requirements={"functional": ["Include charts", "Executive summary"]},
-    output_type="markdown"
-)
-
-if review.approved:
-    print("✓ Task complete!")
-else:
-    print(f"⚠ Revisions needed: {review.suggested_fixes}")
-```
-
-### Run Evaluation Pipeline
-```python
-from roboport.eval import run_evaluation
-from roboport.agents import GraderAgent, AnalyzerAgent
-
-# Define evaluation
-eval_config = {
-    "eval_id": "code_quality_test",
-    "prompts": ["Write a binary search function"],
-    "criteria": [
-        {"name": "correctness", "weight": 0.5},
-        {"name": "readability", "weight": 0.3},
-        {"name": "efficiency", "weight": 0.2}
-    ]
-}
-
-# Run
-results = run_evaluation("code_gen_agent", eval_config)
-
-# Grade
-grader = GraderAgent()
-grades = [grader.evaluate(r.output, eval_config["criteria"]) for r in results]
-
-# Analyze
-analyzer = AnalyzerAgent()
-analysis = analyzer.analyze(grades, analysis_type="failure_modes")
-
-print(f"Mean score: {analysis.summary.mean_score:.1f}")
-print(f"Top recommendation: {analysis.recommendations[0].action}")
-```
+Full walkthrough: [`docs/onboarding.md`](docs/onboarding.md).
 
 ---
 
-## 🏗️ Core Architecture
-
-### Agent-OS Layer
-ROBOPORT treats agents as an operating system:
+## Layout
 
 ```
-┌──────────┐
-│ PLANNER  │  "What needs to be done?"
-└────┬─────┘
-     │
-     v
-┌──────────────┐
-│ ORCHESTRATOR │  "In what order?"
-└────┬─────────┘
-     │
-     v
-┌──────────┐
-│ EXECUTOR │  "Do it"
-└────┬─────┘
-     │
-     v
-┌────────┐
-│ CRITIC │  "Is it good?"
-└────────┘
+agents/
+  core/               planner, executor, orchestrator, critic
+  evaluation/         grader, comparator, analyzer
+  domain/             generic domain agents
+  domain/crew_builder/  the 8 JD-Crew agents from the image
+  registry.json       single source of truth for agents + crews
+resources/
+  prompts/            cross-cutting reasoning, tool-use, error-handling patterns
+  schemas/            JSON Schema for every typed boundary
+  templates/          report + pipeline scaffolds
+  examples/           canonical example outputs
+  datasets/           input prompts for benchmarking
+workflows/            executable specs: how a crew runs end-to-end
+evals/evals.json      live eval set (4 evals, all with blockers)
+scripts/              validate, benchmark, aggregate
+runs/                 produced artifacts; one dir per run
+docs/                 architecture, design principles, onboarding
+config/agent_config.yaml   model bindings, temps, budgets, tool whitelist
 ```
 
-This creates a **self-managing workflow** where:
-- Planner handles task decomposition
-- Orchestrator manages dependencies and parallelization
-- Executor invokes domain agents with I/O validation
-- Critic provides quality gates with feedback loops
-
-### Evaluation System
-Most frameworks ship agents without validation. ROBOPORT makes quality measurable:
-
-```
-Agent Output → Grader (score) → Comparator (rank) → Analyzer (recommendations)
-```
-
-This enables:
-- **A/B testing**: Compare model outputs quantitatively
-- **Failure mode detection**: Identify patterns in low-scoring outputs
-- **Self-improvement**: Generate actionable fixes from evaluation data
+The 19 registered agents — 4 core, 3 evaluation, 4 generic domain, 8 crew_builder — are listed in `agents/registry.json`.
 
 ---
 
-## 📊 Key Features
+## The four core agents
 
-### 1. Production-Grade Execution
-- **Dependency Resolution**: Automatic DAG construction and topological sorting
-- **Parallel Execution**: Maximize throughput by running independent steps concurrently
-- **Error Recovery**: Exponential backoff, retry policies, partial checkpoint restoration
-- **Observability**: Full metrics capture (latency, tokens, tool calls, artifacts)
+| Agent | Role | Deterministic? |
+|---|---|:-:|
+| `planner` | Decomposes goal → typed plan (waves of steps) | no |
+| `executor` | Loads agent spec, builds prompt, invokes model/fn, validates output | no |
+| `orchestrator` | Dispatches plan, threads outputs, owns failure policy | mostly |
+| `critic` | Pass/fix/fail on outputs before handoff | no |
 
-### 2. Enterprise Patterns
-Implements proven patterns from leading frameworks:
-- **CrewAI**: Role-based agent design, task delegation
-- **LangChain**: Tool calling, data agent patterns
-- **AutoGen**: Multi-agent conversations, group chat
-- **Custom**: Evaluation pipeline, self-improvement loop
-
-### 3. Extensibility
-- **Skill Packs**: Reusable prompt modules (e.g., `jd_matching`, `code_review`)
-- **Tool Registry**: Pluggable tool system with side-effect tracking
-- **Custom Agents**: Industry-specific agents (data engineering, devops, recruiting)
+These four don't know about JD analysis or any other domain. They route typed values around.
 
 ---
 
-## 📚 Documentation
+## The JD-Crew agents (from the image)
 
-- [**Architecture**](docs/architecture.md): System design and component interaction
-- [**Agent Design Principles**](docs/agent_design_principles.md): How to write effective agent specs
-- [**Onboarding Guide**](docs/onboarding.md): Get started in 10 minutes
-- [**Evaluation Guide**](workflows/evaluation_pipeline.md): Run benchmarks and analyze results
+| Agent | Output type | Deterministic? |
+|---|---|:-:|
+| `job_scout` | `list[Job]` | mixed (search → LLM, dedupe → Python) |
+| `technical_analyst` | `TechnicalAnalysis` | no |
+| `compliance_risk` | `ComplianceAnalysis` | no |
+| `application_strategist` | `CandidateMatch` | no |
+| `synthesizer` | `FinalReport` | **yes** (pure merge) |
+| `salary_estimator` | `SalaryBand` | no |
+| `resume_tailor` | `TailoredResume` | no |
+| `cover_letter_writer` | `CoverLetter` | no |
 
----
-
-## 🎓 Real-World Applications
-
-### Data Engineering
-```
-Planner → Schema Designer → Pipeline Builder → Quality Validator → Critic
-```
-Generates production-ready data pipelines with built-in testing.
-
-### Recruiting
-```
-Sourcer (scrape jobs) → Match Analyst (JD parsing) → Comp Estimator → Report Generator
-```
-Automates candidate matching with salary estimates.
-
-### Reporting
-```
-Research → Analyze → Visualize → Write → Review
-```
-End-to-end report generation with factual grounding.
+Every one of these has a Markdown spec under `agents/domain/crew_builder/`, an entry in `agents/registry.json`, and at least one eval covering it.
 
 ---
 
-## 🧪 Evaluation Framework
+## The three-layer error stack
 
-ROBOPORT includes a complete eval system:
+Non-negotiable. Every failure goes through these three layers in order, with explicit handoffs:
 
-```python
-# Define eval
-eval = {
-    "id": "summarization",
-    "prompts": ["Summarize this 10-page doc"],
-    "criteria": [
-        {"name": "accuracy", "weight": 0.4},
-        {"name": "conciseness", "weight": 0.3},
-        {"name": "coverage", "weight": 0.3}
-    ],
-    "pass_threshold": 75
-}
-
-# Run
-results = run_evaluation("summarizer_v2", eval)
-
-# Get insights
-print(f"Pass rate: {results.pass_rate*100}%")
-print(f"Failure modes: {results.failure_analysis}")
-print(f"Top fix: {results.recommendations[0]}")
+```
+LAYER 3 — User-facing       (Orchestrator escalation; clear msg to caller)
+   ▲
+LAYER 2 — Step-level        (retry/alternate/skip-with-warning)
+   ▲
+LAYER 1 — Call-level        (provider 5xx → retry; schema-invalid → repair pass)
 ```
 
-Output:
-```
-Pass rate: 78%
-Failure modes: [
-    {"mode": "Missing key details", "count": 12, "avg_score": 62}
-]
-Top fix: Add explicit instruction: 'Include all quantitative data'
-```
+Full taxonomy: [`resources/prompts/error_handling.md`](resources/prompts/error_handling.md).
 
 ---
 
-## 🤝 Contributing
+## Adding an agent
 
-We welcome contributions! Areas of focus:
-- **New Domain Agents**: Industry-specific agent templates
-- **Eval Datasets**: Reference evaluation configs with ground truth
-- **Tools**: Integrations for common APIs (Slack, Airtable, etc.)
-- **Benchmarks**: Performance comparisons across models
+Short version (full version in [`docs/agent_design_principles.md`](docs/agent_design_principles.md)):
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
----
-
-## 📜 License
-
-MIT License - see [LICENSE](LICENSE)
+1. Write `agents/<role>/<n>.md` with frontmatter + the seven required sections.
+2. Add an entry to `agents/registry.json`.
+3. Add the output schema to `resources/schemas/output.schema.json`.
+4. Whitelist tools in `config/agent_config.yaml`.
+5. Add at least one eval with at least one blocker.
+6. `python scripts/validate.py --all` — clean.
+7. `python scripts/benchmark.py --target <agent>` — passing.
 
 ---
 
-## 🙏 Acknowledgments
+## Documentation map
 
-Built on patterns from:
-- [CrewAI](https://github.com/crewaiinc/crewai): Multi-agent orchestration
-- [LangChain](https://github.com/langchain-ai/langchain): Tool calling, data agents
-- [AutoGen](https://github.com/microsoft/autogen): Multi-agent conversations
-- [OpenClaw](https://github.com/openclaw/openclaw): Agent workflow patterns
-
----
-
-## 🔗 Links
-
-- **Documentation**: [https://roboport.dev](https://roboport.dev) *(coming soon)*
-- **Examples**: [examples/](examples/)
-- **Discord**: [Join the community](https://discord.gg/roboport) *(coming soon)*
+| File | When to read it |
+|---|---|
+| [`docs/onboarding.md`](docs/onboarding.md) | First — clone-to-running in 30 minutes. |
+| [`docs/architecture.md`](docs/architecture.md) | Second — how the pieces fit. |
+| [`docs/agent_design_principles.md`](docs/agent_design_principles.md) | Third — the opinions, before you add an agent. |
+| [`workflows/jd_crew_flow.md`](workflows/jd_crew_flow.md) | The flagship crew, end-to-end. |
+| [`resources/prompts/reasoning_patterns.md`](resources/prompts/reasoning_patterns.md) | Reference for prompt design. |
+| [`resources/prompts/error_handling.md`](resources/prompts/error_handling.md) | Reference for failure modes. |
 
 ---
 
-**Built by developers, for developers who need agents that actually work in production.**
+## License
+
+MIT. See `LICENSE`.
