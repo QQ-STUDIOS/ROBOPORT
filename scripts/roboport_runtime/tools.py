@@ -193,20 +193,27 @@ def lookup_comp_band(role: str, location: str) -> dict[str, Any]:
             "source": f"fallback:{fallback_role}"}
 
 
-# ----- REAL: Greenhouse-backed search -----------------------------------
+# ----- REAL: Greenhouse + Lever-backed search ---------------------------
 
-# Curated list of public Greenhouse boards. The Greenhouse Job Board API is
-# free, public, no auth, no rate limiting beyond reasonable use. Add boards
-# here to broaden `search_linkedin`'s coverage.
+# Curated lists of public job boards. All probed live on 2026-04-26 — only
+# slugs that returned >0 jobs are kept. Both APIs are free, public, no auth.
+# To add boards: probe with curl https://boards-api.greenhouse.io/v1/boards/<slug>/jobs
+# (or Lever's /v0/postings/<slug>?mode=json) and append on a 200 with non-empty body.
 KNOWN_GREENHOUSE_BOARDS = [
-    "anthropic", "openai", "stripe", "datadog", "discord", "figma",
-    "ramp", "brex", "vercel", "scale", "perplexityai", "mistralai",
-    "huggingface", "cohere", "writer", "pinecone", "weaviate",
-    "snowflake", "databricks", "duckdb", "airbyte", "dbtlabs",
-    "airbnb", "doordash", "robinhood", "coinbase", "instacart",
+    # AI / ML
+    "anthropic", "scaleai", "stripe", "datadog", "discord", "figma",
+    "rampnetwork", "brex", "vercel", "databricks",
+    # Big consumer
+    "airbnb", "robinhood", "coinbase", "instacart", "doordashusa",
+    "webflow", "reddit", "cloudflare", "mongodb", "elastic",
+    "duolingo", "asana", "lyft", "peloton", "dropbox",
+    "zoominfo", "intercom", "postman", "samsara", "fivetran", "fastly",
 ]
 
+KNOWN_LEVER_BOARDS = ["spotify", "plaid", "clari", "peerspace"]
+
 GREENHOUSE_BASE = "https://boards-api.greenhouse.io/v1/boards"
+LEVER_BASE = "https://api.lever.co/v0/postings"
 
 
 def _gh_fetch_board(company: str, timeout: int = 10) -> list[dict]:
@@ -230,9 +237,49 @@ def _gh_normalize(job: dict, company: str) -> dict[str, Any]:
         "source": "greenhouse",
         "source_url": job.get("absolute_url", ""),
         "posted_at": (job.get("updated_at") or "")[:10],
-        "raw_description": "",  # populate via fetch_url if needed
+        "raw_description": "",
         "salary_hint": None,
     }
+
+
+def _lv_fetch_board(company: str, timeout: int = 10) -> list[dict]:
+    """Fetch a single Lever board's postings. Returns [] on any error."""
+    try:
+        r = requests.get(f"{LEVER_BASE}/{company}?mode=json", timeout=timeout,
+                         headers={"User-Agent": "ROBOPORT/0.1"})
+        if r.status_code != 200:
+            return []
+        data = r.json()
+        return data if isinstance(data, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _lv_normalize(job: dict, company: str) -> dict[str, Any]:
+    cats = job.get("categories") or {}
+    # createdAt is unix ms in Lever's API.
+    from datetime import datetime, timezone
+    posted_at = ""
+    ts = job.get("createdAt")
+    if isinstance(ts, (int, float)):
+        posted_at = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).date().isoformat()
+    return {
+        "id": f"lv-{company}-{job.get('id')}",
+        "title": job.get("text", ""),
+        "company": company,
+        "location": cats.get("location", "") or "",
+        "source": "lever",
+        "source_url": job.get("hostedUrl", ""),
+        "posted_at": posted_at,
+        "raw_description": "",
+        "salary_hint": None,
+    }
+
+
+def _lv_matches(job: dict, query: str, location: str) -> bool:
+    """Title/location matcher adapted to Lever's job shape (text + categories)."""
+    pseudo = {"title": job.get("text"), "location": (job.get("categories") or {}).get("location")}
+    return _job_matches(pseudo, query, location)
 
 
 _STOPWORDS = {"the", "and", "for", "with", "any", "all", "job", "jobs"}
@@ -268,6 +315,7 @@ def search_linkedin(query: str, location: str = "Remote-US",
     """
     results: list[dict] = []
     boards_hit = 0
+    boards_total = len(KNOWN_GREENHOUSE_BOARDS) + len(KNOWN_LEVER_BOARDS)
     for company in KNOWN_GREENHOUSE_BOARDS:
         jobs = _gh_fetch_board(company)
         if jobs:
@@ -275,34 +323,49 @@ def search_linkedin(query: str, location: str = "Remote-US",
         for j in jobs:
             if _job_matches(j, query, location):
                 results.append(_gh_normalize(j, company))
+    for company in KNOWN_LEVER_BOARDS:
+        jobs = _lv_fetch_board(company)
+        if jobs:
+            boards_hit += 1
+        for j in jobs:
+            if _lv_matches(j, query, location):
+                results.append(_lv_normalize(j, company))
     results = results[:limit]
     return {
         "query": query,
         "location": location,
         "boards_searched": boards_hit,
-        "boards_total": len(KNOWN_GREENHOUSE_BOARDS),
+        "boards_total": boards_total,
         "results": results,
-        "source": "greenhouse-aggregator",
+        "source": "greenhouse+lever-aggregator",
     }
 
 
 def search_company_careers(company: str, query: str = "",
                            limit: int = 25) -> dict[str, Any]:
-    """Look up a single company's Greenhouse board.
+    """Look up a single company's board on Greenhouse, falling back to Lever.
 
-    The `company` arg is the Greenhouse board slug (e.g. 'anthropic'). If
-    the slug doesn't exist on Greenhouse the result is empty.
+    `company` is the board slug (e.g. 'anthropic', 'spotify'). Empty result
+    if the slug doesn't exist on either provider.
     """
     slug = (company or "").strip().lower().replace(" ", "")
+    # Greenhouse first.
     jobs = _gh_fetch_board(slug)
-    matched = [j for j in jobs if _job_matches(j, query, "")][:limit]
-    return {
-        "company": company,
-        "slug": slug,
-        "query": query,
-        "results": [_gh_normalize(j, slug) for j in matched],
-        "source": "greenhouse" if jobs else "greenhouse:not-found",
-    }
+    if jobs:
+        matched = [j for j in jobs if _job_matches(j, query, "")][:limit]
+        return {"company": company, "slug": slug, "query": query,
+                "results": [_gh_normalize(j, slug) for j in matched],
+                "source": "greenhouse"}
+    # Fall back to Lever.
+    jobs = _lv_fetch_board(slug)
+    if jobs:
+        matched = [j for j in jobs if _lv_matches(j, query, "")][:limit]
+        return {"company": company, "slug": slug, "query": query,
+                "results": [_lv_normalize(j, slug) for j in matched],
+                "source": "lever"}
+    return {"company": company, "slug": slug, "query": query, "results": [],
+            "source": "not-found",
+            "_note": "Tried Greenhouse + Lever. Workday boards have per-tenant URLs and aren't supported here yet."}
 
 
 def search_indeed(query: str, location: str = "Remote-US",
