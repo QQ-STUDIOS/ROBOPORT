@@ -135,7 +135,23 @@ def main() -> int:
     ap.add_argument("--label", default=None, help="Output folder label; defaults to timestamp")
     ap.add_argument("--out", default=None, help="Override benchmark output dir")
     ap.add_argument("--grade", action="store_true", help="Run grader after each run")
+    ap.add_argument("--live", action="store_true",
+                    help="Use the Anthropic-SDK runtime instead of the stubs. "
+                         "Requires ANTHROPIC_API_KEY.")
     args = ap.parse_args()
+
+    if args.live:
+        try:
+            from roboport_runtime import (  # type: ignore
+                call_planner as _live_planner,
+                call_executor as _live_executor,
+                call_grader as _live_grader,
+            )
+        except ImportError as e:
+            print(f"--live requires `pip install anthropic`: {e}", file=sys.stderr)
+            return 2
+        global call_planner, call_executor, call_grader
+        call_planner, call_executor, call_grader = _live_planner, _live_executor, _live_grader
 
     registry_path = REPO / "agents" / "registry.json"
     if not registry_path.exists():
