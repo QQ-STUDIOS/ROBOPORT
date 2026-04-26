@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Grading Result Schema",
+  "description": "Standard output format for grader agent evaluations",
+  "type": "object",
+  "required": ["score", "breakdown", "overall_assessment"],
+  "properties": {
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Normalized weighted score (0-100)"
+    },
+    "breakdown": {
+      "type": "object",
+      "description": "Per-criterion scores and rationales"
+    },
+    "overall_assessment": {
+      "type": "string",
+      "minLength": 20
+    }
+  }
+}
