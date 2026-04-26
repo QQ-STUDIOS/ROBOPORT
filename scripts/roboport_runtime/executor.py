@@ -4,18 +4,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import requests
-
-from .client import (
-    OLLAMA_HOST,
-    _parse_json,
-    load_agent_spec,
-    model_for,
-)
+from .client import _parse_json, load_agent_spec, provider
 from .tools import dispatch, load_agent_tool_map, schemas_for
 
-# Cap on tool-call rounds per step. Prevents a confused model from looping
-# forever over the same tool. The final round forces a JSON answer.
 MAX_TOOL_ROUNDS = 6
 
 
@@ -32,18 +23,19 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
     if agent_meta is None:
         return _failed(step, f"unknown agent: {owner}")
 
-    # Deterministic agents (e.g., synthesizer) skip the LLM.
     if agent_meta.get("deterministic") and agent_meta.get("model_hint") == "none":
         return _ok(step, owner, {"deterministic_stub": True, "owner": owner,
                                   "input": step["input"]}, llm_calls=0)
 
+    p = provider()
     system_spec = load_agent_spec(agent_meta["path"])
     allowed_tools = _agent_tools_for(owner)
     tool_schemas = schemas_for(allowed_tools)
+    model_hint = agent_meta.get("model_hint", "any")
 
-    user = (
+    user_prompt = (
         f"STEP\nid: {step['id']}\nwave: {step.get('wave', 0)}\n"
-        f"input: {json.dumps(step['input'])}\n"
+        f"input: {json.dumps(step.get('input', {}))}\n"
         f"output_type: {step.get('output_type', 'object')}\n\n"
         f"SUCCESS CRITERIA\n"
         + "\n".join(f"- {c}" for c in step.get("success_criteria", []))
@@ -64,77 +56,54 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
           '"error":str|null}'
     )
 
-    messages: list[dict[str, Any]] = [
-        {"role": "system", "content": system_spec},
-        {"role": "user", "content": user},
-    ]
-
+    messages: list[dict[str, Any]] = [{"role": "user", "content": user_prompt}]
     llm_calls = 0
     tool_calls_total = 0
-    last_content = ""
 
     for round_idx in range(MAX_TOOL_ROUNDS):
         is_final_round = round_idx == MAX_TOOL_ROUNDS - 1
-        payload: dict[str, Any] = {
-            "model": model_for(agent_meta),
-            "messages": messages,
-            "stream": False,
-            "keep_alive": "30m",
-            "think": False,
-            "options": {"temperature": 0.2, "num_ctx": 16384},
-        }
-        # Offer tools until the last round, where we force a final JSON.
-        if tool_schemas and not is_final_round:
-            payload["tools"] = tool_schemas
-        else:
-            payload["format"] = "json"
-
         try:
-            r = requests.post(f"{OLLAMA_HOST}/api/chat", json=payload, timeout=900)
-            r.raise_for_status()
+            out = p.chat_with_tools(
+                system=system_spec,
+                messages=messages,
+                tools=tool_schemas if tool_schemas else None,
+                force_json=is_final_round or not tool_schemas,
+                model_hint=model_hint,
+            )
         except Exception as e:  # noqa: BLE001
-            return _failed(step, f"ollama request failed (round {round_idx}): {e!r}",
+            return _failed(step, f"{p.name} request failed (round {round_idx}): {e!r}",
                            llm_calls=llm_calls, tool_calls=tool_calls_total)
 
         llm_calls += 1
-        body = r.json()
-        msg = body.get("message") or {}
-        last_content = msg.get("content", "") or ""
-        tool_calls = msg.get("tool_calls") or []
+        content = out["content"]
+        tcs = out["tool_calls"]
 
-        if tool_calls:
-            # Echo assistant turn (with tool_calls) into history, then dispatch.
+        if tcs:
             messages.append({
                 "role": "assistant",
-                "content": last_content,
-                "tool_calls": tool_calls,
+                "content": content,
+                "tool_calls": [
+                    {"id": tc["id"],
+                     "function": {"name": tc["name"],
+                                   "arguments": tc["arguments"]}}
+                    for tc in tcs
+                ],
             })
-            for tc in tool_calls:
-                fn = (tc.get("function") or {})
-                name = fn.get("name", "")
-                args = fn.get("arguments")
-                if isinstance(args, str):
-                    try:
-                        args = json.loads(args)
-                    except json.JSONDecodeError:
-                        args = {}
-                if name not in allowed_tools:
-                    result: Any = {"error": f"tool {name!r} not allowed for agent {owner!r}"}
+            for tc in tcs:
+                if tc["name"] not in allowed_tools:
+                    result: Any = {"error": f"tool {tc['name']!r} not allowed for agent {owner!r}"}
                 else:
-                    result = dispatch(name, args or {})
+                    result = dispatch(tc["name"], tc["arguments"])
                 tool_calls_total += 1
                 messages.append({
                     "role": "tool",
-                    "name": name,
+                    "name": tc["name"],
+                    "tool_use_id": tc["id"],  # used by Anthropic provider
                     "content": json.dumps(result, default=str),
                 })
             continue
 
-        # No tool calls — try to parse the final structured answer.
-        if not last_content.strip():
-            # Model bailed without progress. Coach it toward a final JSON and
-            # let the loop run another round (now in JSON-only mode since
-            # last_content stays blank but we've already echoed nothing).
+        if not content.strip():
             if not is_final_round:
                 messages.append({
                     "role": "user",
@@ -148,10 +117,11 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
                 continue
             return _failed(step, "model returned empty content with no tool_calls",
                            llm_calls=llm_calls, tool_calls=tool_calls_total)
+
         try:
-            result = _parse_json(last_content)
+            result = _parse_json(content)
         except json.JSONDecodeError:
-            return _failed(step, f"could not parse final JSON: {last_content[:300]!r}",
+            return _failed(step, f"could not parse final JSON: {content[:300]!r}",
                            llm_calls=llm_calls, tool_calls=tool_calls_total)
 
         return {

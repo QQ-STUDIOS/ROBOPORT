@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .client import call_model_json, load_agent_spec, model_for
+from .client import call_model_json, load_agent_spec
 
 PLAN_SCHEMA = {
     "type": "object",
@@ -58,7 +58,7 @@ def call_planner(goal: str, context: dict, registry: dict) -> dict[str, Any]:
     plan = call_model_json(
         system_spec=system_spec,
         user_prompt=user,
-        model=model_for(planner_meta),
+        model_hint=planner_meta.get("model_hint", "any"),
         schema=PLAN_SCHEMA,
     )
     plan.setdefault("estimated_llm_calls", len(plan.get("steps", [])))

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -136,24 +137,29 @@ def main() -> int:
     ap.add_argument("--out", default=None, help="Override benchmark output dir")
     ap.add_argument("--grade", action="store_true", help="Run grader after each run")
     ap.add_argument("--live", action="store_true",
-                    help="Use the local Ollama runtime (scripts/roboport_runtime) "
-                         "instead of the stubs. Requires Ollama at OLLAMA_HOST "
-                         "(default http://localhost:11434).")
+                    help="Use the model-backed runtime (scripts/roboport_runtime) "
+                         "instead of the stubs.")
+    ap.add_argument("--provider", choices=["ollama", "anthropic"], default=None,
+                    help="Backend for --live. Default: $ROBOPORT_PROVIDER or "
+                         "'ollama'. Anthropic requires ANTHROPIC_API_KEY.")
     args = ap.parse_args()
 
     if args.live:
+        if args.provider:
+            os.environ["ROBOPORT_PROVIDER"] = args.provider
         try:
             from roboport_runtime import (  # type: ignore
                 call_planner as _live_planner,
                 call_executor as _live_executor,
                 call_grader as _live_grader,
             )
-            from roboport_runtime.client import health_check  # type: ignore
+            from roboport_runtime.client import health_check, provider  # type: ignore
         except ImportError as e:
             print(f"--live requires `pip install -r requirements.txt`: {e}", file=sys.stderr)
             return 2
         try:
             health_check()
+            print(f"--live: provider={provider().name}", file=sys.stderr)
         except RuntimeError as e:
             print(f"--live preflight failed: {e}", file=sys.stderr)
             return 2

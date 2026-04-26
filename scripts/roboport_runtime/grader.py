@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .client import call_model_json, load_agent_spec, MODEL_REASONING
+from .client import call_model_json, load_agent_spec
 
 GRADING_SCHEMA = {
     "type": "object",
@@ -66,7 +66,7 @@ def call_grader(
         result = call_model_json(
             system_spec=system_spec,
             user_prompt=user,
-            model=MODEL_REASONING,
+            model_hint="reasoning-strong",
             schema=GRADING_SCHEMA,
         )
     except Exception as e:  # noqa: BLE001
