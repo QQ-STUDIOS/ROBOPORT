@@ -1,0 +1,46 @@
+{
+  "name": "Alex Chen",
+  "headline": "Senior Data Engineer",
+  "location": "Remote-US (NYC-based)",
+  "years_experience": 8,
+  "summary": "Senior Data Engineer with 8 years building large-scale streaming and batch pipelines. Strong in Python, Spark, Airflow, Snowflake, and AWS. Comfortable as a tech lead on small teams.",
+  "skills": {
+    "languages": ["Python", "SQL", "Go"],
+    "data": ["Spark", "Airflow", "dbt", "Snowflake", "BigQuery", "Kafka"],
+    "cloud": ["AWS", "Kubernetes", "Docker", "Terraform"],
+    "ml": ["pandas", "numpy", "scikit-learn"]
+  },
+  "preferences": {
+    "remote_only": true,
+    "regions": ["Remote-US", "NYC"],
+    "min_comp_usd": 200000,
+    "company_size": ["startup", "mid"],
+    "regulated_data_ok": true
+  },
+  "experience": [
+    {
+      "title": "Senior Data Engineer",
+      "company": "Helio Health",
+      "start": "2023-01",
+      "end": null,
+      "highlights": [
+        "Owned the streaming ingestion platform (Kafka -> Spark -> Snowflake) handling 2B events/day.",
+        "Reduced backfill latency 6x by rewriting the orchestration layer in Airflow + dbt.",
+        "Drove HIPAA/SOC2 readiness for the data plane."
+      ]
+    },
+    {
+      "title": "Data Engineer",
+      "company": "Northwind Analytics",
+      "start": "2019-06",
+      "end": "2022-12",
+      "highlights": [
+        "Built the customer 360 warehouse on BigQuery + dbt, serving 40+ analyst seats.",
+        "Migrated the EL stack from Airflow 1.10 to 2.5 with zero unplanned downtime."
+      ]
+    }
+  ],
+  "education": [
+    {"school": "Carnegie Mellon University", "degree": "B.S. Computer Science", "year": 2017}
+  ]
+}
