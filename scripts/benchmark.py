@@ -116,7 +116,15 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict) -> dict:
     accumulated: dict = {}
     for step in plan["steps"]:
         result = call_executor(step, accumulated, registry)
-        jsonl_append(log, {"event": "step_done", "step_id": step["id"], "status": result["status"]})
+        jsonl_append(log, {
+            "event": "step_done",
+            "step_id": step["id"],
+            "status": result["status"],
+            "criteria_results": result.get("criteria_results", []),
+            "tool_calls": result.get("tool_calls", 0),
+            "llm_calls": result.get("llm_calls", 0),
+            "error": result.get("error"),
+        })
         if result["status"] != "ok":
             (run_dir / "final_output.json").write_text(json.dumps(
                 {"status": "failed", "error": result.get("error")}, indent=2))
