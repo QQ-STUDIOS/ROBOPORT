@@ -1,0 +1,70 @@
+{
+  "$schema": "../resources/schemas/eval.schema.json",
+  "target": "jd_crew",
+  "version": "0.1.0",
+  "_note": "This is the live eval set. The pristine reference copy lives at resources/examples/eval_example.json.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Find Senior/Staff Data Engineer jobs in Remote-US or NYC posted in the last 14 days. Use the example profile in resources/datasets/profile_example.json.",
+      "expected_output": "FinalReport with at least 3 ranked matches, each with TechnicalAnalysis, ComplianceAnalysis, and CandidateMatch populated.",
+      "expectations": [
+        "FinalReport.summary.total_jobs >= 3",
+        "Every ranked_match has technical, compliance, and match populated",
+        "Every CandidateMatch.verdict is one of: apply, tailor_first, skip, research_more",
+        "Every Job has a source_url that resolves to a job posting",
+        "ranked_matches are sorted by match.priority ascending then fit_score descending",
+        "FinalReport.summary.verdicts counts equal the verdicts in ranked_matches",
+        "No two jobs share the same (title, company, location) tuple"
+      ],
+      "blockers": [
+        "Every Job has a source_url that resolves to a job posting",
+        "Every CandidateMatch.verdict is one of: apply, tailor_first, skip, research_more"
+      ],
+      "tags": ["happy_path", "jd_crew", "end_to_end"]
+    },
+    {
+      "id": 2,
+      "prompt": "Same as eval 1, but the search query has zero results (titles=['Quantum Sandwich Architect']).",
+      "expected_output": "Run halts cleanly with a 'no matches' surface; no downstream agents run.",
+      "expectations": [
+        "FinalReport is not produced",
+        "Run log contains a single entry from job_scout with status: ok and 0 jobs",
+        "No technical_analyst, compliance_risk, or application_strategist invocations appear in the log",
+        "User-facing message is 'no matches found' or equivalent"
+      ],
+      "tags": ["edge_case", "empty_results"]
+    },
+    {
+      "id": 3,
+      "prompt": "Run the JD-Crew on a JD that explicitly mentions 'work with patient records'. Verify Compliance flags HIPAA exposure with a citation.",
+      "expected_output": "ComplianceAnalysis includes a HIPAA finding with evidence quoting the JD.",
+      "expectations": [
+        "ComplianceAnalysis.findings includes at least one finding with kind: HIPAA_exposure",
+        "The HIPAA finding's evidence quotes the literal phrase 'patient records' from the JD",
+        "The HIPAA finding has a non-empty citation_url",
+        "compliance.regulated_data includes 'PHI'"
+      ],
+      "blockers": [
+        "The HIPAA finding's evidence quotes the literal phrase 'patient records' from the JD"
+      ],
+      "tags": ["compliance", "hipaa", "citation_discipline"]
+    },
+    {
+      "id": 4,
+      "prompt": "Run the Resume Tailor on a JD that requires Snowflake. The candidate's master resume does NOT mention Snowflake.",
+      "expected_output": "TailoredResume does not invent Snowflake experience.",
+      "expectations": [
+        "TailoredResume.truthfulness_check == 'passed'",
+        "TailoredResume.ats_keywords_missing includes 'Snowflake'",
+        "No bullet in TailoredResume mentions Snowflake",
+        "Every bullet in TailoredResume maps to a bullet in the master resume per edits log"
+      ],
+      "blockers": [
+        "TailoredResume.truthfulness_check == 'passed'",
+        "No bullet in TailoredResume mentions Snowflake"
+      ],
+      "tags": ["resume_tailor", "anti_hallucination"]
+    }
+  ]
+}

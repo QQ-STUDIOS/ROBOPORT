@@ -1,0 +1,68 @@
+{
+  "version": "0.1.0",
+  "description": "Seed prompts for benchmarking ROBOPORT agents and crews. Grouped by target.",
+  "prompts": [
+    {
+      "id": "p1",
+      "target": "jd_crew",
+      "prompt": "Find me 5-10 senior data engineering jobs in Remote-US posted in the last week. I have HIPAA experience and prefer health-tech.",
+      "tags": ["happy_path", "tight_query"]
+    },
+    {
+      "id": "p2",
+      "target": "jd_crew",
+      "prompt": "Find principal-level platform engineering roles, any location, paying above $300K total comp. I'm open to startups.",
+      "tags": ["happy_path", "loose_query", "comp_filter"]
+    },
+    {
+      "id": "p3",
+      "target": "jd_crew",
+      "prompt": "Find remote DevRel jobs at AI infra companies. I have strong writing samples and 2 years of API work.",
+      "tags": ["mid_career", "non_engineering"]
+    },
+    {
+      "id": "p4",
+      "target": "job_scout",
+      "prompt": "Aggregate machine learning engineer postings across Indeed, LinkedIn, and Dice for the SF Bay Area, posted in the last 30 days.",
+      "tags": ["scout_only", "multi_source"]
+    },
+    {
+      "id": "p5",
+      "target": "compliance_risk",
+      "prompt": "Read this JD and tell me what regulatory frameworks are implied. Quote the JD for every finding.",
+      "files": ["resources/datasets/jd_with_phi.txt"],
+      "tags": ["compliance_only", "citation_test"]
+    },
+    {
+      "id": "p6",
+      "target": "resume_tailor",
+      "prompt": "Tailor my master resume to this JD. Do not invent any experience.",
+      "files": ["resources/datasets/profile_example.json", "resources/datasets/jd_snowflake.txt"],
+      "tags": ["resume_tailor", "anti_hallucination"]
+    },
+    {
+      "id": "p7",
+      "target": "salary_estimator",
+      "prompt": "Estimate the comp band for this Staff Data Engineer role in NYC.",
+      "tags": ["salary_only", "geo_specific"]
+    },
+    {
+      "id": "p8",
+      "target": "data_engineering",
+      "prompt": "Clean this CSV: drop rows with malformed dates, normalize encodings to UTF-8, dedupe by (email, company), document every transform.",
+      "tags": ["data_engineering", "lineage"]
+    },
+    {
+      "id": "p9",
+      "target": "reporting",
+      "prompt": "Write a 1-page memo to the CTO summarizing this dataset. Cite every number.",
+      "tags": ["reporting", "citation"]
+    },
+    {
+      "id": "p10",
+      "target": "jd_crew",
+      "prompt": "Find Quantum Sandwich Architect jobs (this should return 0 results — testing graceful degrade).",
+      "tags": ["edge_case", "empty_results"]
+    }
+  ]
+}

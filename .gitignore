@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Run artifacts — produced by scripts/benchmark.py.
+# Keep the runs/ directory itself (via .gitkeep), discard contents.
+runs/*
+!runs/.gitkeep
+!runs/iteration-1/.gitkeep
+!runs/iteration-2/.gitkeep
+
+# Eval benchmark output
+evals/benchmarks/*
+!evals/benchmarks/.gitkeep
+
+# Local config overrides (never commit secrets or env-specific bindings)
+config/agent_config.local.yaml
+config/*.local.*
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build / dist
+build/
+dist/
+*.egg
+
+# Logs
+*.log

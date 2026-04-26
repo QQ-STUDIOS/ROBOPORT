@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "version": "0.1.0",
+  "agents": {
+    "planner":               { "path": "agents/core/planner.md",               "role": "core",       "deterministic": false, "model_hint": "reasoning-strong" },
+    "executor":              { "path": "agents/core/executor.md",              "role": "core",       "deterministic": false, "model_hint": "tool-use-capable" },
+    "orchestrator":          { "path": "agents/core/orchestrator.md",          "role": "core",       "deterministic": true,  "model_hint": "any" },
+    "critic":                { "path": "agents/core/critic.md",                "role": "core",       "deterministic": false, "model_hint": "reasoning-strong" },
+
+    "grader":                { "path": "agents/evaluation/grader.md",          "role": "evaluation", "deterministic": false, "model_hint": "reasoning-strong" },
+    "comparator":            { "path": "agents/evaluation/comparator.md",      "role": "evaluation", "deterministic": false, "model_hint": "reasoning-strong" },
+    "analyzer":              { "path": "agents/evaluation/analyzer.md",        "role": "evaluation", "deterministic": false, "model_hint": "reasoning-strong" },
+
+    "data_engineering":      { "path": "agents/domain/data_engineering.md",    "role": "domain",     "deterministic": false, "model_hint": "tool-use-capable" },
+    "reporting":             { "path": "agents/domain/reporting.md",           "role": "domain",     "deterministic": false, "model_hint": "any" },
+    "automation":            { "path": "agents/domain/automation.md",          "role": "domain",     "deterministic": false, "model_hint": "tool-use-capable" },
+    "devops":                { "path": "agents/domain/devops.md",              "role": "domain",     "deterministic": false, "model_hint": "tool-use-capable" },
+
+    "job_scout":             { "path": "agents/domain/crew_builder/job_scout.md",             "role": "domain.crew_builder", "deterministic": false, "model_hint": "tool-use-capable" },
+    "technical_analyst":     { "path": "agents/domain/crew_builder/technical_analyst.md",     "role": "domain.crew_builder", "deterministic": false, "model_hint": "reasoning-strong" },
+    "compliance_risk":       { "path": "agents/domain/crew_builder/compliance_risk.md",       "role": "domain.crew_builder", "deterministic": false, "model_hint": "reasoning-strong" },
+    "application_strategist":{ "path": "agents/domain/crew_builder/application_strategist.md","role": "domain.crew_builder", "deterministic": false, "model_hint": "reasoning-strong" },
+    "synthesizer":           { "path": "agents/domain/crew_builder/synthesizer.md",           "role": "domain.crew_builder", "deterministic": true,  "model_hint": "none" },
+    "salary_estimator":      { "path": "agents/domain/crew_builder/salary_estimator.md",      "role": "domain.crew_builder", "deterministic": false, "model_hint": "reasoning-strong" },
+    "resume_tailor":         { "path": "agents/domain/crew_builder/resume_tailor.md",         "role": "domain.crew_builder", "deterministic": false, "model_hint": "reasoning-strong" },
+    "cover_letter_writer":   { "path": "agents/domain/crew_builder/cover_letter_writer.md",   "role": "domain.crew_builder", "deterministic": false, "model_hint": "writing-strong" }
+  },
+  "crews": {
+    "jd_crew": {
+      "description": "Sequential JD analysis: scout -> technical+compliance (parallel) -> strategist -> synth (+ optional resume_tailor, cover_letter_writer, salary_estimator)",
+      "entry": "job_scout",
+      "edges": [
+        { "from": "job_scout",              "to": "technical_analyst",      "type": "list[Job]" },
+        { "from": "job_scout",              "to": "compliance_risk",        "type": "list[Job]" },
+        { "from": "technical_analyst",      "to": "application_strategist", "type": "TechnicalAnalysis" },
+        { "from": "compliance_risk",        "to": "application_strategist", "type": "ComplianceAnalysis" },
+        { "from": "application_strategist", "to": "synthesizer",            "type": "CandidateMatch" },
+        { "from": "synthesizer",            "to": "resume_tailor",          "type": "FinalReport", "optional": true },
+        { "from": "synthesizer",            "to": "cover_letter_writer",    "type": "FinalReport", "optional": true },
+        { "from": "synthesizer",            "to": "salary_estimator",       "type": "FinalReport", "optional": true }
+      ]
+    }
+  }
+}
