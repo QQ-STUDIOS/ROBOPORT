@@ -1,0 +1,18 @@
+# Development tooling — not needed at runtime.
+# Install with:  pip install -r requirements-dev.txt
+
+# Linter / formatter
+ruff>=0.5
+
+# Type checking
+mypy>=1.10
+types-PyYAML
+types-requests
+types-jsonschema
+
+# Test runner
+pytest>=8.0
+pytest-cov>=5.0
+
+# Supply-chain audit (also run in CI)
+pip-audit>=2.7
