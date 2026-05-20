@@ -115,8 +115,8 @@ budgets:
 # -----------------------------------------------------------------------------
 tools:
   job_scout:        [search_linkedin, search_indeed, search_company_careers, fetch_url, dedupe_jobs, validate_url_active]
-  technical_analyst: [fetch_url, parse_jd_skills]
-  compliance_risk:  [fetch_url, lookup_jurisdiction]
+  technical_analyst: [fetch_jd_full, fetch_url, parse_jd_skills]
+  compliance_risk:  [fetch_jd_full, fetch_url, lookup_jurisdiction]
   application_strategist: [load_profile, fetch_url]
   synthesizer:      []  # deterministic — no tools
   salary_estimator: [lookup_comp_band, fetch_url]

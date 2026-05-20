@@ -158,6 +158,256 @@ def validate_url_active(urls: Any, timeout: int = 5,
             "results": results}
 
 
+# ----- REAL: per-board JD fetcher ---------------------------------------
+
+# Pattern: <provider>-<slug>-<id>; matches IDs we emit from _gh_normalize / _lv_normalize.
+_JOB_ID_PATTERN = re.compile(r"^(gh|lv)-([a-z0-9_.\-]+)-(.+)$", re.I)
+
+# Greenhouse: https://boards.greenhouse.io/<slug>/jobs/<id> (also job-boards.greenhouse.io).
+_GH_URL_PATTERN = re.compile(
+    r"https?://(?:job-)?boards(?:-api)?\.greenhouse\.io/(?:embed/job_app\?for=|boards/)?([a-z0-9_.\-]+)(?:/jobs)?(?:/|\?token=|\?gh_jid=)([0-9]+)",
+    re.I,
+)
+# Lever: https://jobs.lever.co/<slug>/<job_id> (job_id is a UUID-style string).
+_LV_URL_PATTERN = re.compile(
+    r"https?://jobs\.lever\.co/([a-z0-9_.\-]+)/([a-z0-9\-]+)",
+    re.I,
+)
+
+
+def _detect_jd_route(maybe: Any) -> tuple[str | None, str | None, str | None, str | None]:
+    """Resolve input to (provider, slug, job_id, url).
+
+    Tries, in order:
+      1. Job dict's `id` field if it follows the gh-/lv- pattern we emit.
+      2. Job dict's `source` + parsed source_url.
+      3. URL-only input — match against Greenhouse / Lever patterns.
+
+    Returns (None, None, None, url) for unknown sources — caller should fall
+    back to fetch_url.
+    """
+    url = None
+    if isinstance(maybe, dict):
+        url = maybe.get("source_url") or maybe.get("url")
+        # (1) try the canonical id field first
+        m = _JOB_ID_PATTERN.match((maybe.get("id") or "").strip())
+        if m:
+            prefix, slug, jid = m.group(1).lower(), m.group(2), m.group(3)
+            provider = "greenhouse" if prefix == "gh" else "lever"
+            return provider, slug, jid, url
+    elif isinstance(maybe, str):
+        url = maybe
+
+    if not url:
+        return None, None, None, None
+
+    m = _GH_URL_PATTERN.search(url)
+    if m:
+        return "greenhouse", m.group(1), m.group(2), url
+    m = _LV_URL_PATTERN.search(url)
+    if m:
+        return "lever", m.group(1), m.group(2), url
+    return None, None, None, url
+
+
+def _strip_html_to_text(s: str) -> str:
+    """Convert Greenhouse-style escaped HTML to plain text."""
+    if not s:
+        return ""
+    # Greenhouse `content` is sometimes double-escaped (HTML entities for tags).
+    s = html.unescape(s)
+    s = re.sub(r"<script[\s\S]*?</script>|<style[\s\S]*?</style>", " ", s, flags=re.I)
+    # Convert block-level closers to newlines so we don't run paragraphs together.
+    s = re.sub(r"</(p|div|li|h[1-6]|br)\s*>", "\n", s, flags=re.I)
+    s = re.sub(r"<br\s*/?>", "\n", s, flags=re.I)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = html.unescape(s)
+    # Collapse runs of whitespace but keep paragraph breaks.
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
+
+def _fetch_jd_greenhouse(slug: str, job_id: str, timeout: int = 15) -> dict[str, Any]:
+    """Fetch a single Greenhouse job's full content via the public API."""
+    api_url = f"{GREENHOUSE_BASE}/{slug}/jobs/{job_id}"
+    try:
+        r = requests.get(api_url, timeout=timeout,
+                         headers={"User-Agent": "ROBOPORT/0.1"})
+        if r.status_code != 200:
+            return {"_error": f"greenhouse {r.status_code} on {api_url}"}
+        d = r.json()
+    except Exception as e:  # noqa: BLE001
+        return {"_error": f"greenhouse fetch failed: {e}"}
+
+    return {
+        "source": "greenhouse",
+        "title": d.get("title", ""),
+        "company": slug,
+        "location": (d.get("location") or {}).get("name", "") or "",
+        "body": _strip_html_to_text(d.get("content", "")),
+        "structured_lists": [],  # Greenhouse doesn't structure these.
+        "departments": [(dep or {}).get("name", "") for dep in (d.get("departments") or [])],
+        "posted_at": (d.get("updated_at") or "")[:10],
+        "api_url": api_url,
+        "absolute_url": d.get("absolute_url", ""),
+    }
+
+
+def _fetch_jd_lever(slug: str, job_id: str, timeout: int = 15) -> dict[str, Any]:
+    """Fetch a single Lever posting's full content via the public API."""
+    api_url = f"{LEVER_BASE}/{slug}/{job_id}"
+    try:
+        r = requests.get(api_url, timeout=timeout,
+                         headers={"User-Agent": "ROBOPORT/0.1"})
+        if r.status_code != 200:
+            return {"_error": f"lever {r.status_code} on {api_url}"}
+        d = r.json()
+    except Exception as e:  # noqa: BLE001
+        return {"_error": f"lever fetch failed: {e}"}
+
+    cats = d.get("categories") or {}
+    # Lever ships both description (HTML) and descriptionPlain. Prefer plain;
+    # fall back to stripping HTML if plain is empty (older postings).
+    desc_plain = d.get("descriptionPlain") or _strip_html_to_text(d.get("description", ""))
+    additional_plain = d.get("additionalPlain") or _strip_html_to_text(d.get("additional", ""))
+
+    structured: list[dict] = []
+    for item in (d.get("lists") or []):
+        if not isinstance(item, dict):
+            continue
+        label = item.get("text", "")
+        # `content` is an HTML <ul>...</ul>; we split into items.
+        items_html = item.get("content", "") or ""
+        items = [_strip_html_to_text(piece)
+                 for piece in re.split(r"</li\s*>", items_html, flags=re.I)
+                 if piece.strip()]
+        items = [it for it in items if it]
+        structured.append({"label": label, "items": items})
+
+    body_parts = [desc_plain]
+    for s in structured:
+        if s["items"]:
+            body_parts.append(s["label"])
+            body_parts.extend(f"- {it}" for it in s["items"])
+    if additional_plain:
+        body_parts.append(additional_plain)
+    body = "\n\n".join(p for p in body_parts if p).strip()
+
+    from datetime import datetime, timezone
+    posted_at = ""
+    ts = d.get("createdAt")
+    if isinstance(ts, (int, float)):
+        posted_at = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).date().isoformat()
+
+    return {
+        "source": "lever",
+        "title": d.get("text", ""),
+        "company": slug,
+        "location": cats.get("location", "") or "",
+        "body": body,
+        "structured_lists": structured,
+        "departments": [cats.get("department", "")] if cats.get("department") else [],
+        "posted_at": posted_at,
+        "api_url": api_url,
+        "absolute_url": d.get("hostedUrl", ""),
+    }
+
+
+def fetch_jd_full(job: Any, fallback_max_chars: int = 12000) -> dict[str, Any]:
+    """Fetch the full JD body for a single job.
+
+    Routing:
+      - Job dict with a `gh-<slug>-<id>` or `lv-<slug>-<id>` id: hit that
+        provider's single-job JSON API for a structured body.
+      - URL string matching Greenhouse / Lever patterns: same as above.
+      - Anything else: fall back to fetch_url() and strip HTML.
+
+    Greenhouse and Lever responses are far richer than scraping; in particular
+    Lever exposes `lists` (Requirements, Responsibilities, etc.) which we
+    flatten back into the body for the model to read, and also surface as
+    `structured_lists` so downstream agents (technical_analyst, compliance_risk)
+    can target specific sections.
+
+    Returns:
+      {
+        "url":             str | None,
+        "source":          "greenhouse" | "lever" | "fetch_url" | "error",
+        "title":           str,
+        "company":         str,
+        "location":        str,
+        "body":            str,           # plain text, paragraph-broken
+        "body_chars":      int,
+        "structured_lists": [ {"label": str, "items": [str, ...]}, ... ],
+        "departments":     [str, ...],
+        "posted_at":       str,
+        "_route":          str,           # diagnostic
+        "error":           str | None,    # set when source=error
+      }
+    """
+    provider, slug, jid, url = _detect_jd_route(job)
+
+    if provider == "greenhouse" and slug and jid:
+        d = _fetch_jd_greenhouse(slug, jid)
+        if "_error" not in d:
+            return {
+                "url": url or d.get("absolute_url"),
+                "body_chars": len(d["body"]),
+                "_route": "greenhouse-api",
+                "error": None,
+                **d,
+            }
+        # Fall through to fetch_url on API miss.
+        fail_note = d["_error"]
+    elif provider == "lever" and slug and jid:
+        d = _fetch_jd_lever(slug, jid)
+        if "_error" not in d:
+            return {
+                "url": url or d.get("absolute_url"),
+                "body_chars": len(d["body"]),
+                "_route": "lever-api",
+                "error": None,
+                **d,
+            }
+        fail_note = d["_error"]
+    else:
+        fail_note = None
+
+    # Generic HTML fallback. Works for Workday tenants and one-off ATSs.
+    if url:
+        res = fetch_url(url, max_chars=fallback_max_chars)
+        if "error" in res:
+            return {
+                "url": url, "source": "error", "title": "", "company": "",
+                "location": "", "body": "", "body_chars": 0,
+                "structured_lists": [], "departments": [], "posted_at": "",
+                "_route": "fetch_url-failed",
+                "error": res["error"] if "error" in res else fail_note or "unknown",
+            }
+        return {
+            "url": url,
+            "source": "fetch_url",
+            "title": "",
+            "company": (job.get("company") if isinstance(job, dict) else "") or "",
+            "location": (job.get("location") if isinstance(job, dict) else "") or "",
+            "body": res.get("text", ""),
+            "body_chars": len(res.get("text", "")),
+            "structured_lists": [],
+            "departments": [],
+            "posted_at": (job.get("posted_at") if isinstance(job, dict) else "") or "",
+            "_route": "fetch_url-fallback" if fail_note else "fetch_url",
+            "error": fail_note,  # surface the API miss reason if there was one
+        }
+
+    return {
+        "url": None, "source": "error", "title": "", "company": "",
+        "location": "", "body": "", "body_chars": 0,
+        "structured_lists": [], "departments": [], "posted_at": "",
+        "_route": "no-input",
+        "error": "no url and no resolvable provider id",
+    }
+
+
 _SKILL_VOCAB = {
     "languages": ["python", "go", "rust", "java", "kotlin", "scala", "typescript",
                   "javascript", "sql", "r", "c++", "c#"],
@@ -465,6 +715,7 @@ TOOL_FNS: dict[str, Callable[..., Any]] = {
     "fetch_url": fetch_url,
     "dedupe_jobs": dedupe_jobs,
     "validate_url_active": validate_url_active,
+    "fetch_jd_full": fetch_jd_full,
     "parse_jd_skills": parse_jd_skills,
     "ats_score": ats_score,
     "lookup_jurisdiction": lookup_jurisdiction,
@@ -494,7 +745,7 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "fetch_url",
-            "description": "GET a URL and return cleaned text content (HTML stripped).",
+            "description": "GET a URL and return cleaned text content (HTML stripped). Use for generic web pages; prefer fetch_jd_full for actual JD pages.",
             "parameters": {
                 "type": "object",
                 "required": ["url"],
@@ -529,6 +780,26 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
                     },
                     "timeout": {"type": "integer", "description": "Per-URL timeout in seconds (default 5)."},
                     "max_workers": {"type": "integer", "description": "Parallel worker count (default 10)."},
+                },
+            },
+        },
+    },
+    "fetch_jd_full": {
+        "type": "function",
+        "function": {
+            "name": "fetch_jd_full",
+            "description": "Fetch the full job-description body for a single job. Uses Greenhouse / Lever single-job APIs when the source is one of those (returns structured lists of requirements/responsibilities for Lever); falls back to fetch_url + HTML strip for unknown sources. Pass either the Job object (preferred — lets the tool route via gh-/lv- id) or a bare URL.",
+            "parameters": {
+                "type": "object",
+                "required": ["job"],
+                "properties": {
+                    "job": {
+                        "description": "Either a Job-shaped object (with id and/or source_url) or a URL string.",
+                    },
+                    "fallback_max_chars": {
+                        "type": "integer",
+                        "description": "Max chars when falling back to fetch_url (default 12000).",
+                    },
                 },
             },
         },

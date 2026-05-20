@@ -40,6 +40,7 @@
       "prompt": "Run the JD-Crew on a JD that explicitly mentions 'work with patient records'. Verify Compliance flags HIPAA exposure with a citation.",
       "expected_output": "ComplianceAnalysis includes a HIPAA finding with evidence quoting the JD.",
       "expectations": [
+        "compliance_risk's run log shows at least one call to fetch_jd_full",
         "ComplianceAnalysis.findings includes at least one finding with kind: HIPAA_exposure",
         "The HIPAA finding's evidence quotes the literal phrase 'patient records' from the JD",
         "The HIPAA finding has a non-empty citation_url",
@@ -80,6 +81,22 @@
         "Every ranked_match.job.source_url passes a HEAD check at grading time (HTTP 2xx/3xx)"
       ],
       "tags": ["job_scout", "url_validation", "anti_dead_link"]
+    },
+    {
+      "id": 6,
+      "prompt": "Run the JD-Crew end-to-end. Verify that technical_analyst and compliance_risk both fetch the full JD body via fetch_jd_full (not just the snippet) before producing their outputs.",
+      "expected_output": "Each TechnicalAnalysis and ComplianceAnalysis is anchored to evidence drawn from the full JD body, not the empty snippet from Scout.",
+      "expectations": [
+        "technical_analyst's run log shows at least one call to fetch_jd_full per analyzed job",
+        "compliance_risk's run log shows at least one call to fetch_jd_full per analyzed job",
+        "Every TechnicalAnalysis.stack.must_have item appears as a literal substring in the corresponding fetch_jd_full body for that job_id",
+        "Every ComplianceAnalysis.findings[*].evidence is a literal substring of the corresponding fetch_jd_full body",
+        "For Greenhouse jobs, fetch_jd_full's _route is 'greenhouse-api'; for Lever jobs, 'lever-api'"
+      ],
+      "blockers": [
+        "Every ComplianceAnalysis.findings[*].evidence is a literal substring of the corresponding fetch_jd_full body"
+      ],
+      "tags": ["fetch_jd_full", "citation_discipline", "end_to_end"]
     }
   ]
 }
