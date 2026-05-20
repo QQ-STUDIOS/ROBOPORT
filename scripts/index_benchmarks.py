@@ -80,8 +80,8 @@ def build_index(bench_dir: Path = BENCH_DIR) -> dict[str, Any]:
         return _wrap(runs, bench_dir)
 
     for label_dir in sorted(bench_dir.iterdir()):
-        if not label_dir.is_dir() or label_dir.name.startswith("_"):
-            # Skip _index.json, _optimizer-sandbox/, and other underscore-prefixed siblings.
+        if not label_dir.is_dir():
+            # Skip _index.json and any other files at the bench root.
             continue
         for eval_dir in sorted(label_dir.glob("eval_*")):
             if not eval_dir.is_dir():
