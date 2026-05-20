@@ -24,6 +24,7 @@ runs/*
 # Eval benchmark output
 evals/benchmarks/*
 !evals/benchmarks/.gitkeep
+!evals/benchmarks/_index.json
 
 # Local config overrides (never commit secrets or env-specific bindings)
 config/agent_config.local.yaml
@@ -85,3 +86,9 @@ embeddings/
 # Scratch
 tmp/
 .tmp/
+
+# Skill daemon state — sqlite db, unix socket, kill switch, logs.
+# Keep state/ tracked (via .gitkeep) so the daemon can drop files in,
+# but never commit the contents.
+state/*
+!state/.gitkeep

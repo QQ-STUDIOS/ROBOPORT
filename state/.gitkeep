@@ -1,0 +1,12 @@
+# Skill daemon working dir.
+#
+# This directory is created and owned by scripts/skill_daemon.py (M2+).
+# It holds non-versioned runtime state:
+#
+#   skill_daemon.db          sqlite (runs, triggers, actions, cost)
+#   skill_daemon.log         structured JSONL log
+#   daemon.sock              unix socket for control commands
+#   daemon.disabled          presence => daemon exits within one tick
+#   proposals/<id>.md        dry-run optimizer proposals (M3)
+#
+# Everything except this .gitkeep is gitignored. See .gitignore.
