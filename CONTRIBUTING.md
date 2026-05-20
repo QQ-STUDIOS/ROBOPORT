@@ -11,6 +11,23 @@
 
 **Never** push directly to `main`. **Never** force-push a shared branch.
 
+## Stale branches
+
+GitHub auto-deletes head branches on merge (Settings → General → "Automatically delete head branches" is enabled). Branches outlive their PR only when the PR is **closed without merging** — typically an assistant scaffold attempt that was superseded or a feature spike that didn't pan out.
+
+**Rule of thumb:** a `claude/` or `codex/` branch with no open PR is an abandoned scaffold attempt. Safe to delete on sight.
+
+Known survivors as of `9d74d1a` (delete on next pass):
+
+- `codex/scaffold-core-agent-system-with-initial-files` (PR #1, closed)
+- `codex/scaffold-core-agent-system-with-initial-files-eve0rd` (PR #3, closed)
+- `codex/scaffold-core-agent-system-with-initial-files-m57be1` (PR #2, closed)
+- `codex/scaffold-core-agent-system-with-initial-files-r1tkwo` (PR #4, closed)
+
+These are four sibling attempts at the same task; only the last one's content went forward (via a different path), and the branches were left behind when the PRs were closed unmerged.
+
+Delete via https://github.com/QQ-STUDIOS/ROBOPORT/branches — trash icon next to each. Some automated environments can't push ref deletions; if you're driving from one, surface the list to a human maintainer rather than letting it accumulate.
+
 ## Commit messages
 
 Conventional Commits, lowercase type:
