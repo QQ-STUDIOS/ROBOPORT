@@ -1,0 +1,57 @@
+# Normalize line endings — checkout LF on every platform.
+* text=auto eol=lf
+
+# Explicitly text
+*.md       text
+*.txt      text
+*.json     text
+*.yml      text
+*.yaml     text
+*.toml     text
+*.ini      text
+*.cfg      text
+*.html     text
+*.css      text
+*.js       text
+*.jsx      text
+*.ts       text
+*.tsx      text
+*.py       text
+*.sh       text eol=lf
+*.bash     text eol=lf
+
+# Windows-only files keep CRLF
+*.bat      text eol=crlf
+*.cmd      text eol=crlf
+*.ps1      text eol=crlf
+
+# Binary
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.ico      binary
+*.webp     binary
+*.pdf      binary
+*.zip      binary
+*.gz       binary
+*.tar      binary
+*.woff     binary
+*.woff2    binary
+
+# AI model weights — binary, never diff
+*.ckpt          binary
+*.safetensors   binary
+*.bin           binary
+*.onnx          binary
+*.gguf          binary
+*.pt            binary
+*.pth           binary
+
+# Lockfiles — text but suppress noisy diffs in PRs
+poetry.lock         text -diff
+uv.lock             text -diff
+Pipfile.lock        text -diff
+package-lock.json   text -diff
+pnpm-lock.yaml      text -diff
+yarn.lock           text -diff
