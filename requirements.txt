@@ -1,5 +1,5 @@
 # Core runtime
-requests>=2.31         # Ollama HTTP client (scripts/roboport_runtime/providers.py)
+requests>=2.34.2         # Ollama HTTP client (scripts/roboport_runtime/providers.py)
 jsonschema>=4.0        # validate.py — schema + registry validation
 pyyaml>=6.0            # config/ loaders
 anthropic>=0.45,<1.0   # Anthropic provider (only used when ROBOPORT_PROVIDER=anthropic)
