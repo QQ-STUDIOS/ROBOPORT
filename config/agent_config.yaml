@@ -114,7 +114,7 @@ budgets:
 # refuses to dispatch a tool not whitelisted for the current agent.
 # -----------------------------------------------------------------------------
 tools:
-  job_scout:        [search_linkedin, search_indeed, search_company_careers, fetch_url, dedupe_jobs]
+  job_scout:        [search_linkedin, search_indeed, search_company_careers, fetch_url, dedupe_jobs, validate_url_active]
   technical_analyst: [fetch_url, parse_jd_skills]
   compliance_risk:  [fetch_url, lookup_jurisdiction]
   application_strategist: [load_profile, fetch_url]
