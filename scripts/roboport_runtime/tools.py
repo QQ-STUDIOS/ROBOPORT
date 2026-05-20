@@ -20,6 +20,7 @@ import json
 import os
 import re
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable
 
@@ -80,6 +81,81 @@ def dedupe_jobs(jobs: Any) -> list[dict]:
         seen.add(key)
         out.append(j)
     return out
+
+
+def _extract_urls(maybe: Any) -> list[str]:
+    """Pull URL strings out of a polymorphic input.
+
+    Accepts:
+      - flat list of URL strings
+      - list of dicts with a 'source_url' or 'url' key (e.g. Job objects)
+      - dict shaped like a search response: {"results": [...]} / {"jobs": [...]}
+      - dict with a 'urls' key
+    """
+    if isinstance(maybe, dict):
+        maybe = maybe.get("results") or maybe.get("jobs") or maybe.get("urls") or []
+    if not isinstance(maybe, list):
+        return []
+    out: list[str] = []
+    for item in maybe:
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, dict):
+            url = item.get("source_url") or item.get("url")
+            if isinstance(url, str):
+                out.append(url)
+    return out
+
+
+def validate_url_active(urls: Any, timeout: int = 5,
+                        max_workers: int = 10) -> dict[str, Any]:
+    """HEAD-check URLs (or extract them from Job objects) to drop dead links.
+
+    Live = HTTP 2xx or 3xx after following redirects.
+    Dead = 4xx/5xx, timeout, or any network error.
+
+    Falls back from HEAD to GET on 405 Method Not Allowed (some ATSs reject
+    HEAD). Closes the GET response immediately to avoid downloading bodies.
+
+    Accepts polymorphic input — see _extract_urls.
+
+    Returns:
+      {
+        "checked": int,
+        "live":    int,
+        "dead":    int,
+        "results": [{"url": str, "status": int|None, "live": bool, "error"?: str}, ...],
+      }
+    """
+    extracted = _extract_urls(urls)
+    if not extracted:
+        return {"checked": 0, "live": 0, "dead": 0, "results": []}
+
+    headers = {"User-Agent": "Mozilla/5.0 (ROBOPORT)"}
+
+    def check_one(url: str) -> dict[str, Any]:
+        if not isinstance(url, str) or not url:
+            return {"url": url, "status": None, "live": False, "error": "empty or non-string url"}
+        try:
+            r = requests.head(url, timeout=timeout, allow_redirects=True, headers=headers)
+            if r.status_code == 405:
+                # Some servers (e.g. certain Workday tenants) reject HEAD.
+                r = requests.get(url, timeout=timeout, allow_redirects=True,
+                                 stream=True, headers=headers)
+                r.close()
+            return {"url": url, "status": r.status_code,
+                    "live": 200 <= r.status_code < 400}
+        except requests.exceptions.Timeout:
+            return {"url": url, "status": None, "live": False, "error": "timeout"}
+        except Exception as e:  # noqa: BLE001
+            return {"url": url, "status": None, "live": False, "error": str(e)[:120]}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        results = list(ex.map(check_one, extracted))
+
+    live = sum(1 for r in results if r["live"])
+    return {"checked": len(results), "live": live, "dead": len(results) - live,
+            "results": results}
 
 
 _SKILL_VOCAB = {
@@ -388,6 +464,7 @@ TOOL_FNS: dict[str, Callable[..., Any]] = {
     "load_profile": load_profile,
     "fetch_url": fetch_url,
     "dedupe_jobs": dedupe_jobs,
+    "validate_url_active": validate_url_active,
     "parse_jd_skills": parse_jd_skills,
     "ats_score": ats_score,
     "lookup_jurisdiction": lookup_jurisdiction,
@@ -435,6 +512,24 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
                 "required": ["jobs"],
                 "properties": {"jobs": {"type": "array",
                                         "items": {"type": "object"}}},
+            },
+        },
+    },
+    "validate_url_active": {
+        "type": "function",
+        "function": {
+            "name": "validate_url_active",
+            "description": "HEAD-check URLs in parallel; drop dead ones before handoff. Accepts a list of URL strings, or a list of Job objects (with source_url), or a search response object. Returns per-URL status plus live/dead counts.",
+            "parameters": {
+                "type": "object",
+                "required": ["urls"],
+                "properties": {
+                    "urls": {
+                        "description": "URLs to check. Accepts: array of strings; array of Job-shaped objects with a source_url field; or a search response with a results array.",
+                    },
+                    "timeout": {"type": "integer", "description": "Per-URL timeout in seconds (default 5)."},
+                    "max_workers": {"type": "integer", "description": "Parallel worker count (default 10)."},
+                },
             },
         },
     },
@@ -492,7 +587,7 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "search_linkedin",
-            "description": "Search LinkedIn for jobs (sample data — see _stub_note).",
+            "description": "Search Greenhouse + Lever job boards (LinkedIn has no free API; name preserved for compatibility).",
             "parameters": {
                 "type": "object",
                 "required": ["query"],
@@ -505,7 +600,7 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "search_indeed",
-            "description": "Search Indeed for jobs (sample data — see _stub_note).",
+            "description": "Same backend as search_linkedin (Indeed has no free API). Source labelled 'indeed-via-greenhouse'.",
             "parameters": {
                 "type": "object",
                 "required": ["query"],
@@ -518,7 +613,7 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "search_company_careers",
-            "description": "Search a company's careers page (sample data — see _stub_note).",
+            "description": "Search a single company's Greenhouse or Lever board by slug.",
             "parameters": {
                 "type": "object",
                 "required": ["company"],

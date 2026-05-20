@@ -65,6 +65,21 @@
         "No bullet in TailoredResume mentions Snowflake"
       ],
       "tags": ["resume_tailor", "anti_hallucination"]
+    },
+    {
+      "id": 5,
+      "prompt": "Run job_scout against the standard Senior Data Engineer search. At least one returned board occasionally serves jobs whose listings have been pulled (404 or 410). Verify the scout drops dead links before downstream agents see them.",
+      "expected_output": "Every job in FinalReport.ranked_matches has a source_url that HEAD-checks to 2xx/3xx. Run log shows validate_url_active was called and any dead links were dropped with warnings.",
+      "expectations": [
+        "job_scout's run log shows at least one call to validate_url_active",
+        "Every ranked_match.job.source_url passes a HEAD check at grading time (HTTP 2xx/3xx)",
+        "For each job dropped due to a dead link, the run log contains an entry beginning 'dead-link dropped:' with the job id and observed status",
+        "The count of jobs handed to technical_analyst equals (scout_initial_results - duplicates_dropped - dead_links_dropped)"
+      ],
+      "blockers": [
+        "Every ranked_match.job.source_url passes a HEAD check at grading time (HTTP 2xx/3xx)"
+      ],
+      "tags": ["job_scout", "url_validation", "anti_dead_link"]
     }
   ]
 }
