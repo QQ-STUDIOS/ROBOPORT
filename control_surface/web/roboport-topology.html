@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ROBOPORT — scaling topology</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --floor:#0e1418;--floor2:#0b1015;--panel:#141c22;--panel2:#10171c;--line:#223038;--line2:#2c3c46;
+    --steel:#8a9da8;--steel-dim:#5f717c;--bright:#e8f1f5;
+    --cyan:#36c6e0;--amber:#f2b134;--green:#4fd672;--violet:#6c8cff;--pink:#ff5a8a;--alert:#ff5a52;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--floor2);color:var(--steel);font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:13px;-webkit-font-smoothing:antialiased}
+  .wrap{min-height:100dvh;display:flex;flex-direction:column}
+  header{display:flex;align-items:baseline;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2);flex-wrap:wrap}
+  header h1{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:18px;letter-spacing:3px;color:var(--bright);margin:0}
+  header .sub{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--steel-dim)}
+  .grid{flex:1;display:grid;grid-template-columns:1fr 320px;gap:1px;background:var(--line)}
+  .diagram{background:var(--floor);min-width:0;display:flex;align-items:center;justify-content:center;padding:10px}
+  svg{width:100%;height:auto;max-height:88dvh}
+  .rail{background:var(--panel2);padding:18px;overflow-y:auto}
+  .rail h2{font-family:"Space Grotesk",sans-serif;font-weight:500;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--steel);margin:0 0 10px}
+  .rail h2:not(:first-child){margin-top:22px}
+  .hier{display:flex;flex-direction:column;gap:7px;margin-bottom:4px}
+  .hier .row{display:flex;align-items:center;gap:8px;font-size:12px}
+  .hier .row .sw{width:9px;height:9px;border-radius:2px;box-shadow:0 0 7px currentColor;flex:none}
+  .hier .row b{color:var(--bright);font-weight:500}
+  .hier .row span{color:var(--steel-dim);font-size:11px}
+  .hier .ind1{padding-left:16px}.hier .ind2{padding-left:32px}
+  ul.delta{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+  ul.delta li{font-size:11px;line-height:1.5;color:var(--steel);padding-left:14px;position:relative}
+  ul.delta li::before{content:"+";position:absolute;left:0;color:var(--green);font-weight:700}
+  code{color:var(--bright);background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:10px}
+  .note{font-size:10px;color:var(--steel-dim);line-height:1.5;margin-top:8px;border-top:1px solid var(--line);padding-top:10px}
+  @media (max-width:820px){.grid{grid-template-columns:1fr}.rail{max-height:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ROBOPORT</h1><span class="sub">scaling topology · network → zone → domain → station</span>
+  </header>
+  <div class="grid">
+    <div class="diagram">
+      <svg viewBox="0 0 660 760" xmlns="http://www.w3.org/2000/svg" font-family="'JetBrains Mono', monospace">
+        <defs>
+          <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <style>
+            .flow{stroke-dasharray:5 9;animation:dash 1.1s linear infinite}
+            @keyframes dash{to{stroke-dashoffset:-14}}
+            .lbl{fill:#8a9da8;font-size:10px;letter-spacing:.5px}
+            .lblb{fill:#e8f1f5;font-size:11px;font-weight:500}
+            .tiny{fill:#5f717c;font-size:9px;letter-spacing:1px}
+            @media (prefers-reduced-motion:reduce){.flow{animation:none}}
+          </style>
+        </defs>
+
+        <!-- ============ NETWORK VIEW ============ -->
+        <text x="30" y="34" class="tiny" letter-spacing="2">NETWORK VIEW · ZOOMED OUT</text>
+        <rect x="24" y="44" width="612" height="300" rx="12" fill="#0c1217" stroke="#1c2730"/>
+
+        <!-- routes (edges) -->
+        <g fill="none" stroke-width="1.6">
+          <path d="M170,150 L430,120" stroke="#36c6e0" opacity=".5" class="flow"/>
+          <path d="M170,150 L185,285" stroke="#6c8cff" opacity=".45" class="flow"/>
+          <path d="M430,120 L490,265" stroke="#f2b134" opacity=".45" class="flow"/>
+          <path d="M490,265 L185,285" stroke="#4fd672" opacity=".4" class="flow"/>
+        </g>
+        <!-- a task token in transit on a route -->
+        <circle r="3.5" fill="#36c6e0" filter="url(#glow)">
+          <animateMotion dur="2.6s" repeatCount="indefinite" path="M170,150 L430,120"/>
+        </circle>
+        <circle r="3" fill="#4fd672" filter="url(#glow)">
+          <animateMotion dur="3.2s" repeatCount="indefinite" path="M490,265 L185,285"/>
+        </circle>
+
+        <!-- zone cells -->
+        <!-- Z1 Theragen (drilled / highlighted) -->
+        <g>
+          <circle cx="170" cy="150" r="52" fill="none" stroke="#36c6e0" stroke-opacity=".18" stroke-dasharray="4 8"/>
+          <circle cx="170" cy="150" r="34" fill="#36c6e0" fill-opacity=".06"/>
+          <circle cx="170" cy="150" r="62" fill="none" stroke="#36c6e0" stroke-opacity=".55" stroke-dasharray="3 5"/>
+          <circle cx="170" cy="150" r="17" fill="#13202e" stroke="#36c6e0" stroke-width="1.6" filter="url(#glow)"/>
+          <circle cx="170" cy="150" r="5" fill="#9fe4f2"/>
+          <text x="170" y="220" text-anchor="middle" class="lblb">theragen</text>
+          <text x="170" y="234" text-anchor="middle" class="lbl" fill="#36c6e0">HIPAA · 6 agents</text>
+          <text x="170" y="120" text-anchor="middle" class="tiny" fill="#36c6e0">◄ expanded below</text>
+        </g>
+        <!-- Z2 JobSynk -->
+        <g>
+          <circle cx="430" cy="120" r="46" fill="none" stroke="#f2b134" stroke-opacity=".4" stroke-dasharray="3 5"/>
+          <circle cx="430" cy="120" r="15" fill="#221b10" stroke="#f2b134" stroke-width="1.4"/>
+          <circle cx="430" cy="120" r="4" fill="#f7d488"/>
+          <text x="430" y="92" text-anchor="middle" class="lblb">jobsynk</text>
+          <text x="430" y="180" text-anchor="middle" class="lbl" fill="#f2b134">4 agents · warn</text>
+        </g>
+        <!-- Z3 QQ-Studios -->
+        <g>
+          <circle cx="490" cy="265" r="44" fill="none" stroke="#4fd672" stroke-opacity=".4" stroke-dasharray="3 5"/>
+          <circle cx="490" cy="265" r="15" fill="#10231a" stroke="#4fd672" stroke-width="1.4"/>
+          <circle cx="490" cy="265" r="4" fill="#a7eebf"/>
+          <text x="490" y="300" text-anchor="middle" class="lblb">qq-studios</text>
+          <text x="490" y="314" text-anchor="middle" class="lbl" fill="#4fd672">3 agents</text>
+        </g>
+        <!-- Z4 Edge -->
+        <g>
+          <circle cx="185" cy="285" r="42" fill="none" stroke="#6c8cff" stroke-opacity=".4" stroke-dasharray="3 5"/>
+          <circle cx="185" cy="285" r="14" fill="#16203a" stroke="#6c8cff" stroke-width="1.4"/>
+          <circle cx="185" cy="285" r="4" fill="#b3c4ff"/>
+          <text x="120" y="320" text-anchor="middle" class="lblb">edge·us-east</text>
+          <text x="120" y="334" text-anchor="middle" class="lbl" fill="#6c8cff">2 agents</text>
+        </g>
+
+        <!-- aggregate HUD chip -->
+        <g>
+          <rect x="470" y="58" width="150" height="48" rx="8" fill="#0e1620" stroke="#223038"/>
+          <text x="482" y="76" class="tiny">NETWORK</text>
+          <text x="482" y="94" class="lblb" fill="#e8f1f5">42 tasks/min · 15 agents</text>
+          <text x="482" y="100" class="tiny" dy="2">3 cross-zone in flight</text>
+        </g>
+
+        <!-- drill connector -->
+        <g>
+          <line x1="170" y1="344" x2="170" y2="384" stroke="#36c6e0" stroke-width="1.4" stroke-dasharray="3 4"/>
+          <path d="M165,378 L170,388 L175,378 Z" fill="#36c6e0"/>
+          <text x="186" y="372" class="tiny" fill="#36c6e0">drill into a zone</text>
+        </g>
+
+        <!-- ============ ZONE VIEW ============ -->
+        <text x="30" y="414" class="tiny" letter-spacing="2">ZONE VIEW · theragen — EXPANDED</text>
+        <rect x="24" y="424" width="612" height="312" rx="12" fill="#0c1217" stroke="#1c2730"/>
+
+        <!-- domain arcs (cross-cutting tags over stations) -->
+        <g fill="none" stroke-width="3" stroke-linecap="round" opacity=".7">
+          <path d="M330,580 m0,-150 a150,150 0 0 1 116,55" stroke="#7ea6ff"/>     <!-- Intake -->
+          <path d="M330,580 m116,55 a150,150 0 0 1 -64,138" stroke="#4fd672"/>    <!-- Analytics -->
+          <path d="M330,580 m52,143 a150,150 0 0 1 -220,-12" stroke="#ff5a8a"/>   <!-- Delivery -->
+        </g>
+        <text x="470" y="470" class="lbl" fill="#7ea6ff">◖ Intake</text>
+        <text x="476" y="660" class="lbl" fill="#4fd672">◗ Analytics</text>
+        <text x="150" y="724" class="lbl" fill="#ff5a8a">Delivery ◗</text>
+
+        <!-- hub -->
+        <circle cx="330" cy="580" r="58" fill="none" stroke="#6c8cff" stroke-opacity=".22" stroke-dasharray="5 9"/>
+        <circle cx="330" cy="580" r="20" fill="#13202e" stroke="#6c8cff" stroke-width="1.6" filter="url(#glow)"/>
+        <circle cx="330" cy="580" r="6" fill="#b3c4ff"/>
+        <text x="330" y="584" text-anchor="middle" class="tiny" fill="#b3c4ff" dy="22">hub</text>
+
+        <!-- 7 stations grouped by domain -->
+        <g>
+          <!-- Intake: ingest, snowflake-ish, decrypt (blue) -->
+          <g transform="translate(330,430)"><polygon points="0,-11 9,-5 9,5 0,11 -9,5 -9,-5" fill="#121b21" stroke="#7ea6ff" stroke-width="1.4"/><circle r="3" fill="#7ea6ff"/></g>
+          <g transform="translate(446,485)"><polygon points="0,-11 9,-5 9,5 0,11 -9,5 -9,-5" fill="#121b21" stroke="#7ea6ff" stroke-width="1.4"/><circle r="3" fill="#7ea6ff"/></g>
+          <g transform="translate(478,600)"><polygon points="0,-11 9,-5 9,5 0,11 -9,5 -9,-5" fill="#121b21" stroke="#7ea6ff" stroke-width="1.4"/><circle r="3" fill="#7ea6ff"/></g>
+          <!-- Analytics: rag, synthesize (green) -->
+          <g transform="translate(420,690)"><polygon points="0,-11 9,-5 9,5 0,11 -9,5 -9,-5" fill="#10231a" stroke="#4fd672" stroke-width="1.4"/><circle r="3" fill="#4fd672"/></g>
+          <g transform="translate(300,712)"><polygon points="0,-11 9,-5 9,5 0,11 -9,5 -9,-5" fill="#10231a" stroke="#4fd672" stroke-width="1.4"/><circle r="3" fill="#4fd672"/></g>
+          <!-- Delivery: validate, publish (pink) -->
+          <g transform="translate(190,660)"><polygon points="0,-11 9,-5 9,5 0,11 -9,5 -9,-5" fill="#23101a" stroke="#ff5a8a" stroke-width="1.4"/><circle r="3" fill="#ff5a8a"/></g>
+          <g transform="translate(186,500)"><polygon points="0,-11 9,-5 9,5 0,11 -9,5 -9,-5" fill="#23101a" stroke="#ff5a8a" stroke-width="1.4"/><circle r="3" fill="#ff5a8a"/></g>
+        </g>
+
+        <!-- a couple drones mid-flight -->
+        <g transform="translate(388,505) rotate(20)"><rect x="-5" y="-5" width="10" height="10" rx="2" fill="#0f1820" stroke="#36c6e0" stroke-width="1.3" filter="url(#glow)"/></g>
+        <g transform="translate(258,648) rotate(-15)"><rect x="-5" y="-5" width="10" height="10" rx="2" fill="#0f1820" stroke="#4fd672" stroke-width="1.3" filter="url(#glow)"/></g>
+        <line x1="330" y1="580" x2="446" y2="485" stroke="#36c6e0" stroke-opacity=".12"/>
+        <line x1="330" y1="580" x2="300" y2="712" stroke="#4fd672" stroke-opacity=".12"/>
+
+        <text x="330" y="752" text-anchor="middle" class="tiny">one zone = the surface you already have · 7 stations across 3 domains</text>
+      </svg>
+    </div>
+
+    <aside class="rail">
+      <h2>Containment</h2>
+      <div class="hier">
+        <div class="row"><span class="sw" style="color:var(--violet)"></span><b>Network</b><span>— the whole control plane</span></div>
+        <div class="row ind1"><span class="sw" style="color:var(--cyan)"></span><b>Zone</b><span>— 1 hub, fleet, queue</span></div>
+        <div class="row ind2"><span class="sw" style="color:var(--green)"></span><b>Domain</b><span>— a pipeline (tag)</span></div>
+        <div class="row ind2"><span class="sw" style="color:var(--pink)"></span><b>Station</b><span>— one step/tool</span></div>
+        <div class="row"><span class="sw" style="color:var(--amber)"></span><b>Route</b><span>— cross-zone handoff edge</span></div>
+        <div class="row"><span class="sw" style="color:var(--steel)"></span><b>Agent</b><span>— homed to a zone</span></div>
+      </div>
+
+      <h2>New on the wire</h2>
+      <ul class="delta">
+        <li>snapshot gains <code>zones[]</code> <code>domains[]</code> <code>routes[]</code></li>
+        <li><code>zone_id</code> on agents / stations / tasks; <code>domain_id</code> on stations / tasks; <code>home_zone_id</code> on agents</li>
+        <li>task state <code>in_transit</code> + <code>pipeline[]</code> hops + <code>hop_index</code></li>
+        <li>events <code>zone.updated</code> <code>route.updated</code> <code>task.handoff</code> <code>agent.transfer</code></li>
+        <li>feed scoping: <code>?scope=network</code> (rollups) vs <code>?scope=zone:theragen</code> (firehose)</li>
+      </ul>
+
+      <div class="note">Semantic zoom keeps it legible: below a threshold a zone renders as one health gauge, not its 500 drones. One focus at a time — network shows zones, zone shows drones.</div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

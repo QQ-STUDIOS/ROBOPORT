@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ROBOPORT — control plane (network → zone)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --floor:#0e1418;--floor2:#0b1015;--panel:#141c22;--panel2:#10171c;
+    --grid:#16202833;--line:#223038;--line2:#2c3c46;
+    --steel:#8a9da8;--steel-dim:#5f717c;--bright:#e8f1f5;
+    --dispatch:#36c6e0;--work:#f2b134;--return:#4fd672;--dock:#6c8cff;--alert:#ff5a52;
+    --r1:5px;--r2:8px;--r3:12px;
+    --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:22px;
+    --t-fast:120ms;--t-base:200ms;--ease:cubic-bezier(.4,0,.2,1);--shadow:0 8px 28px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--floor2);color:var(--steel);font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:13px;-webkit-font-smoothing:antialiased;overflow:hidden}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  .app{height:100dvh;display:grid;grid-template-columns:1fr 332px;grid-template-rows:auto 1fr auto;grid-template-areas:"hud hud" "stage side" "dock dock";gap:1px;background:var(--line)}
+
+  /* ---------- HUD ---------- */
+  .hud{grid-area:hud;background:var(--panel2);display:flex;align-items:center;gap:var(--s4);padding:10px var(--s4);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .brand h1{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:18px;letter-spacing:3px;color:var(--bright);margin:0;white-space:nowrap}
+  .crumbs{display:flex;align-items:center;gap:9px;font-size:11px;min-width:0}
+  .crumbs .seg{display:inline-flex;align-items:center;gap:6px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim);white-space:nowrap}
+  .crumbs .seg.here{color:var(--bright)}
+  .crumbs .back{appearance:none;border:1px solid var(--line2);background:var(--panel);color:var(--bright);font-family:inherit;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;padding:5px 10px;border-radius:var(--r1);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:border-color var(--t-fast)}
+  .crumbs .back:hover{border-color:var(--steel-dim)}
+  .crumbs .sep{color:var(--line2)}
+  .crumbs .zdot{width:8px;height:8px;border-radius:50%;box-shadow:0 0 8px currentColor}
+  .feedbadge{display:inline-flex;align-items:center;gap:6px;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dispatch);border:1px solid rgba(54,198,224,.3);border-radius:20px;padding:3px 9px;white-space:nowrap}
+  .feedbadge .d{width:6px;height:6px;border-radius:50%;background:var(--dispatch);box-shadow:0 0 7px var(--dispatch);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .stats{display:flex;gap:var(--s5);margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+  .stat{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}
+  .stat .v{font-size:17px;font-weight:700;color:var(--bright)}
+  .stat .v.warn{color:var(--work)}.stat .v.bad{color:var(--alert)}
+  .stat .k{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+
+  /* ---------- stage ---------- */
+  .stage{grid-area:stage;position:relative;background:var(--floor);overflow:hidden}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:default}
+  .legend{position:absolute;left:12px;top:12px;z-index:3;display:flex;gap:13px;flex-wrap:wrap;background:rgba(10,15,19,.66);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:var(--r2);padding:7px 11px;pointer-events:none}
+  .legend .it{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.5px;color:var(--steel)}
+  .legend .sw{width:9px;height:9px;border-radius:2px;box-shadow:0 0 7px currentColor}
+  .legend .ring{width:11px;height:11px;border-radius:50%;border:1.5px dashed currentColor}
+
+  .toasts{position:absolute;top:12px;right:12px;z-index:6;display:flex;flex-direction:column;gap:8px;width:248px}
+  .toast{display:flex;gap:9px;align-items:flex-start;background:rgba(16,23,28,.94);border:1px solid var(--line2);border-left:3px solid var(--work);border-radius:var(--r2);padding:9px 11px;cursor:pointer;box-shadow:var(--shadow);animation:slidein var(--t-base) var(--ease)}
+  .toast.bad{border-left-color:var(--alert)}.toast.info{border-left-color:var(--dispatch)}
+  .toast .tx{flex:1;min-width:0}.toast .th{color:var(--bright);font-size:11px;font-weight:500}
+  .toast .tb{color:var(--steel-dim);font-size:10px;margin-top:2px}
+  .toast .tg{font-size:9px;color:var(--steel-dim);white-space:nowrap}
+  .toast:hover{border-color:var(--dispatch)}
+  @keyframes slidein{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+
+  .tip{position:absolute;z-index:7;pointer-events:none;background:rgba(10,15,19,.95);border:1px solid var(--line2);border-radius:var(--r1);padding:5px 8px;font-size:10px;color:var(--bright);white-space:nowrap;transform:translate(-50%,-130%);opacity:0;transition:opacity var(--t-fast)}
+  .tip.on{opacity:1}.tip .s{color:var(--steel-dim)}
+
+  .wire{position:absolute;left:12px;bottom:48px;z-index:4;width:236px;background:rgba(11,16,21,.92);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;box-shadow:var(--shadow)}
+  .wire-h{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
+  .wire-h .d{width:6px;height:6px;border-radius:50%;background:var(--dispatch);box-shadow:0 0 6px var(--dispatch);animation:pulse 1.4s infinite}
+  .wire-h .t{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel)}
+  .wire-h .c{margin-left:auto;font-size:9px;color:var(--steel-dim)}
+  .wire-b{font-size:10px;line-height:1.55;padding:6px 10px;max-height:128px;overflow:hidden;transition:max-height var(--t-base) var(--ease)}
+  .wire.min .wire-b{max-height:0;padding-top:0;padding-bottom:0}
+  .wire.min .wire-h{border-bottom:none}
+  .wl{display:flex;gap:7px;white-space:nowrap}
+  .wl .sq{color:var(--steel-dim)}.wl .ty{color:var(--steel)}
+
+  .inspector{position:absolute;right:12px;bottom:48px;z-index:5;width:262px;background:rgba(15,22,28,.95);backdrop-filter:blur(10px);border:1px solid var(--line2);border-radius:var(--r3);box-shadow:var(--shadow);overflow:hidden;transform:translateY(12px);opacity:0;pointer-events:none;transition:opacity var(--t-base),transform var(--t-base)}
+  .inspector.on{transform:none;opacity:1;pointer-events:auto}
+  .insp-head{display:flex;align-items:center;gap:9px;padding:11px var(--s3);border-bottom:1px solid var(--line)}
+  .insp-head .ring{width:10px;height:10px;border-radius:50%;box-shadow:0 0 9px currentColor;flex:none}
+  .insp-head .ttl{min-width:0}
+  .insp-head .ttl .n{color:var(--bright);font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .insp-head .ttl .ty{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .insp-head .x{margin-left:auto;background:none;border:none;color:var(--steel-dim);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:4px}
+  .insp-head .x:hover{color:var(--bright);background:var(--panel)}
+  .insp-body{padding:var(--s3)}
+  .insp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px var(--s3);margin-bottom:var(--s3)}
+  .insp-grid .f .k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--steel-dim)}
+  .insp-grid .f .v{color:var(--bright);font-size:12px;margin-top:2px}
+  .insp-bar{height:5px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}
+  .insp-bar i{display:block;height:100%;border-radius:4px;transition:width var(--t-base)}
+  .insp-mini{margin-top:4px;max-height:84px;overflow-y:auto;border-top:1px solid var(--line);padding-top:8px}
+  .insp-mini .ml{font-size:10px;line-height:1.5;color:var(--steel-dim)}.insp-mini .ml b{color:var(--steel);font-weight:400}
+  .insp-actions{display:flex;flex-wrap:wrap;gap:6px;padding:0 var(--s3) var(--s3)}
+  .cmd{appearance:none;flex:1 1 auto;min-width:72px;border:1px solid var(--line2);background:var(--panel);color:var(--bright);font-family:inherit;font-size:10px;letter-spacing:.8px;text-transform:uppercase;padding:7px 8px;border-radius:var(--r1);cursor:pointer;transition:border-color var(--t-fast),background var(--t-fast),color var(--t-fast)}
+  .cmd:hover{border-color:var(--steel-dim)}.cmd:active{transform:translateY(1px)}
+  .cmd:focus-visible{outline:2px solid var(--dispatch);outline-offset:2px}
+  .cmd.go{border-color:rgba(54,198,224,.45);color:var(--dispatch)}
+  .cmd.warn{border-color:rgba(242,177,52,.45);color:var(--work)}
+  .cmd.danger{border-color:rgba(255,90,82,.4);color:var(--alert)}
+  .cmd.on{background:rgba(108,140,255,.16);border-color:var(--dock);color:var(--dock)}
+  .cmd[disabled]{opacity:.38;cursor:not-allowed}
+
+  .qstrip{position:absolute;left:0;right:0;bottom:0;z-index:4;height:36px;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgba(11,16,21,.82);backdrop-filter:blur(6px);border-top:1px solid var(--line)}
+  .qstrip .ql{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim);flex:none}
+  .qchips{display:flex;gap:5px;overflow-x:auto;flex:1;padding:2px 0}
+  .qchips::-webkit-scrollbar{height:0}
+  .qchip{flex:none;display:flex;align-items:center;gap:5px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:3px 9px 3px 6px;font-size:10px;color:var(--steel);cursor:pointer;white-space:nowrap;animation:pop var(--t-base) var(--ease)}
+  .qchip:hover{border-color:var(--line2);color:var(--bright)}
+  .qchip .d{width:7px;height:7px;border-radius:50%;box-shadow:0 0 6px currentColor}
+  @keyframes pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+  .qempty{font-size:10px;color:var(--steel-dim);font-style:italic}
+
+  /* ---------- side ---------- */
+  .side{grid-area:side;background:var(--panel2);display:flex;flex-direction:column;min-height:0}
+  .pane{display:flex;flex-direction:column;min-height:0}
+  .pane.top{flex:1 1 56%;border-bottom:1px solid var(--line)}
+  .pane.bot{flex:1 1 44%}
+  .pane h2{margin:0;padding:10px var(--s4) 8px;font-family:"Space Grotesk",sans-serif;font-weight:500;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--steel);display:flex;align-items:center;gap:8px}
+  .pane h2 .count{margin-left:auto;color:var(--steel-dim);font-family:"JetBrains Mono",monospace}
+  .scroll{overflow-y:auto;padding:0 var(--s2) 10px;min-height:0}
+  .scroll::-webkit-scrollbar{width:8px}.scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+
+  /* zone rows (network mode) */
+  .zrow{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:9px 9px;border-radius:var(--r2);margin:3px 0;cursor:pointer;border:1px solid transparent;transition:background var(--t-fast),border-color var(--t-fast)}
+  .zrow:hover{background:var(--panel)}
+  .zrow:focus-visible{outline:2px solid var(--dispatch);outline-offset:1px}
+  .zrow.sel{background:var(--panel);border-color:var(--line2)}
+  .zrow .zp{width:10px;height:10px;border-radius:50%;box-shadow:0 0 9px currentColor}
+  .zrow .zw{min-width:0}
+  .zrow .zn{color:var(--bright);font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px}
+  .zrow .zn .lk{font-size:9px;color:var(--steel-dim);letter-spacing:1px}
+  .zrow .zb{height:4px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:5px}
+  .zrow .zb i{display:block;height:100%;border-radius:3px;transition:width var(--t-base)}
+  .zrow .zmeta{font-size:9px;color:var(--steel-dim);margin-top:4px;letter-spacing:.5px}
+  .zrow .zr{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:52px;text-align:right}
+  .zrow .zr .big{color:var(--bright);font-size:14px;font-weight:700;line-height:1}
+  .zrow .zr .sm{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--steel-dim)}
+  .zrow .zr .drill{font-size:9px;color:var(--dispatch);opacity:0;transition:opacity var(--t-fast)}
+  .zrow:hover .zr .drill{opacity:1}
+
+  /* agent rows (zone mode) */
+  .agent{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:7px 8px;border-radius:var(--r2);margin:2px 0;cursor:pointer;border:1px solid transparent;transition:background var(--t-fast),border-color var(--t-fast)}
+  .agent:hover{background:var(--panel)}
+  .agent:focus-visible{outline:2px solid var(--dispatch);outline-offset:1px}
+  .agent.sel{background:var(--panel);border-color:var(--line2)}
+  .agent .pip{width:8px;height:8px;border-radius:50%;box-shadow:0 0 8px currentColor}
+  .agent .who{min-width:0}
+  .agent .name{color:var(--bright);font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px}
+  .agent .name .lock{font-size:9px;color:var(--dock)}
+  .agent .act{font-size:10px;color:var(--steel-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .agent .cell{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:46px}
+  .agent .bar{width:46px;height:4px;border-radius:3px;background:var(--line);overflow:hidden}
+  .agent .bar i{display:block;height:100%;border-radius:3px;transition:width var(--t-base)}
+  .agent .pct{font-size:9px;color:var(--steel-dim)}
+
+  .logline{display:flex;gap:8px;padding:3px 6px;font-size:11px;line-height:1.45;border-radius:var(--r1)}
+  .logline .t{color:var(--steel-dim);flex:none}
+  .logline .m{color:var(--steel)}.logline .m b{font-weight:500}
+
+  /* ---------- dock ---------- */
+  .dock{grid-area:dock;background:var(--panel2);border-top:1px solid var(--line);display:flex;align-items:center;gap:var(--s3);padding:9px var(--s4);flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--bright);font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;padding:8px 14px;border-radius:var(--r1);cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:border-color var(--t-fast),background var(--t-fast)}
+  .btn:hover{border-color:var(--steel-dim)}.btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:2px solid var(--dispatch);outline-offset:2px}
+  .btn.primary{border-color:rgba(54,198,224,.4);color:var(--dispatch)}
+  .btn[disabled]{opacity:.38;cursor:not-allowed}
+  .btn .ic{width:9px;height:9px;border-radius:2px;background:currentColor;box-shadow:0 0 7px currentColor}
+  .injector{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r1);padding:4px 4px 4px 11px}
+  .injector label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .injector select{appearance:none;background:var(--panel2);border:1px solid var(--line);color:var(--bright);font-family:inherit;font-size:11px;padding:5px 24px 5px 9px;border-radius:var(--r1);cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--steel-dim) 50%),linear-gradient(135deg,var(--steel-dim) 50%,transparent 50%);background-position:calc(100% - 13px) 50%,calc(100% - 8px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+  .injector select:focus-visible{outline:2px solid var(--dispatch);outline-offset:1px}
+  .injector .queue{border:none;background:var(--dispatch);color:#04181d;font-weight:700;padding:6px 11px;border-radius:var(--r1);font-family:inherit;font-size:10px;letter-spacing:1px;text-transform:uppercase;cursor:pointer}
+  .injector .queue:hover{filter:brightness(1.08)}
+  .injector .queue:focus-visible{outline:2px solid var(--bright);outline-offset:2px}
+  .speed{display:flex;align-items:center;gap:9px;margin-left:auto}
+  .speed label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .speed output{color:var(--bright);min-width:34px;text-align:right;font-weight:500}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:120px;height:4px;border-radius:4px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--dispatch);box-shadow:0 0 8px var(--dispatch);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:var(--dispatch);box-shadow:0 0 8px var(--dispatch);cursor:pointer}
+  input[type=range]:focus-visible{outline:2px solid var(--dispatch);outline-offset:4px}
+  .hint{font-size:9px;color:var(--steel-dim);letter-spacing:.5px;width:100%;padding-top:2px}
+  .hint b{color:var(--steel);font-weight:400}
+
+  /* view-mode toggling */
+  .app[data-mode="network"] .zone-only{display:none!important}
+  .app[data-mode="zone"] .net-only{display:none!important}
+
+  @media (max-width:880px){
+    .app{grid-template-columns:1fr;grid-template-rows:auto minmax(44dvh,1fr) auto auto;grid-template-areas:"hud" "stage" "side" "dock"}
+    .side{flex-direction:row;max-height:30dvh}
+    .pane.top{flex:1 1 50%;border-bottom:none;border-right:1px solid var(--line)}
+    .pane.bot{flex:1 1 50%}
+    .stats{gap:14px}
+    .inspector{right:8px;left:8px;width:auto;bottom:44px}
+    .wire{display:none}.speed{margin-left:0}.hint{display:none}
+    .brand h1{font-size:15px;letter-spacing:2px}
+  }
+  @media (prefers-reduced-motion:reduce){.feedbadge .d,.wire-h .d{animation:none}.toast,.qchip{animation:none}}
+</style>
+</head>
+<body>
+<div class="app" id="app" data-mode="network">
+  <header class="hud">
+    <div class="brand">
+      <h1>ROBOPORT</h1>
+      <div class="crumbs">
+        <button class="back zone-only" id="btn-back">◄ Network</button>
+        <span class="sep zone-only">/</span>
+        <span class="seg net-only here">Network</span>
+        <span class="seg here zone-only" id="crumb-zone"><span class="zdot" id="crumb-dot"></span><span id="crumb-name">zone</span></span>
+      </div>
+      <span class="feedbadge"><span class="d"></span><span id="feed-status">scope · network</span></span>
+    </div>
+    <div class="stats net-only" id="stats-network">
+      <div class="stat"><span class="v" id="ns-rate">0</span><span class="k">tasks / min</span></div>
+      <div class="stat"><span class="v" id="ns-agents">0</span><span class="k">agents</span></div>
+      <div class="stat"><span class="v" id="ns-zones">0</span><span class="k">zones</span></div>
+      <div class="stat"><span class="v" id="ns-transit">0</span><span class="k">cross-zone</span></div>
+      <div class="stat"><span class="v" id="ns-risk">0</span><span class="k">at risk</span></div>
+    </div>
+    <div class="stats zone-only" id="stats-zone">
+      <div class="stat"><span class="v" id="s-rate">0</span><span class="k">tasks / min</span></div>
+      <div class="stat"><span class="v" id="s-done">0</span><span class="k">completed</span></div>
+      <div class="stat"><span class="v" id="s-active">0/0</span><span class="k">active</span></div>
+      <div class="stat"><span class="v" id="s-queue">0</span><span class="k">queued</span></div>
+      <div class="stat"><span class="v" id="s-up">00:00</span><span class="k">uptime</span></div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <canvas id="c" aria-hidden="true"></canvas>
+
+    <div class="legend net-only" aria-hidden="true">
+      <span class="it"><span class="ring" style="color:var(--return)"></span>healthy</span>
+      <span class="it"><span class="ring" style="color:var(--work)"></span>warn</span>
+      <span class="it"><span class="ring" style="color:var(--alert)"></span>critical</span>
+      <span class="it"><span class="sw" style="color:var(--dispatch)"></span>cross-zone task</span>
+      <span class="it"><span style="color:var(--steel-dim)">⊘ data-only route</span></span>
+    </div>
+    <div class="legend zone-only" aria-hidden="true">
+      <span class="it"><span class="sw" style="color:var(--dispatch)"></span>dispatched</span>
+      <span class="it"><span class="sw" style="color:var(--work)"></span>working</span>
+      <span class="it"><span class="sw" style="color:var(--return)"></span>returning</span>
+      <span class="it"><span class="sw" style="color:var(--dock)"></span>docked</span>
+      <span class="it"><span class="sw" style="color:var(--alert)"></span>low cell</span>
+    </div>
+
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div class="tip" id="tip"></div>
+
+    <div class="wire" id="wire">
+      <div class="wire-h" id="wire-h"><span class="d"></span><span class="t" id="wire-t">wire · /api/feed</span><span class="c" id="wire-c">seq 0</span></div>
+      <div class="wire-b" id="wire-b"></div>
+    </div>
+
+    <aside class="inspector" id="inspector" role="region" aria-label="Selection inspector">
+      <div class="insp-head"><span class="ring" id="insp-ring"></span><div class="ttl"><div class="n" id="insp-name">—</div><div class="ty" id="insp-type">—</div></div><button class="x" id="insp-close" aria-label="Clear selection">✕</button></div>
+      <div class="insp-body" id="insp-body"></div>
+      <div class="insp-actions" id="insp-actions"></div>
+    </aside>
+
+    <div class="qstrip zone-only"><span class="ql">queue</span><div class="qchips" id="qchips"></div></div>
+  </main>
+
+  <aside class="side">
+    <!-- network mode -->
+    <section class="pane top net-only"><h2>Zones <span class="count" id="zone-count">0</span></h2><div class="scroll" id="zones" role="listbox" aria-label="Network zones" tabindex="0"></div></section>
+    <section class="pane bot net-only"><h2>Network activity</h2><div class="scroll" id="netlog" aria-live="off"></div></section>
+    <!-- zone mode -->
+    <section class="pane top zone-only"><h2>Agents <span class="count" id="roster-count">0</span></h2><div class="scroll" id="roster" role="listbox" aria-label="Agent fleet" tabindex="0"></div></section>
+    <section class="pane bot zone-only"><h2>Activity</h2><div class="scroll" id="log" aria-live="off"></div></section>
+  </aside>
+
+  <footer class="dock">
+    <button class="btn primary" id="btn-play"><span class="ic"></span><span id="play-label">Pause</span></button>
+    <!-- network dock -->
+    <div class="injector net-only"><label for="route-sel">Inject handoff on</label><select id="route-sel" aria-label="Target route"></select><button class="queue" id="btn-handoff">Send</button></div>
+    <!-- zone dock -->
+    <button class="btn zone-only" id="btn-agent">+ Agent</button>
+    <div class="injector zone-only"><label for="task-station">Queue task to</label><select id="task-station" aria-label="Target station"></select><button class="queue" id="btn-queue">Queue</button></div>
+    <div class="speed"><label for="speed">Speed</label><input type="range" id="speed" min="0.25" max="3" step="0.25" value="1" /><output id="speed-out">1.0×</output></div>
+    <div class="hint net-only">Network scope · <b>click a zone</b> to drill into its live surface · routes carry real cross-zone handoffs · <b>Space</b> pause</div>
+    <div class="hint zone-only">Zone scope · click an agent / station / hub to inspect &amp; command · <b>↑↓</b> select · <b>R</b> recall · <b>H</b> hold · <b>Esc</b> clear · <b>Space</b> pause</div>
+  </footer>
+</div>
+<div class="sr-only" id="sr" aria-live="polite"></div>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   PART A — NETWORK MOCK BACKEND  (stands in for the FastAPI control plane)
+   Owns ALL truth across the whole network. Two channels:
+     • network  — zone.updated rollups, route.updated, task.handoff,
+                  metrics.tick, alert.raised, log.appended, snapshot
+     • zone:<id> — the existing per-zone firehose (agent.* / station.* /
+                  task.* …), delivered ONLY while a client is watching it
+   Each Zone is a self-contained sim (the v2 backend, parameterised).
+   Knows ZERO about pixels. Swap for a real server; contract is identical.
+   ===================================================================== */
+function createNetworkBackend(){
+  const STATION_CFG=[
+    {station_id:"stn.ingest",name:"Ingest",order:0,hue:"#7ea6ff"},
+    {station_id:"stn.snowflake",name:"Snowflake",order:1,hue:"#36c6e0"},
+    {station_id:"stn.decrypt",name:"Decrypt",order:2,hue:"#c98bff"},
+    {station_id:"stn.rag",name:"RAG",order:3,hue:"#4fd672"},
+    {station_id:"stn.synthesize",name:"Synthesize",order:4,hue:"#f2b134"},
+    {station_id:"stn.validate",name:"Validate",order:5,hue:"#ff8f6b"},
+    {station_id:"stn.publish",name:"Publish",order:6,hue:"#ff5a8a"},
+  ];
+  const ZONE_CFG=[
+    {zone_id:"zone.theragen",name:"theragen",color:"#36c6e0",tag:"HIPAA tenant",policy:"data-only",agents:6,nx:.27,ny:.36},
+    {zone_id:"zone.jobsynk", name:"jobsynk", color:"#f2b134",tag:"region · us-w",policy:"elastic", agents:4,nx:.77,ny:.29},
+    {zone_id:"zone.qqstudios",name:"qq-studios",color:"#4fd672",tag:"region · eu-c",policy:"elastic",agents:3,nx:.71,ny:.67},
+    {zone_id:"zone.edge",    name:"edge·us-east",color:"#6c8cff",tag:"edge cell",  policy:"elastic", agents:2,nx:.50,ny:.19},
+  ];
+  const ROUTE_CFG=[
+    {route_id:"r.thg-job", a:"zone.theragen", b:"zone.jobsynk",  policy:"data-only"},
+    {route_id:"r.thg-edge",a:"zone.theragen", b:"zone.edge",     policy:"data-only"},
+    {route_id:"r.job-qq",  a:"zone.jobsynk",  b:"zone.qqstudios",policy:"elastic"},
+    {route_id:"r.qq-edge", a:"zone.qqstudios",b:"zone.edge",     policy:"elastic"},
+    {route_id:"r.thg-qq",  a:"zone.theragen", b:"zone.qqstudios",policy:"data-only"},
+  ];
+  const NETCFG={energy_low_threshold:22,max_agents:12};
+  const born=performance.now();
+  const now=()=>new Date().toISOString();
+
+  /* ---------- network channel ---------- */
+  let netSeq=0, netSubs=[];
+  function netEmit(type,data){netSeq++;const env={v:1,seq:netSeq,ts:now(),type,data,_chan:"network"};for(const s of netSubs)s(env);}
+  const netLog=html=>netEmit("log.appended",{html,ts:now()});
+  const alertDeb={};
+  function netAlert(kind,title,body,target,key){if(key){const n=performance.now();if(alertDeb[key]&&n-alertDeb[key]<8000)return;alertDeb[key]=n;}netEmit("alert.raised",{alert_id:"al_"+Math.random().toString(36).slice(2,7),kind,title,body,target,raised_at:now(),ttl_s:5});}
+
+  /* =================================================================
+     ZONE  — one roboport cell. Self-contained sim + own firehose.
+     ================================================================= */
+  function createZone(zc){
+    let seq=0, subs=[];
+    const stations=new Map(), agents=new Map(), tasks=new Map();
+    let agentN=0, taskN=1000, completed=0;
+    const completions=[]; let autoTimer=1.0+Math.random();
+    const zalertDeb={};
+    STATION_CFG.forEach(c=>stations.set(c.station_id,{...c,worker_agent_id:null,drain:false,rev:0}));
+
+    function emit(type,data){seq++;const env={v:1,seq,ts:now(),type,data,_chan:"zone:"+zc.zone_id};for(const s of subs)s(env);}
+    const subscribe=cb=>{subs.push(cb);return()=>{subs=subs.filter(x=>x!==cb);};};
+    const hasWatchers=()=>subs.length>0;
+
+    const qdepth=sid=>[...tasks.values()].filter(t=>t.status==="queued"&&t.station_id===sid).length;
+    const agentDTO=a=>({agent_id:a.agent_id,zone_id:zc.zone_id,name:a.name,state:a.state,energy:+a.energy.toFixed(1),hold:a.hold,task_id:a.task_id,station_id:a.station_id,task_progress:+a.task_progress.toFixed(3),eta_s:a.eta_s,completed_total:a.completed_total,error:a.error,rev:a.rev,updated_at:now()});
+    const stationDTO=s=>({station_id:s.station_id,zone_id:zc.zone_id,name:s.name,order:s.order,state:s.drain?"draining":(s.worker_agent_id?"busy":"idle"),worker_agent_id:s.worker_agent_id,queue_depth:qdepth(s.station_id),drain:s.drain,rev:s.rev});
+    const taskDTO=t=>({task_id:t.task_id,zone_id:zc.zone_id,station_id:t.station_id,status:t.status,priority:t.priority,work_estimate_s:t.work_estimate_s,assigned_agent_id:t.assigned_agent_id,origin_zone:t.origin_zone,cross_zone:!!t.cross_zone,enqueued_at:t.enqueued_at,started_at:t.started_at,finished_at:t.finished_at,result:t.result,error:t.error,rev:t.rev});
+    const pushAgent=(a,t="agent.updated")=>{a.rev++;emit(t,agentDTO(a));};
+    const pushStation=s=>{s.rev++;emit("station.updated",stationDTO(s));};
+    const pushTask=(t,type)=>{t.rev++;emit(type,taskDTO(t));};
+    const pushLog=html=>emit("log.appended",{html,ts:now()});
+    function pushAlert(kind,title,body,target,key){if(key){const n=performance.now();if(zalertDeb[key]&&n-zalertDeb[key]<8000)return;zalertDeb[key]=n;}emit("alert.raised",{alert_id:"al_"+Math.random().toString(36).slice(2,7),kind,title,body,target,raised_at:now(),ttl_s:5});}
+
+    function addAgent(){
+      if(agents.size>=NETCFG.max_agents)return null;
+      agentN++;const id=zc.name.replace(/[^a-z]/gi,"").slice(0,3)+"-"+String(agentN).padStart(2,"0");
+      const a={agent_id:id,name:id,state:"docked",energy:55+Math.random()*35,hold:false,task_id:null,station_id:null,task_progress:0,eta_s:null,completed_total:0,error:null,rev:0,_t:0,_work:0,_acc:0};
+      agents.set(id,a);emit("agent.added",agentDTO(a));pushLog(`<b style="color:#6c8cff">${id}</b> came online`);return a;
+    }
+    function enqueue(sid,opts){
+      const st=stations.get(sid);if(!st)return null;opts=opts||{};
+      taskN++;const id="t_"+zc.name.slice(0,2)+taskN.toString(36);
+      const t={task_id:id,station_id:sid,status:"queued",priority:opts.priority??100,work_estimate_s:2.2+Math.random()*2.8,assigned_agent_id:null,origin_zone:opts.origin_zone||zc.zone_id,cross_zone:!!opts.cross_zone,enqueued_at:now(),started_at:null,finished_at:null,result:null,error:null,rev:0};
+      tasks.set(id,t);pushTask(t,"task.enqueued");pushStation(st);return t;
+    }
+    function oldestQueuedFree(){let best=null;for(const t of tasks.values()){if(t.status!=="queued")continue;if(stations.get(t.station_id).worker_agent_id)continue;if(!best||t.priority<best.priority||(t.priority===best.priority&&t.enqueued_at<best.enqueued_at))best=t;}return best;}
+    function assign(a,t){const st=stations.get(t.station_id);t.status="assigned";t.assigned_agent_id=a.agent_id;pushTask(t,"task.assigned");st.worker_agent_id=a.agent_id;pushStation(st);a.task_id=t.task_id;a.station_id=t.station_id;a.state="dispatched";a.task_progress=0;a._t=1.0+Math.random()*0.8;a.eta_s=a._t;a._work=t.work_estimate_s;pushAgent(a);pushLog(`<b style="color:#36c6e0">${a.agent_id}</b> → <b style="color:${st.hue}">${st.name}</b> · ${t.task_id}`);}
+    function requeue(a){const t=tasks.get(a.task_id);if(t){t.status="queued";t.assigned_agent_id=null;t.started_at=null;pushTask(t,"task.updated");}const st=stations.get(a.station_id);if(st){st.worker_agent_id=null;pushStation(st);}a.task_id=null;a.station_id=null;a.task_progress=0;}
+    const sendHome=a=>{a.state="returning";a._t=0.9+Math.random()*0.6;a.eta_s=a._t;};
+
+    function tick(dt){
+      if(dt<=0)return;
+      autoTimer-=dt;
+      if(autoTimer<=0){autoTimer=2.6+Math.random()*3.0;const open=[...stations.values()].filter(s=>!s.drain);const qd=[...tasks.values()].filter(t=>t.status==="queued").length;if(qd<Math.max(2,Math.round(agents.size*1.1))&&open.length)enqueue(open[(Math.random()*open.length)|0].station_id);}
+      for(const a of agents.values()){
+        let changed=false;a._acc+=dt;
+        if(a.state==="docked"){const e0=a.energy;a.energy=Math.min(100,a.energy+dt*16);if(Math.abs(a.energy-e0)>0.01)changed=true;if(!a.hold&&a.energy>34){const t=oldestQueuedFree();if(t){assign(a,t);continue;}}}
+        else if(a.state==="dispatched"){a.energy-=dt*2.6;a._t-=dt;a.eta_s=Math.max(0,a._t);changed=true;if(a.energy<16){pushAlert("critical",a.agent_id+" low cell",`Aborted at ${Math.round(a.energy)}% — returning.`,{type:"agent",id:a.agent_id},"low-"+a.agent_id);requeue(a);sendHome(a);pushAgent(a);pushLog(`<b style="color:#ff5a52">${a.agent_id}</b> low cell — recalled`);continue;}if(a._t<=0){const st=stations.get(a.station_id),t=tasks.get(a.task_id);t.status="running";t.started_at=now();pushTask(t,"task.progress");a.state="working";a.task_progress=0;a.eta_s=null;st.state="busy";pushStation(st);pushAgent(a);continue;}}
+        else if(a.state==="working"){a.energy-=dt*3.4;a.task_progress=Math.min(1,a.task_progress+dt/a._work);changed=true;if(a.task_progress>=1){const st=stations.get(a.station_id),t=tasks.get(a.task_id);t.status="completed";t.finished_at=now();t.result={ok:true};pushTask(t,"task.completed");st.worker_agent_id=null;pushStation(st);a.completed_total++;completed++;completions.push(performance.now());a.task_id=null;a.task_progress=0;sendHome(a);pushAgent(a);pushLog(`<b style="color:#4fd672">${a.agent_id}</b> finished <b style="color:${st.hue}">${st.name}</b> · ${t.task_id} ✓`);continue;}}
+        else if(a.state==="returning"){a.energy-=dt*2.2;a._t-=dt;a.eta_s=Math.max(0,a._t);changed=true;if(a._t<=0){a.state="docked";a.station_id=null;a.eta_s=null;pushAgent(a);continue;}}
+        if(changed&&a._acc>=0.25){a._acc=0;pushAgent(a);}
+      }
+      while(completions.length&&completions[0]<performance.now()-60000)completions.shift();
+      if([...tasks.values()].filter(t=>t.status==="queued").length>=Math.max(6,Math.round(agents.size*2)))pushAlert("warning","Queue backing up","Add an agent or drill in.",{type:"port"},"queue-backup");
+    }
+
+    function snapshot(){const active=[...agents.values()].filter(a=>a.state!=="docked").length;return{config:{zone_id:zc.zone_id,zone_name:zc.name,stations:STATION_CFG,energy_low_threshold:NETCFG.energy_low_threshold,max_agents:NETCFG.max_agents},agents:[...agents.values()].map(agentDTO),stations:[...stations.values()].map(stationDTO),tasks:[...tasks.values()].filter(t=>t.status!=="completed"&&t.status!=="cancelled").map(taskDTO),alerts:[],metrics:{tasks_per_min:completions.length,completed_total:completed,active_agents:active,total_agents:agents.size,queued:[...tasks.values()].filter(t=>t.status==="queued").length,uptime_s:Math.floor((performance.now()-born)/1000),ts:now()}};}
+    function emitSnapshot(){seq++;const env={v:1,seq,ts:now(),type:"snapshot",data:snapshot(),_chan:"zone:"+zc.zone_id};for(const s of subs)s(env);}
+
+    function rollup(){
+      const active=[...agents.values()].filter(a=>a.state!=="docked").length;
+      const queued=[...tasks.values()].filter(t=>t.status==="queued").length;
+      const low=[...agents.values()].some(a=>a.energy<NETCFG.energy_low_threshold&&a.state!=="docked");
+      const util=agents.size?Math.min(1,active/agents.size):0;
+      const n=Math.max(1,agents.size);let health="ok";if(low||queued>=n*3)health="critical";else if(queued>=n*1.5||util>0.96)health="warn";
+      return{zone_id:zc.zone_id,name:zc.name,color:zc.color,tag:zc.tag,policy:zc.policy,nx:zc.nx,ny:zc.ny,agents_total:agents.size,agents_active:active,agents_busy:[...agents.values()].filter(a=>a.state==="working"||a.state==="dispatched").length,queued,tasks_per_min:completions.length,utilization:+util.toFixed(2),health,rev:0};
+    }
+
+    function handleCommand(cmd){
+      const reject=r=>({command_id:cmd.command_id,status:"rejected",reason:r});
+      const ok=()=>({command_id:cmd.command_id,status:"accepted"});
+      const Tg=cmd.target||{};
+      try{switch(cmd.type){
+        case "agent.recall":{const a=agents.get(Tg.id);if(!a)return reject("unknown agent");if(a.state==="docked")return reject("already docked");if(a.task_id)requeue(a);else{const st=stations.get(a.station_id);if(st){st.worker_agent_id=null;pushStation(st);}a.station_id=null;}sendHome(a);pushAgent(a);pushLog(`<b style="color:#6c8cff">${a.agent_id}</b> recalled to hub`);return ok();}
+        case "agent.hold":{const a=agents.get(Tg.id);if(!a)return reject("unknown agent");a.hold=!!cmd.args.hold;pushAgent(a);pushLog(`<b style="color:#6c8cff">${a.agent_id}</b> ${a.hold?"held":"resumed"}`);return ok();}
+        case "agent.retire":{const a=agents.get(Tg.id);if(!a)return reject("unknown agent");if(a.task_id)requeue(a);else if(a.station_id){const st=stations.get(a.station_id);if(st){st.worker_agent_id=null;pushStation(st);}}agents.delete(a.agent_id);emit("agent.removed",{agent_id:a.agent_id,zone_id:zc.zone_id});pushLog(`<b style="color:#ff5a52">${a.agent_id}</b> retired`);return ok();}
+        case "fleet.spawn_agent":{if(!addAgent())return reject("fleet at capacity");return ok();}
+        case "task.enqueue":{const st=stations.get(Tg.id);if(!st)return reject("unknown station");const t=enqueue(Tg.id,{priority:cmd.args.priority});pushLog(`Operator queued <b style="color:${st.hue}">${st.name}</b> · ${t.task_id}`);return ok();}
+        case "station.prioritize":{const st=stations.get(Tg.id);if(!st)return reject("unknown station");let p=80;for(const t of tasks.values())if(t.status==="queued"&&t.station_id===Tg.id){t.priority=p--;pushTask(t,"task.updated");}pushLog(`<b style="color:${st.hue}">${st.name}</b> tasks prioritized`);return ok();}
+        case "station.drain":{const st=stations.get(Tg.id);if(!st)return reject("unknown station");st.drain=!!cmd.args.drain;pushStation(st);pushLog(`<b style="color:${st.hue}">${st.name}</b> intake ${st.drain?"drained":"reopened"}`);return ok();}
+        case "fleet.hold":{const h=!!cmd.args.hold;for(const a of agents.values()){a.hold=h;pushAgent(a);}pushLog(`Fleet ${h?"held":"resumed"}`);return ok();}
+        case "fleet.recall":{for(const a of agents.values())if(a.state!=="docked"){if(a.task_id)requeue(a);else if(a.station_id){const st=stations.get(a.station_id);if(st){st.worker_agent_id=null;pushStation(st);}a.station_id=null;}sendHome(a);pushAgent(a);}pushLog(`<b style="color:#6c8cff">All agents</b> recalled`);return ok();}
+        case "queue.clear":{for(const t of tasks.values())if(t.status==="queued"){t.status="cancelled";pushTask(t,"task.cancelled");}[...stations.values()].forEach(pushStation);pushLog("Queue cleared by operator");return ok();}
+        default:return reject("unknown command "+cmd.type);
+      }}catch(e){return reject("error: "+e.message);}
+    }
+
+    /* a cross-zone task arriving on a route lands as a prioritised queued task */
+    function receiveHandoff(fromName,sid){const st=stations.get(sid)||STATION_CFG[2];const t=enqueue(st.station_id||sid,{priority:60,cross_zone:true,origin_zone:fromName});pushLog(`⇢ inbound from <b>${fromName}</b> · ${t.task_id}`);return t;}
+
+    for(let i=0;i<zc.agents;i++)addAgent();
+    for(let i=0;i<3;i++)enqueue(STATION_CFG[(Math.random()*STATION_CFG.length)|0].station_id);
+    pushLog(`<b style="color:#4fd672">${zc.name} zone online</b> · ${STATION_CFG.length} stations`);
+
+    return {cfg:zc,subscribe,hasWatchers,emitSnapshot,handleCommand,tick,rollup,receiveHandoff,stationIds:STATION_CFG.map(s=>s.station_id)};
+  }
+
+  const zones=new Map();
+  ZONE_CFG.forEach(zc=>zones.set(zc.zone_id,createZone(zc)));
+  const routes=ROUTE_CFG.map(r=>({...r,tasks_total:0,_stamps:[],in_transit:0,rev:0}));
+  const transit=[];                 // server-side in-flight cross-zone tasks
+  let handoffTimer=2.5, rollupTimer=0, lastHealth={};
+  let xzN=5000;
+
+  function routeFlow(r){while(r._stamps.length&&r._stamps[0]<performance.now()-60000)r._stamps.shift();return r._stamps.length;}
+  function startHandoff(r,forward){
+    const from=forward?r.a:r.b, to=forward?r.b:r.a;
+    const fz=zones.get(from), tz=zones.get(to);
+    xzN++;const tid="x_"+xzN.toString(36);
+    const dur=2.0+Math.random()*1.6;
+    transit.push({task_id:tid,route_id:r.route_id,from_zone:from,to_zone:to,dest_station:tz.stationIds[(Math.random()*tz.stationIds.length)|0],t:0,dur});
+    r.in_transit++;
+    netEmit("task.handoff",{task_id:tid,route_id:r.route_id,from_zone:from,to_zone:to,from_name:fz.cfg.name,to_name:tz.cfg.name,pipeline:[from,to],hop_index:0,status:"in_transit",eta_s:dur,policy:r.policy,ts:now()});
+    netLog(`⇄ handoff <b style="color:${fz.cfg.color}">${fz.cfg.name}</b> → <b style="color:${tz.cfg.color}">${tz.cfg.name}</b> · ${tid}`);
+  }
+
+  function tick(dt){
+    if(dt<=0)return;
+    for(const z of zones.values())z.tick(dt);
+
+    /* spawn cross-zone handoffs, weighted toward busier source zones */
+    handoffTimer-=dt;
+    if(handoffTimer<=0){handoffTimer=3.4+Math.random()*3.4;
+      const r=routes[(Math.random()*routes.length)|0];
+      const ra=zones.get(r.a).rollup(), rb=zones.get(r.b).rollup();
+      const spare=z=>z.agents_total-z.agents_active-z.queued*0.5;   // capacity headroom
+      const forward=spare(rb)>=spare(ra);                            // send toward the freer end
+      const dest=forward?rb:ra;
+      if(dest.health!=="critical"&&dest.queued<dest.agents_total*2)startHandoff(r,forward);
+    }
+    /* advance in-flight handoffs; on arrival, enqueue at destination zone */
+    for(let i=transit.length-1;i>=0;i--){const x=transit[i];x.t+=dt/x.dur;
+      if(x.t>=1){const tz=zones.get(x.to_zone),fz=zones.get(x.from_zone),r=routes.find(rr=>rr.route_id===x.route_id);
+        tz.receiveHandoff(fz.cfg.name,x.dest_station);
+        if(r){r.tasks_total++;r._stamps.push(performance.now());r.in_transit=Math.max(0,r.in_transit-1);r.rev++;netEmit("route.updated",{route_id:r.route_id,from_zone:r.a,to_zone:r.b,tasks_per_min:routeFlow(r),in_transit:r.in_transit,policy:r.policy,rev:r.rev});}
+        netEmit("task.handoff",{task_id:x.task_id,route_id:x.route_id,from_zone:x.from_zone,to_zone:x.to_zone,from_name:fz.cfg.name,to_name:tz.cfg.name,status:"arrived",ts:now()});
+        transit.splice(i,1);
+      }
+    }
+
+    /* periodic rollups + network metrics + health-change alerts */
+    rollupTimer-=dt;
+    if(rollupTimer<=0){rollupTimer=1.0;
+      let rate=0,agentsTot=0,risk=0;
+      for(const z of zones.values()){const ru=z.rollup();rate+=ru.tasks_per_min;agentsTot+=ru.agents_total;if(ru.health!=="ok")risk++;
+        netEmit("zone.updated",ru);
+        if(lastHealth[ru.zone_id]&&lastHealth[ru.zone_id]!=="critical"&&ru.health==="critical")netAlert("critical",ru.name+" critical",`Zone ${ru.name} is at risk — ${ru.queued} queued.`,{type:"zone",id:ru.zone_id},"zc-"+ru.zone_id);
+        lastHealth[ru.zone_id]=ru.health;
+      }
+      netEmit("metrics.tick",{tasks_per_min:rate,total_agents:agentsTot,zones:zones.size,cross_zone_in_flight:transit.length,at_risk:risk,uptime_s:Math.floor((performance.now()-born)/1000),ts:now()});
+    }
+  }
+
+  function networkSnapshot(){const zr=[...zones.values()].map(z=>z.rollup());const rate=zr.reduce((a,z)=>a+z.tasks_per_min,0),agentsTot=zr.reduce((a,z)=>a+z.agents_total,0),risk=zr.filter(z=>z.health!=="ok").length;
+    return{config:{network:"Theragen control plane",max_agents:NETCFG.max_agents},zones:zr,routes:routes.map(r=>({route_id:r.route_id,from_zone:r.a,to_zone:r.b,tasks_per_min:routeFlow(r),in_transit:r.in_transit,policy:r.policy,rev:r.rev})),transit:transit.map(x=>({task_id:x.task_id,route_id:x.route_id,from_zone:x.from_zone,to_zone:x.to_zone,t:x.t})),metrics:{tasks_per_min:rate,total_agents:agentsTot,zones:zones.size,cross_zone_in_flight:transit.length,at_risk:risk,uptime_s:Math.floor((performance.now()-born)/1000),ts:now()}};}
+  function emitNetworkSnapshot(){netSeq++;const env={v:1,seq:netSeq,ts:now(),type:"snapshot",data:networkSnapshot(),_chan:"network"};for(const s of netSubs)s(env);}
+
+  function handleCommand(cmd){
+    if(cmd.type==="network.inject_handoff"){const r=routes.find(rr=>rr.route_id===(cmd.target&&cmd.target.id));if(!r)return{command_id:cmd.command_id,status:"rejected",reason:"unknown route"};startHandoff(r,Math.random()<0.5);return{command_id:cmd.command_id,status:"accepted"};}
+    const zid=cmd.scope&&cmd.scope.startsWith("zone:")?cmd.scope.slice(5):cmd.target&&cmd.target.zone_id;
+    const z=zones.get(zid);if(!z)return{command_id:cmd.command_id,status:"rejected",reason:"no zone scope"};
+    return z.handleCommand(cmd);
+  }
+
+  pushBoot();
+  function pushBoot(){netLog(`<b style="color:#4fd672">Control plane online</b> · ${zones.size} zones · ${routes.length} routes`);}
+
+  return {
+    subscribeNetwork:cb=>{netSubs.push(cb);return()=>{netSubs=netSubs.filter(x=>x!==cb);};},
+    subscribeZone:(zid,cb)=>{const z=zones.get(zid);return z?z.subscribe(cb):()=>{};},
+    getNetworkSnapshot:emitNetworkSnapshot,
+    getZoneSnapshot:zid=>{const z=zones.get(zid);if(z)z.emitSnapshot();},
+    handleCommand, tick, NETCFG, routeMeta:()=>routes.map(r=>({route_id:r.route_id,a:r.a,b:r.b,policy:r.policy})),
+    get netSeq(){return netSeq;}
+  };
+}
+
+/* =====================================================================
+   PART B — FEED CLIENT  (the swappable transport seam, now scoped)
+   setScope('network') or setScope('zone:<id>') flips channels. Going
+   LIVE means replacing the body below with a WebSocket whose URL carries
+   the scope (?scope=zone:theragen) — PART C does not change:
+     ws=new WebSocket(`${WS}/api/feed?scope=${scope}&token=${TOKEN}`)
+     ws.onmessage=e=>route(JSON.parse(e.data))
+   ===================================================================== */
+function createFeed(backend){
+  let scope="network", lastSeq=0, detach=null, onEnvelope=()=>{};
+  function route(env){
+    if(env.type!=="snapshot"&&lastSeq&&env.seq!==lastSeq+1){requestSnapshot();return;}  // gap → resync
+    lastSeq=env.seq;onEnvelope(env);
+  }
+  function requestSnapshot(){scope==="network"?backend.getNetworkSnapshot():backend.getZoneSnapshot(scope.slice(5));}
+  function bind(){
+    if(detach)detach();
+    lastSeq=0;
+    detach=scope==="network"?backend.subscribeNetwork(route):backend.subscribeZone(scope.slice(5),route);
+    requestSnapshot();
+  }
+  return {
+    setScope(s){scope=s;bind();},
+    get scope(){return scope;},
+    onEnvelope(cb){onEnvelope=cb;},
+    tick(dt){backend.tick(dt);},
+    command(type,target,args={}){return backend.handleCommand({command_id:"c_"+Math.random().toString(36).slice(2),type,target,args,scope,issued_by:"operator",ts:new Date().toISOString()});},
+    routeMeta(){return backend.routeMeta();},
+    get seq(){return lastSeq;}
+  };
+}
+
+/* =====================================================================
+   PART C — CLIENT  (render + interaction; PURE FEED CONSUMER)
+   Holds NO logical truth. Projects envelopes into models, animates
+   positions toward logical state, and issues commands via feed.command.
+   Network view = zones/routes; drill = the existing radial zone surface.
+   ===================================================================== */
+(function(){
+  const reduceMotion=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const canvas=document.getElementById("c"),ctx=canvas.getContext("2d");
+  const T={floor:"#0e1418",steel:"#8a9da8",steelDim:"#5f717c",bright:"#e8f1f5",dispatch:"#36c6e0",work:"#f2b134",return:"#4fd672",dock:"#6c8cff",alert:"#ff5a52"};
+  const SCOL={docked:T.dock,dispatched:T.dispatch,working:T.work,returning:T.return,offline:T.steelDim};
+  const HEALTHC={ok:T.return,warn:T.work,critical:T.alert};
+  let DPR=Math.min(window.devicePixelRatio||1,2),W=0,H=0,cx=0,cy=0,coverR=0;
+
+  let view={mode:"network"};                 // {mode:'network'} | {mode:'zone',zoneId}
+  let running=true, simSpeed=1, dockCounter=0;
+  let selected=null, hovered=null;
+  const mouse={x:-999,y:-999};
+
+  /* network model (projection of network channel) */
+  const NM={zones:new Map(),routes:new Map(),metrics:{tasks_per_min:0,total_agents:0,zones:0,cross_zone_in_flight:0,at_risk:0,uptime_s:0},transit:[]};
+  /* zone model (projection of a zone firehose) — identical to v2 surface */
+  const M={config:null,agents:new Map(),stations:new Map(),tasks:new Map(),metrics:{tasks_per_min:0,completed_total:0,active_agents:0,total_agents:0,queued:0,uptime_s:0}};
+
+  const sparks=[],zoneLog=[],netLogE=[],toasts=[],wireLines=[];
+  let logDirty=true, netLogDirty=true, wireDirty=true;
+
+  /* ---------- layout ---------- */
+  function layout(){const r=canvas.getBoundingClientRect();W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);ctx.setTransform(DPR,0,0,DPR,0,0);cx=W/2;cy=H/2;coverR=Math.min(W,H)*0.42;positionZones();positionStations();}
+  function zonePad(){return Math.min(W,H)*0.18;}
+  function zonePos(z){const px=zonePad();return{x:px+z.nx*(W-2*px),y:px+z.ny*(H-2*px)};}
+  function positionZones(){for(const z of NM.zones.values()){const p=zonePos(z);z.x=p.x;z.y=p.y;}}
+  function positionStations(){if(!M.config)return;const r=coverR*0.82,n=M.config.stations.length;for(const c of M.config.stations){const s=M.stations.get(c.station_id);if(!s)continue;const ang=(-Math.PI/2)+(c.order/n)*Math.PI*2,jit=(Math.sin(c.order*12.9)*0.5+0.5)*0.16+0.84;s.x=cx+Math.cos(ang)*r*jit;s.y=cy+Math.sin(ang)*r*jit;}}
+  function dockSlot(i){const ring=46,n=12,ang=(i%n)/n*Math.PI*2+performance.now()*0.00002;return{x:cx+Math.cos(ang)*ring,y:cy+Math.sin(ang)*ring};}
+
+  /* =====================================================================
+     NETWORK INGESTION
+     ===================================================================== */
+  function hydrateNetwork(d){
+    NM.zones.clear();
+    for(const z of d.zones)addZoneViz(z);
+    NM.routes.clear();
+    for(const r of d.routes)NM.routes.set(r.route_id,{...r});
+    NM.metrics=d.metrics;
+    NM.transit.length=0;
+    positionZones();
+    populateRouteSelect();
+  }
+  function addZoneViz(z){const existing=NM.zones.get(z.zone_id);const v=existing||{ringRot:Math.random()*6.28,orbit:[],_orbN:-1,x:0,y:0,pulse:0};Object.assign(v,z);buildOrbit(v);NM.zones.set(z.zone_id,v);const p=zonePos(v);v.x=p.x;v.y=p.y;return v;}
+  function buildOrbit(v){if(v._orbN===v.agents_total)return;v._orbN=v.agents_total;v.orbit=[];for(let i=0;i<v.agents_total;i++)v.orbit.push({ang:(i/v.agents_total)*6.28,r:0.46+((i*0.37)%1)*0.16,spd:0.5+((i*0.21)%1)*0.5});}
+  function applyZone(z){const v=NM.zones.get(z.zone_id);if(!v){addZoneViz(z);return;}const prevH=v.health;Object.assign(v,z);buildOrbit(v);if(z.health==="critical"&&prevH!=="critical")v.pulse=1;}
+  function applyRoute(r){const ex=NM.routes.get(r.route_id);if(ex)Object.assign(ex,r);else NM.routes.set(r.route_id,{...r});}
+  function applyHandoff(h){
+    if(h.status==="in_transit"){const r=NM.routes.get(h.route_id);if(r)r.in_transit=(r.in_transit||0)+1;NM.transit.push({task_id:h.task_id,route_id:h.route_id,from_zone:h.from_zone,to_zone:h.to_zone,t:0,dur:h.eta_s||2.4,color:(NM.zones.get(h.from_zone)||{}).color||T.dispatch});}
+    else if(h.status==="arrived"){const r=NM.routes.get(h.route_id);if(r)r.in_transit=Math.max(0,(r.in_transit||0)-1);}
+  }
+  function routeNet(env){
+    pushWire(env);
+    switch(env.type){
+      case "snapshot":hydrateNetwork(env.data);break;
+      case "zone.updated":applyZone(env.data);break;
+      case "route.updated":applyRoute(env.data);break;
+      case "task.handoff":applyHandoff(env.data);break;
+      case "metrics.tick":NM.metrics=env.data;break;
+      case "alert.raised":pushToast(env.data);break;
+      case "log.appended":netLogE.unshift({t:hhmm(env.data.ts),html:env.data.html});if(netLogE.length>60)netLogE.pop();netLogDirty=true;break;
+    }
+  }
+
+  /* =====================================================================
+     ZONE INGESTION  (verbatim v2 consumer)
+     ===================================================================== */
+  function hydrateZone(d){
+    M.config=d.config;M.stations.clear();
+    for(const c of d.config.stations)M.stations.set(c.station_id,{...c,worker_agent_id:null,drain:false,queue_depth:0,rev:-1,x:0,y:0,pulse:0});
+    for(const s of d.stations){const st=M.stations.get(s.station_id);Object.assign(st,s);}
+    positionStations();
+    M.agents.clear();for(const a of d.agents)addClientAgent(a);
+    M.tasks.clear();for(const t of d.tasks)M.tasks.set(t.task_id,t);
+    M.metrics=d.metrics;populateInjector();
+  }
+  function addClientAgent(dto){const slot=dockSlot(dockCounter++);const a={...dto,x:slot.x,y:slot.y,_prev:dto.state,trail:[],bob:Math.random()*6.28,spin:Math.random()*6.28,_slot:dockCounter%12,travelDur:0,travelT:0,p0:null,p1:null,p2:null,carry:null,_resultPending:false,tag:""};
+    /* agents already in flight at hydrate time (drilling in mid-run) need a valid motion path */
+    if(dto.state==="dispatched"||dto.state==="returning"){const st=M.stations.get(dto.station_id)||{x:cx,y:cy};const from=dto.state==="returning"?st:{x:cx,y:cy},to=dto.state==="returning"?{x:cx,y:cy}:st;a.x=from.x;a.y=from.y;a.p0={x:from.x,y:from.y};const p=path(a.p0,to,Math.random()<.5?1:-1);a.p1=p[1];a.p2=p[2];a.travelDur=dto.eta_s||1.2;a.travelT=0;}
+    else if(dto.state==="working"){const st=M.stations.get(dto.station_id);if(st){a.x=st.x;a.y=st.y-16;}}
+    M.agents.set(a.agent_id,a);return a;}
+  function applyAgent(dto){let a=M.agents.get(dto.agent_id);if(!a){addClientAgent(dto);return;}if(dto.rev<=a.rev)return;const prev=a._prev;for(const k in dto)a[k]=dto[k];if(dto.state!==prev)transition(a,prev,dto.state);a._prev=dto.state;}
+  function transition(a,prev,next){
+    if(next==="dispatched"){const st=M.stations.get(a.station_id);a.p0={x:a.x,y:a.y};const p=path(a.p0,st,Math.random()<.5?1:-1);a.p1=p[1];a.p2=p[2];a.travelDur=a.eta_s||1.2;a.travelT=0;a.carry=null;}
+    else if(next==="working"){a.carry=null;}
+    else if(next==="returning"){a.p0={x:a.x,y:a.y};const p=path(a.p0,{x:cx,y:cy},Math.random()<.5?1:-1);a.p1=p[1];a.p2=p[2];a.travelDur=a.eta_s||1.0;a.travelT=0;a.carry=a._resultPending?{hue:(M.stations.get(a.station_id)||{}).hue||T.return}:null;a._resultPending=false;}
+    else if(next==="docked"){a.carry=null;a._slot=dockCounter++%12;}
+  }
+  function applyTask(dto,type){if(type==="task.completed"){const ag=M.agents.get(dto.assigned_agent_id);if(ag)ag._resultPending=true;M.tasks.delete(dto.task_id);return;}if(type==="task.cancelled"){M.tasks.delete(dto.task_id);return;}M.tasks.set(dto.task_id,dto);}
+  function routeZone(env){
+    pushWire(env);
+    switch(env.type){
+      case "snapshot":hydrateZone(env.data);break;
+      case "agent.added":case "agent.updated":applyAgent(env.data);break;
+      case "agent.removed":{const a=M.agents.get(env.data.agent_id);if(a){M.agents.delete(env.data.agent_id);if(selected&&selected.type==="agent"&&selected.id===env.data.agent_id)clearSelection();}break;}
+      case "task.enqueued":case "task.assigned":case "task.progress":case "task.updated":case "task.completed":case "task.cancelled":case "task.failed":applyTask(env.data,env.type);break;
+      case "station.updated":{const s=M.stations.get(env.data.station_id);if(s&&env.data.rev>s.rev)Object.assign(s,env.data);break;}
+      case "alert.raised":pushToast(env.data);break;
+      case "metrics.tick":M.metrics=env.data;break;
+      case "log.appended":zoneLog.unshift({t:hhmm(env.data.ts),html:env.data.html});if(zoneLog.length>60)zoneLog.pop();logDirty=true;break;
+    }
+  }
+  const hhmm=iso=>{const d=new Date(iso);return String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");};
+
+  /* ---------- geometry ---------- */
+  function path(from,to,dir){const mx=(from.x+to.x)/2,my=(from.y+to.y)/2,dx=to.x-from.x,dy=to.y-from.y,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len,c=len*0.28*dir;return[{x:from.x,y:from.y},{x:mx+nx*c,y:my+ny*c},{x:to.x,y:to.y}];}
+  function bez(p0,p1,p2,t){const u=1-t;return{x:u*u*p0.x+2*u*t*p1.x+t*t*p2.x,y:u*u*p0.y+2*u*t*p1.y+t*t*p2.y};}
+  const easeIO=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+  function routeMid(r){const a=NM.zones.get(r.from_zone),b=NM.zones.get(r.to_zone);if(!a||!b)return null;const mx=(a.x+b.x)/2,my=(a.y+b.y)/2,dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1;const nx=-dy/len,ny=dx/len,c=len*0.12;return{ax:a.x,ay:a.y,bx:b.x,by:b.y,cx:mx+nx*c,cy:my+ny*c};}
+  function routePoint(r,t){const m=routeMid(r);if(!m)return{x:cx,y:cy};return bez({x:m.ax,y:m.ay},{x:m.cx,y:m.cy},{x:m.bx,y:m.by},t);}
+
+  /* =====================================================================
+     ANIMATION
+     ===================================================================== */
+  function animateNetwork(sdt){
+    for(const z of NM.zones.values()){z.ringRot+=sdt*0.18;z.pulse=Math.max(0,z.pulse-sdt*1.2);for(const o of z.orbit)o.ang+=sdt*o.spd*0.5;}
+    for(let i=NM.transit.length-1;i>=0;i--){const x=NM.transit[i];x.t+=sdt/Math.max(0.2,x.dur);if(x.t>=1)NM.transit.splice(i,1);}
+  }
+  function animateZone(sdt){
+    for(const st of M.stations.values())st.pulse=Math.max(0,st.pulse-sdt*2);
+    for(const a of M.agents.values()){
+      a.bob+=sdt*2.2;a.spin+=sdt*(a.state==="docked"?6:16);
+      if(a.state==="docked"){const s=dockSlot(a._slot);a.x+=(s.x-a.x)*Math.min(1,sdt*4);a.y+=(s.y-a.y)*Math.min(1,sdt*4);}
+      else if(a.state==="dispatched"){a.travelT+=sdt;if(a.p0){const tt=Math.min(1,a.travelT/Math.max(0.0001,a.travelDur));const p=bez(a.p0,a.p1,a.p2,easeIO(tt));a.x=p.x;a.y=p.y;}}
+      else if(a.state==="working"){const st=M.stations.get(a.station_id);if(st){a.x=st.x+Math.sin(a.bob)*2;a.y=st.y-16+Math.cos(a.bob*1.3)*2;st.pulse=Math.max(st.pulse,0.6+0.4*Math.sin(performance.now()*0.01));if(Math.random()<sdt*22)sparks.push({x:st.x+(Math.random()-.5)*22,y:st.y+(Math.random()-.5)*22,vx:(Math.random()-.5)*30,vy:-20-Math.random()*30,life:1,hue:st.hue});}}
+      else if(a.state==="returning"){a.travelT+=sdt;if(a.p0){const tt=Math.min(1,a.travelT/Math.max(0.0001,a.travelDur));const p=bez(a.p0,a.p1,a.p2,easeIO(tt));a.x=p.x;a.y=p.y;}}
+      if(a.state!=="docked"){a.trail.push({x:a.x,y:a.y});if(a.trail.length>16)a.trail.shift();}else if(a.trail.length)a.trail.shift();
+      a.tag=tagFor(a);
+    }
+    for(let i=sparks.length-1;i>=0;i--){const s=sparks[i];s.x+=s.vx*sdt;s.y+=s.vy*sdt;s.vy+=80*sdt;s.life-=sdt*1.6;if(s.life<=0)sparks.splice(i,1);}
+  }
+  function tagFor(a){const low=a.energy<22&&a.state!=="docked";if(a.state==="docked")return a.hold?"⏸ hold":(a.energy<99?"↺ "+Math.round(a.energy)+"%":"● ready");if(a.state==="dispatched")return "→ "+(M.stations.get(a.station_id)||{}).name;if(a.state==="working")return "⚙ "+Math.round(a.task_progress*100)+"%";if(a.state==="returning")return low?"⚠ low cell":(a.carry?"✓ result":"↩ recalled");return "";}
+  function stateColor(a){return(a.energy<22&&a.state!=="docked")?T.alert:(SCOL[a.state]||T.dock);}
+
+  /* =====================================================================
+     RENDER — shared helpers
+     ===================================================================== */
+  function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+  function selectionRing(x,y,r,col){const t=performance.now()*0.002;ctx.save();ctx.translate(x,y);ctx.rotate(reduceMotion?0:t);ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.setLineDash([4,5]);ctx.globalAlpha=0.95;ctx.beginPath();ctx.arc(0,0,r,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+  function drawGrid(){ctx.fillStyle=T.floor;ctx.fillRect(0,0,W,H);ctx.strokeStyle="rgba(22,32,40,.32)";ctx.lineWidth=1;const g=42;ctx.beginPath();for(let x=cx%g;x<W;x+=g){ctx.moveTo(x,0);ctx.lineTo(x,H);}for(let y=cy%g;y<H;y+=g){ctx.moveTo(0,y);ctx.lineTo(W,y);}ctx.stroke();const gr=ctx.createRadialGradient(cx,cy,coverR*0.4,cx,cy,Math.max(W,H)*0.78);gr.addColorStop(0,"rgba(0,0,0,0)");gr.addColorStop(1,"rgba(0,0,0,0.5)");ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);}
+
+  /* =====================================================================
+     RENDER — NETWORK VIEW
+     ===================================================================== */
+  const hex=(c,a)=>{const h=c.replace("#","");const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);return`rgba(${r},${g},${b},${a})`;};
+  function isSelZone(id){return selected&&selected.type==="zone"&&selected.id===id;}
+  function isSelRoute(id){return selected&&selected.type==="route"&&selected.id===id;}
+
+  function drawRoutes(){
+    const t=performance.now()*0.001;
+    for(const r of NM.routes.values()){
+      const m=routeMid(r);if(!m)continue;
+      const za=NM.zones.get(r.from_zone),zb=NM.zones.get(r.to_zone);
+      const sel=isSelRoute(r.route_id),hov=hovered&&hovered.type==="route"&&hovered.id===r.route_id;
+      const flow=r.tasks_per_min||0, active=(r.in_transit||0)>0||flow>0;
+      const baseA=sel||hov?0.5:(active?0.28:0.14);
+      // base curve
+      ctx.beginPath();ctx.moveTo(m.ax,m.ay);ctx.quadraticCurveTo(m.cx,m.cy,m.bx,m.by);
+      ctx.strokeStyle=hex(za.color,baseA);ctx.lineWidth=sel||hov?2.4:1.6;ctx.stroke();
+      // animated flow dashes
+      if(!reduceMotion&&active){ctx.save();ctx.setLineDash([4,10]);ctx.lineDashOffset=-(t*22)%14;ctx.beginPath();ctx.moveTo(m.ax,m.ay);ctx.quadraticCurveTo(m.cx,m.cy,m.bx,m.by);ctx.strokeStyle=hex(zb.color,baseA+0.25);ctx.lineWidth=1.6;ctx.stroke();ctx.restore();}
+      // midpoint policy glyph
+      if(r.policy==="data-only"){ctx.save();ctx.translate(m.cx,m.cy);ctx.fillStyle="rgba(11,16,21,0.85)";ctx.beginPath();ctx.arc(0,0,8,0,6.283);ctx.fill();ctx.strokeStyle=hex(T.steelDim,0.9);ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(0,0,5,0,6.283);ctx.stroke();ctx.beginPath();ctx.moveTo(-3.6,-3.6);ctx.lineTo(3.6,3.6);ctx.stroke();ctx.restore();}
+      if(sel||hov){ctx.font="500 9px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="bottom";ctx.fillStyle=T.bright;ctx.fillText(`${flow}/min · ${r.in_transit||0} in transit`,m.cx,m.cy-12);}
+    }
+  }
+  function drawTransit(){
+    for(const x of NM.transit){const p=routePoint(x,easeIO(Math.min(1,x.t)));const col=x.color||T.dispatch;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(performance.now()*0.004);ctx.shadowColor=col;ctx.shadowBlur=12;ctx.fillStyle=col;roundRect(ctx,-4,-4,8,8,1.6);ctx.fill();ctx.restore();
+    }
+  }
+  function drawZoneNode(z){
+    const sel=isSelZone(z.zone_id),hov=hovered&&hovered.type==="zone"&&hovered.id===z.zone_id;
+    const dim=selected&&!sel?0.45:1;
+    const hcol=HEALTHC[z.health]||T.return;
+    const R=30+Math.min(28,z.agents_total*4);          // coverage radius ∝ fleet
+    ctx.globalAlpha=dim;
+    // coverage ring
+    ctx.save();ctx.translate(z.x,z.y);ctx.rotate(reduceMotion?0:z.ringRot);
+    ctx.strokeStyle=hex(z.color,sel||hov?0.5:0.26);ctx.lineWidth=1.4;ctx.setLineDash([4,9]);ctx.beginPath();ctx.arc(0,0,R,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+    // faint fill
+    ctx.fillStyle=hex(z.color,0.05);ctx.beginPath();ctx.arc(z.x,z.y,R*0.74,0,6.283);ctx.fill();
+    // health pulse
+    if(z.pulse>0){ctx.save();ctx.globalAlpha=dim*z.pulse*0.5;ctx.fillStyle=hcol;ctx.shadowColor=hcol;ctx.shadowBlur=30;ctx.beginPath();ctx.arc(z.x,z.y,R+8,0,6.283);ctx.fill();ctx.restore();}
+    // utilization gauge ring
+    const gr=R*0.62;ctx.beginPath();ctx.arc(z.x,z.y,gr,0,6.283);ctx.strokeStyle="rgba(255,255,255,.07)";ctx.lineWidth=3;ctx.stroke();
+    ctx.beginPath();ctx.arc(z.x,z.y,gr,-Math.PI/2,-Math.PI/2+(z.utilization||0)*6.283);ctx.strokeStyle=hcol;ctx.lineWidth=3;ctx.lineCap="round";ctx.stroke();ctx.lineCap="butt";
+    // orbiting agent dots (aggregate, not individually interactive)
+    const busyN=z.agents_busy||0;let bi=0;
+    z.orbit.forEach((o,i)=>{const isBusy=i<busyN;const ox=z.x+Math.cos(o.ang)*gr*(o.r/0.55),oy=z.y+Math.sin(o.ang)*gr*(o.r/0.55);ctx.beginPath();ctx.arc(ox,oy,isBusy?2.6:2,0,6.283);if(isBusy){ctx.fillStyle=z.color;ctx.shadowColor=z.color;ctx.shadowBlur=7;}else{ctx.fillStyle=hex(z.color,0.35);ctx.shadowBlur=0;}ctx.fill();ctx.shadowBlur=0;});
+    // central hub glyph
+    const tt=performance.now()*0.001;
+    ctx.save();ctx.translate(z.x,z.y);
+    const g=ctx.createRadialGradient(0,0,2,0,0,24);g.addColorStop(0,hex(z.color,0.5));g.addColorStop(1,hex(z.color,0));ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,24,0,6.283);ctx.fill();
+    for(let ring=0;ring<2;ring++){const rr=15-ring*6;ctx.beginPath();for(let i=0;i<6;i++){const ang=i*Math.PI/3+(ring?tt*0.4:-tt*0.3),px=Math.cos(ang)*rr,py=Math.sin(ang)*rr;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();ctx.fillStyle=ring?"#1b2740":"#13202e";ctx.fill();ctx.strokeStyle=hex(z.color,0.6);ctx.lineWidth=1.4;ctx.stroke();}
+    ctx.fillStyle=z.color;ctx.shadowColor=z.color;ctx.shadowBlur=14;ctx.beginPath();ctx.arc(0,0,4+Math.sin(tt*3)*0.8,0,6.283);ctx.fill();ctx.restore();
+    // queue badge
+    if(z.queued>0){ctx.save();ctx.translate(z.x+14,z.y-14);ctx.fillStyle="#0b1015";ctx.strokeStyle=z.queued>=11?T.alert:z.color;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,9,0,6.283);ctx.fill();ctx.stroke();ctx.fillStyle=z.queued>=11?T.alert:z.color;ctx.font="700 9px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(z.queued,0,0.5);ctx.restore();}
+    // labels
+    ctx.textAlign="center";ctx.textBaseline="top";
+    ctx.font="600 13px 'Space Grotesk',sans-serif";ctx.fillStyle=sel||hov?T.bright:"rgba(232,241,245,0.9)";ctx.fillText(z.name,z.x,z.y+R+8);
+    ctx.font="500 9px 'JetBrains Mono',monospace";ctx.fillStyle=hex(z.color,0.95);
+    const sub=(z.policy==="data-only"?"⊘ ":"")+z.agents_active+"/"+z.agents_total+" agents · "+z.tasks_per_min+"/min";
+    ctx.fillText(sub,z.x,z.y+R+24);
+    if(z.health!=="ok"){ctx.font="500 8px 'JetBrains Mono',monospace";ctx.fillStyle=hcol;ctx.fillText(z.health==="critical"?"▲ critical":"▲ warn",z.x,z.y+R+37);}
+    if(sel)selectionRing(z.x,z.y,R+8,z.color);
+    if(hov&&!sel){ctx.strokeStyle=hex(z.color,0.5);ctx.lineWidth=1;ctx.beginPath();ctx.arc(z.x,z.y,R+5,0,6.283);ctx.stroke();}
+    ctx.globalAlpha=1;
+  }
+  function renderNetwork(){drawGrid();drawRoutes();drawTransit();for(const z of NM.zones.values())drawZoneNode(z);}
+
+  /* =====================================================================
+     RENDER — ZONE VIEW  (verbatim v2 radial surface)
+     ===================================================================== */
+  const dimWhenSel=()=>selected?0.4:1;
+  function isSel(o){return selected&&((o.type==="agent"&&selected.type==="agent"&&selected.id===o.id)||(o.type==="station"&&selected.type==="station"&&selected.id===o.id)||(o.type==="port"&&selected.type==="port"));}
+  function drawCoverage(){const t=performance.now()*0.0004;ctx.save();ctx.translate(cx,cy);ctx.rotate(reduceMotion?0:t);ctx.strokeStyle="rgba(108,140,255,0.2)";ctx.lineWidth=1.5;ctx.setLineDash([6,12]);ctx.beginPath();ctx.arc(0,0,coverR,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.restore();ctx.strokeStyle="rgba(108,140,255,0.08)";ctx.beginPath();ctx.arc(cx,cy,coverR*0.55,0,6.283);ctx.stroke();}
+  function drawLinks(){for(const a of M.agents.values()){if(a.station_id&&(a.state==="dispatched"||a.state==="working")){const st=M.stations.get(a.station_id);if(!st)continue;const hot=isSel({type:"agent",id:a.agent_id})||isSel({type:"station",id:a.station_id});ctx.strokeStyle=hot?"rgba(54,198,224,0.4)":"rgba(54,198,224,0.10)";ctx.lineWidth=hot?1.5:1;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(st.x,st.y);ctx.stroke();}}}
+  function drawStations(){
+    for(const st of M.stations.values()){
+      const sel=isSel({type:"station",id:st.station_id}),hov=hovered&&hovered.type==="station"&&hovered.id===st.station_id;
+      ctx.globalAlpha=sel||hov?1:dimWhenSel();const R=17;
+      if(st.pulse>0){ctx.save();ctx.globalAlpha=ctx.globalAlpha*st.pulse*0.5;ctx.fillStyle=st.hue;ctx.shadowColor=st.hue;ctx.shadowBlur=24;ctx.beginPath();ctx.arc(st.x,st.y,R+6,0,6.283);ctx.fill();ctx.restore();}
+      ctx.save();ctx.translate(st.x,st.y);ctx.beginPath();for(let i=0;i<6;i++){const ang=Math.PI/6+i*Math.PI/3,px=Math.cos(ang)*R,py=Math.sin(ang)*R;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();
+      ctx.fillStyle=st.drain?"#191319":"#121b21";ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle=st.worker_agent_id?st.hue:(hov?"rgba(232,241,245,.7)":"rgba(138,157,168,0.5)");ctx.stroke();
+      ctx.fillStyle=st.hue;ctx.shadowColor=st.hue;ctx.shadowBlur=st.worker_agent_id?12:5;ctx.beginPath();ctx.arc(0,0,4,0,6.283);ctx.fill();
+      if(st.drain){ctx.shadowBlur=0;ctx.strokeStyle="rgba(255,90,82,.8)";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-6,-6);ctx.lineTo(6,6);ctx.stroke();}ctx.restore();
+      const qn=qcount(st.station_id);
+      if(qn>0){ctx.save();ctx.translate(st.x+R-2,st.y-R+2);ctx.fillStyle="#0b1015";ctx.strokeStyle=st.hue;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,8,0,6.283);ctx.fill();ctx.stroke();ctx.fillStyle=st.hue;ctx.font="700 9px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(qn,0,0.5);ctx.restore();}
+      ctx.font="500 11px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="top";ctx.fillStyle=sel||hov?"rgba(232,241,245,1)":"rgba(232,241,245,0.82)";ctx.fillText(st.name,st.x,st.y+R+6);
+      if(sel)selectionRing(st.x,st.y,R+9,st.hue);ctx.globalAlpha=1;
+    }
+  }
+  function drawPort(){
+    const t=performance.now()*0.001,sel=isSel({type:"port"});ctx.globalAlpha=selected&&!sel?dimWhenSel():1;
+    ctx.save();ctx.globalAlpha=ctx.globalAlpha*0.5;const g=ctx.createRadialGradient(cx,cy,4,cx,cy,70);g.addColorStop(0,"rgba(108,140,255,0.5)");g.addColorStop(1,"rgba(108,140,255,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,70,0,6.283);ctx.fill();ctx.restore();
+    ctx.strokeStyle="rgba(108,140,255,0.35)";ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx,cy,46,0,6.283);ctx.stroke();
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(reduceMotion?0:t*1.4);ctx.strokeStyle="rgba(108,140,255,0.7)";ctx.lineWidth=2.5;ctx.lineCap="round";for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(0,0,46,i*2.1,i*2.1+0.7);ctx.stroke();}ctx.restore();
+    ctx.save();ctx.translate(cx,cy);for(let ring=0;ring<2;ring++){const rr=26-ring*9;ctx.beginPath();for(let i=0;i<8;i++){const ang=i*Math.PI/4+(ring?t*0.4:-t*0.3),px=Math.cos(ang)*rr,py=Math.sin(ang)*rr;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();ctx.fillStyle=ring?"#1b2740":"#13202e";ctx.fill();ctx.strokeStyle="rgba(124,158,255,0.55)";ctx.lineWidth=1.5;ctx.stroke();}
+    ctx.fillStyle="#9db8ff";ctx.shadowColor="#6c8cff";ctx.shadowBlur=18;ctx.beginPath();ctx.arc(0,0,5+Math.sin(t*3)*1.2,0,6.283);ctx.fill();ctx.restore();
+    if(sel)selectionRing(cx,cy,54,T.dock);ctx.globalAlpha=1;
+  }
+  function drawDrone(a){
+    const col=stateColor(a),sel=isSel({type:"agent",id:a.agent_id}),hov=hovered&&hovered.type==="agent"&&hovered.id===a.agent_id;
+    const bob=reduceMotion?0:Math.sin(a.bob)*2,x=a.x,y=a.y+bob;ctx.globalAlpha=sel||hov?1:dimWhenSel();
+    if(a.trail.length>1&&!reduceMotion){ctx.lineWidth=2;ctx.lineCap="round";for(let i=1;i<a.trail.length;i++){const p0=a.trail[i-1],p1=a.trail[i];ctx.strokeStyle=col;ctx.globalAlpha=(sel||hov?1:dimWhenSel())*(i/a.trail.length)*0.5;ctx.beginPath();ctx.moveTo(p0.x,p0.y);ctx.lineTo(p1.x,p1.y);ctx.stroke();}ctx.globalAlpha=sel||hov?1:dimWhenSel();}
+    ctx.save();ctx.translate(x,y);
+    if(!reduceMotion){ctx.globalAlpha=ctx.globalAlpha*0.22;for(let i=0;i<4;i++){const ang=Math.PI/4+i*Math.PI/2;ctx.fillStyle=col;ctx.beginPath();ctx.arc(Math.cos(ang)*9,Math.sin(ang)*9,4.5,0,6.283);ctx.fill();}ctx.globalAlpha=sel||hov?1:dimWhenSel();}
+    if(a.hold){ctx.strokeStyle=T.dock;ctx.lineWidth=1.5;ctx.globalAlpha=ctx.globalAlpha*0.6;ctx.beginPath();ctx.arc(0,0,13,0,6.283);ctx.stroke();ctx.globalAlpha=sel||hov?1:dimWhenSel();}
+    ctx.shadowColor=col;ctx.shadowBlur=hov||sel?16:12;ctx.fillStyle="#0f1820";roundRect(ctx,-6,-6,12,12,3);ctx.fill();ctx.shadowBlur=0;ctx.lineWidth=1.5;ctx.strokeStyle=col;ctx.stroke();
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(0,0,2.6,0,6.283);ctx.fill();
+    ctx.strokeStyle=col;ctx.lineWidth=1.4;ctx.globalAlpha=ctx.globalAlpha*0.8;for(let i=0;i<4;i++){const ang=Math.PI/4+i*Math.PI/2;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(ang)*9,Math.sin(ang)*9);ctx.stroke();}ctx.globalAlpha=sel||hov?1:dimWhenSel();
+    if(a.carry){ctx.save();ctx.translate(0,11);ctx.rotate(a.spin*0.4);ctx.shadowColor=a.carry.hue;ctx.shadowBlur=10;ctx.fillStyle=a.carry.hue;roundRect(ctx,-4,-4,8,8,1.5);ctx.fill();ctx.restore();}
+    ctx.restore();
+    if(sel){selectionRing(x,y,18,col);ctx.save();ctx.translate(x,y);ctx.strokeStyle="rgba(255,255,255,.12)";ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(0,0,23,0,6.283);ctx.stroke();ctx.strokeStyle=a.energy<22?T.alert:T.return;ctx.beginPath();ctx.arc(0,0,23,-Math.PI/2,-Math.PI/2+(a.energy/100)*6.283);ctx.stroke();ctx.restore();}
+    if(a.tag){ctx.font="500 9px 'JetBrains Mono',monospace";const tw=ctx.measureText(a.agent_id+"  "+a.tag).width+12,tx=x-tw/2,ty=y-22;ctx.fillStyle="rgba(10,15,19,0.8)";roundRect(ctx,tx,ty,tw,15,4);ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=ctx.globalAlpha*0.5;ctx.lineWidth=1;roundRect(ctx,tx,ty,tw,15,4);ctx.stroke();ctx.globalAlpha=sel||hov?1:dimWhenSel();ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillStyle="rgba(232,241,245,0.65)";ctx.fillText(a.agent_id,tx+6,ty+7.5);const idw=ctx.measureText(a.agent_id+"  ").width;ctx.fillStyle=col;ctx.fillText(a.tag,tx+6+idw,ty+7.5);}
+    ctx.globalAlpha=1;
+  }
+  function drawSparks(){for(const s of sparks){ctx.globalAlpha=Math.max(0,s.life)*(selected?dimWhenSel():1);ctx.fillStyle=s.hue;ctx.shadowColor=s.hue;ctx.shadowBlur=6;ctx.beginPath();ctx.arc(s.x,s.y,1.6,0,6.283);ctx.fill();}ctx.globalAlpha=1;ctx.shadowBlur=0;}
+  function renderZone(){drawGrid();drawCoverage();drawLinks();drawStations();drawSparks();drawPort();[...M.agents.values()].sort((a,b)=>a.y-b.y).forEach(drawDrone);}
+
+  /* ---------- derived ---------- */
+  const qcount=sid=>{let n=0;for(const t of M.tasks.values())if(t.status==="queued"&&t.station_id===sid)n++;return n;};
+  function queuedList(){return[...M.tasks.values()].filter(t=>t.status==="queued").sort((a,b)=>(a.priority-b.priority)||(a.enqueued_at<b.enqueued_at?-1:1));}
+
+  /* ---------- DOM ---------- */
+  const el=id=>document.getElementById(id);
+  const D={app:el("app"),
+    nsRate:el("ns-rate"),nsAgents:el("ns-agents"),nsZones:el("ns-zones"),nsTransit:el("ns-transit"),nsRisk:el("ns-risk"),
+    rate:el("s-rate"),done:el("s-done"),active:el("s-active"),queue:el("s-queue"),up:el("s-up"),
+    zones:el("zones"),zoneCount:el("zone-count"),netlog:el("netlog"),
+    roster:el("roster"),rosterCount:el("roster-count"),log:el("log"),qchips:el("qchips"),
+    insp:el("inspector"),inspRing:el("insp-ring"),inspName:el("insp-name"),inspType:el("insp-type"),inspBody:el("insp-body"),inspActions:el("insp-actions"),
+    toasts:el("toasts"),tip:el("tip"),sr:el("sr"),wireB:el("wire-b"),wireC:el("wire-c"),wireT:el("wire-t"),feedStatus:el("feed-status"),
+    crumbName:el("crumb-name"),crumbDot:el("crumb-dot")};
+
+  function actLabel(a){if(a.hold&&a.state==="docked")return"on hold";if(a.state==="dispatched")return"dispatched · "+(M.stations.get(a.station_id)||{}).name;if(a.state==="working")return"working · "+(M.stations.get(a.station_id)||{}).name;if(a.state==="returning")return a.energy<22?"low cell · returning":"returning";return a.energy<99?"docked · charging":"docked · ready";}
+  const ecolor=e=>e<22?T.alert:(e<55?T.work:T.return);
+
+  /* ---------- network panels ---------- */
+  function refreshNetPanels(){
+    D.nsRate.textContent=NM.metrics.tasks_per_min;
+    D.nsAgents.textContent=NM.metrics.total_agents;
+    D.nsZones.textContent=NM.metrics.zones;
+    D.nsTransit.textContent=NM.metrics.cross_zone_in_flight;
+    D.nsRisk.textContent=NM.metrics.at_risk;D.nsRisk.className="v"+(NM.metrics.at_risk>0?" bad":"");
+    D.zoneCount.textContent=NM.zones.size;
+    D.zones.innerHTML=[...NM.zones.values()].map(z=>{
+      const hc=HEALTHC[z.health],sc=(selected&&selected.type==="zone"&&selected.id===z.zone_id)?" sel":"";
+      const util=Math.round((z.utilization||0)*100);
+      return `<div class="zrow${sc}" role="option" tabindex="0" data-zid="${z.zone_id}" aria-selected="${sc?"true":"false"}">
+        <span class="zp" style="color:${hc}"></span>
+        <div class="zw"><div class="zn">${z.name}${z.policy==="data-only"?'<span class="lk">⊘ HIPAA</span>':''}</div>
+          <div class="zb"><i style="width:${util}%;background:${hc};box-shadow:0 0 6px ${hc}"></i></div>
+          <div class="zmeta">${z.agents_active}/${z.agents_total} agents · ${z.queued} queued · ${util}% util</div></div>
+        <div class="zr"><div class="big">${z.tasks_per_min}</div><div class="sm">tasks/min</div><div class="drill">drill ▸</div></div>
+      </div>`;}).join("");
+    if(netLogDirty){D.netlog.innerHTML=netLogE.map(e=>`<div class="logline"><span class="t">${e.t}</span><span class="m">${e.html}</span></div>`).join("");netLogDirty=false;}
+    if(selected&&(selected.type==="zone"||selected.type==="route"))renderInspector();
+  }
+
+  /* ---------- zone panels ---------- */
+  function refreshZonePanels(){
+    D.rate.textContent=M.metrics.tasks_per_min;D.done.textContent=M.metrics.completed_total;
+    D.active.textContent=M.metrics.active_agents+"/"+M.metrics.total_agents;
+    D.queue.textContent=M.metrics.queued;D.queue.className="v"+(M.metrics.queued>=11?" bad":M.metrics.queued>=7?" warn":"");
+    const s=M.metrics.uptime_s;D.up.textContent=String((s/60)|0).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+    D.rosterCount.textContent=M.agents.size;
+    D.roster.innerHTML=[...M.agents.values()].map(a=>{const col=stateColor(a),sc=(selected&&selected.type==="agent"&&selected.id===a.agent_id)?" sel":"";return `<div class="agent${sc}" role="option" tabindex="0" data-aid="${a.agent_id}" aria-selected="${sc?"true":"false"}"><span class="pip" style="color:${col};background:${col}"></span><div class="who"><div class="name">${a.agent_id}${a.hold?'<span class="lock">⏸</span>':''}</div><div class="act">${actLabel(a)}</div></div><div class="cell"><div class="bar"><i style="width:${a.energy}%;background:${ecolor(a.energy)};box-shadow:0 0 6px ${ecolor(a.energy)}"></i></div><div class="pct">${Math.round(a.energy)}%</div></div></div>`;}).join("");
+    if(logDirty){D.log.innerHTML=zoneLog.map(e=>`<div class="logline"><span class="t">${e.t}</span><span class="m">${e.html}</span></div>`).join("");logDirty=false;}
+    renderQueue();if(selected)renderInspector();
+    el("btn-agent").disabled=M.config&&M.agents.size>=M.config.max_agents;
+  }
+  function renderQueue(){const q=queuedList();if(!q.length){D.qchips.innerHTML='<span class="qempty">idle — no pending tasks</span>';return;}D.qchips.innerHTML=q.slice(0,18).map(t=>{const st=M.stations.get(t.station_id);return `<div class="qchip" data-sid="${t.station_id}"><span class="d" style="color:${st.hue}"></span>${st.name} <span style="color:var(--steel-dim)">${t.task_id}</span>${t.cross_zone?' <span style="color:var(--dispatch)">⇄</span>':''}</div>`;}).join("")+(q.length>18?`<span class="qempty">+${q.length-18}</span>`:"");}
+
+  /* ---------- toasts ---------- */
+  function pushToast(al){toasts.push({...al,born:performance.now()});if(toasts.length>4)toasts.shift();renderToasts();setTimeout(()=>{toasts.splice(0,toasts.length,...toasts.filter(t=>t.alert_id!==al.alert_id));renderToasts();},(al.ttl_s||5)*1000);}
+  function renderToasts(){const k={info:"info",warning:"warn",critical:"bad"};D.toasts.innerHTML=toasts.map(t=>`<div class="toast ${k[t.kind]||"info"}" data-tid="${t.alert_id}"><div class="tx"><div class="th">${t.title}</div><div class="tb">${t.body}</div></div><div class="tg">${Math.round((performance.now()-t.born)/1000)}s</div></div>`).join("");}
+
+  /* ---------- wire ---------- */
+  const WCAT={snapshot:"#4fd672",log:"#4fd672",agent:"#36c6e0",task:"#f2b134",station:"#6c8cff",zone:"#36c6e0",route:"#6c8cff",alert:"#ff5a52",metrics:"#5f717c"};
+  function pushWire(env){const cat=env.type.split(".")[0];wireLines.unshift({seq:env.seq,type:env.type,c:WCAT[cat]||"#8a9da8"});if(wireLines.length>7)wireLines.pop();wireDirty=true;}
+  function renderWire(){D.wireC.textContent="seq "+feed.seq;if(!wireDirty)return;D.wireB.innerHTML=wireLines.map(w=>`<div class="wl"><span class="sq">${w.seq}</span><span class="ty" style="color:${w.c}">${w.type}</span></div>`).join("");wireDirty=false;}
+
+  /* ---------- inspector ---------- */
+  function renderInspector(){
+    if(!selected){D.insp.classList.remove("on");return;}D.insp.classList.add("on");
+    if(selected.type==="zone"){const z=NM.zones.get(selected.id);if(!z){clearSelection();return;}const hc=HEALTHC[z.health];D.inspRing.style.color=z.color;D.inspRing.style.background=z.color;D.inspName.textContent=z.name;D.inspType.textContent="zone · "+(z.policy==="data-only"?"HIPAA tenant":z.tag);
+      D.inspBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">health</div><div class="v" style="color:${hc}">${z.health}</div></div><div class="f"><div class="k">throughput</div><div class="v">${z.tasks_per_min}/min</div></div><div class="f"><div class="k">fleet</div><div class="v">${z.agents_active}/${z.agents_total} active</div></div><div class="f"><div class="k">queued</div><div class="v">${z.queued}</div></div></div><div class="insp-bar"><i style="width:${Math.round((z.utilization||0)*100)}%;background:${hc};box-shadow:0 0 6px ${hc}"></i></div>`;
+      D.inspActions.innerHTML=`<button class="cmd go" data-cmd="drill">Drill in ▸</button><button class="cmd" data-cmd="injecthere">Queue work</button>`;}
+    else if(selected.type==="route"){const r=NM.routes.get(selected.id);if(!r){clearSelection();return;}const za=NM.zones.get(r.from_zone),zb=NM.zones.get(r.to_zone);D.inspRing.style.color=za.color;D.inspRing.style.background=za.color;D.inspName.textContent=za.name+" ⇄ "+zb.name;D.inspType.textContent="route · "+(r.policy==="data-only"?"data handoff only":"elastic");
+      D.inspBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">flow</div><div class="v">${r.tasks_per_min||0}/min</div></div><div class="f"><div class="k">in transit</div><div class="v">${r.in_transit||0}</div></div><div class="f"><div class="k">agent xfer</div><div class="v" style="color:${r.policy==="data-only"?"var(--alert)":"var(--return)"}">${r.policy==="data-only"?"blocked":"allowed"}</div></div><div class="f"><div class="k">policy</div><div class="v">${r.policy}</div></div></div>`;
+      D.inspActions.innerHTML=`<button class="cmd go" data-cmd="sendhandoff">Send handoff</button>`;}
+    else if(selected.type==="agent"){const a=M.agents.get(selected.id);if(!a){clearSelection();return;}const col=stateColor(a);D.inspRing.style.color=col;D.inspRing.style.background=col;D.inspName.textContent=a.agent_id;D.inspType.textContent="agent · "+(a.hold?"hold":a.state);
+      D.inspBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">task</div><div class="v">${a.task_id||"—"}</div></div><div class="f"><div class="k">station</div><div class="v">${(M.stations.get(a.station_id)||{}).name||"—"}</div></div><div class="f"><div class="k">completed</div><div class="v">${a.completed_total}</div></div><div class="f"><div class="k">energy</div><div class="v">${Math.round(a.energy)}%</div></div></div><div class="insp-bar"><i style="width:${a.energy}%;background:${ecolor(a.energy)};box-shadow:0 0 6px ${ecolor(a.energy)}"></i></div>`;
+      D.inspActions.innerHTML=`<button class="cmd go" data-cmd="recall" ${a.state==="docked"?"disabled":""}>Recall</button><button class="cmd ${a.hold?"on":"warn"}" data-cmd="hold">${a.hold?"Resume":"Hold"}</button><button class="cmd danger" data-cmd="retire">Retire</button>`;}
+    else if(selected.type==="station"){const st=M.stations.get(selected.id),qn=qcount(st.station_id),worker=st.worker_agent_id;D.inspRing.style.color=st.hue;D.inspRing.style.background=st.hue;D.inspName.textContent=st.name;D.inspType.textContent="station · step "+(st.order+1);
+      D.inspBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">status</div><div class="v" style="color:${worker?st.hue:"var(--steel)"}">${worker?"busy":"idle"}</div></div><div class="f"><div class="k">worker</div><div class="v">${worker||"—"}</div></div><div class="f"><div class="k">queued</div><div class="v">${qn}</div></div><div class="f"><div class="k">intake</div><div class="v" style="color:${st.drain?"var(--alert)":"var(--return)"}">${st.drain?"drained":"open"}</div></div></div>`;
+      D.inspActions.innerHTML=`<button class="cmd go" data-cmd="queuehere">Queue task</button><button class="cmd" data-cmd="priority" ${qn?"":"disabled"}>Prioritize</button><button class="cmd ${st.drain?"on":"warn"}" data-cmd="drain">${st.drain?"Open":"Drain"}</button>`;}
+    else if(selected.type==="port"){const docked=[...M.agents.values()].filter(a=>a.state==="docked").length,held=[...M.agents.values()].filter(a=>a.hold).length;D.inspRing.style.color=T.dock;D.inspRing.style.background=T.dock;D.inspName.textContent=(M.config?M.config.zone_name:"")+" hub";D.inspType.textContent="zone overview";
+      D.inspBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">fleet</div><div class="v">${M.agents.size} agents</div></div><div class="f"><div class="k">docked</div><div class="v">${docked}</div></div><div class="f"><div class="k">held</div><div class="v">${held}</div></div><div class="f"><div class="k">queue</div><div class="v">${M.metrics.queued}</div></div></div>`;
+      const allHeld=M.agents.size&&[...M.agents.values()].every(a=>a.hold);
+      D.inspActions.innerHTML=`<button class="cmd warn" data-cmd="holdall">${allHeld?"Resume all":"Hold all"}</button><button class="cmd go" data-cmd="recallall">Recall all</button><button class="cmd danger" data-cmd="clearq" ${M.metrics.queued?"":"disabled"}>Clear queue</button>`;}
+  }
+
+  /* ---------- commands ---------- */
+  function command(cmd){
+    if(!selected)return;
+    if(selected.type==="zone"){const id=selected.id;
+      if(cmd==="drill")drill(id);
+      else if(cmd==="injecthere"){const z=NM.zones.get(id);/* enqueue into zone via its scope command */feed.command("task.enqueue",{type:"station",id:(zoneFirstStation(id)),zone_id:id});}
+    }
+    else if(selected.type==="route"){const r=NM.routes.get(selected.id);if(cmd==="sendhandoff")feed.command("network.inject_handoff",{type:"route",id:r.route_id});}
+    else if(selected.type==="agent"){const id=selected.id;
+      if(cmd==="recall")feed.command("agent.recall",{type:"agent",id});
+      else if(cmd==="hold"){const a=M.agents.get(id);feed.command("agent.hold",{type:"agent",id},{hold:!a.hold});}
+      else if(cmd==="retire")feed.command("agent.retire",{type:"agent",id});}
+    else if(selected.type==="station"){const id=selected.id;const st=M.stations.get(id);
+      if(cmd==="queuehere")feed.command("task.enqueue",{type:"station",id});
+      else if(cmd==="priority")feed.command("station.prioritize",{type:"station",id});
+      else if(cmd==="drain")feed.command("station.drain",{type:"station",id},{drain:!st.drain});}
+    else if(selected.type==="port"){
+      if(cmd==="recallall")feed.command("fleet.recall",{type:"port"});
+      else if(cmd==="holdall"){const allHeld=[...M.agents.values()].every(a=>a.hold);feed.command("fleet.hold",{type:"port"},{hold:!allHeld});}
+      else if(cmd==="clearq")feed.command("queue.clear",{type:"port"});}
+  }
+  /* network "queue work" needs a station id within the zone; we can't see the zone's
+     stations from the network channel, so the backend treats an unknown station as
+     decrypt by default — but we send a known id by convention. */
+  function zoneFirstStation(){return "stn.ingest";}
+
+  /* ---------- selection / mode ---------- */
+  function select(o){selected=o;D.insp.classList.add("on");renderInspector();view.mode==="network"?refreshNetPanels():refreshZonePanels();announce();}
+  function clearSelection(){selected=null;D.insp.classList.remove("on");view.mode==="network"?refreshNetPanels():refreshZonePanels();}
+  function announce(){if(!selected){D.sr.textContent="Selection cleared.";return;}
+    if(selected.type==="zone"){const z=NM.zones.get(selected.id);if(z)D.sr.textContent=`${z.name} zone selected. Health ${z.health}. ${z.agents_active} of ${z.agents_total} agents active.`;}
+    else if(selected.type==="route"){const r=NM.routes.get(selected.id);if(r)D.sr.textContent=`Route selected. ${r.tasks_per_min||0} tasks per minute.`;}
+    else if(selected.type==="agent"){const a=M.agents.get(selected.id);if(a)D.sr.textContent=`${a.agent_id} selected. ${actLabel(a)}. Energy ${Math.round(a.energy)} percent.`;}
+    else if(selected.type==="station"){D.sr.textContent=`${M.stations.get(selected.id).name} station selected.`;}
+    else D.sr.textContent="Hub overview selected.";}
+
+  function setMode(mode){D.app.dataset.mode=mode;}
+  function drill(zoneId){
+    const z=NM.zones.get(zoneId);if(!z)return;
+    view={mode:"zone",zoneId};setMode("zone");
+    selected=null;D.insp.classList.remove("on");
+    D.crumbName.textContent=z.name;D.crumbDot.style.color=z.color;D.crumbDot.style.background=z.color;
+    D.feedStatus.textContent="scope · "+zoneId;D.wireT.textContent="wire · /api/feed?scope="+z.name;
+    sparks.length=0;dockCounter=0;
+    feed.setScope("zone:"+zoneId);             // → zone snapshot → hydrateZone
+    D.sr.textContent="Drilled into "+z.name+" zone.";
+  }
+  function backToNetwork(){
+    view={mode:"network"};setMode("network");
+    selected=null;D.insp.classList.remove("on");
+    D.feedStatus.textContent="scope · network";D.wireT.textContent="wire · /api/feed";
+    feed.setScope("network");                   // → network snapshot → hydrateNetwork
+    D.sr.textContent="Returned to network view.";
+  }
+
+  /* ---------- hit testing ---------- */
+  function distToSeg(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;if(!l2)return Math.hypot(px-ax,py-ay);let t=((px-ax)*dx+(py-ay)*dy)/l2;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));}
+  function hitNetwork(px,py){
+    for(const z of NM.zones.values()){if(Math.hypot(z.x-px,z.y-py)<Math.max(26,18+Math.min(28,z.agents_total*4)*0.5))return{type:"zone",id:z.zone_id};}
+    for(const r of NM.routes.values()){const a=NM.zones.get(r.from_zone),b=NM.zones.get(r.to_zone);if(a&&b&&distToSeg(px,py,a.x,a.y,b.x,b.y)<8)return{type:"route",id:r.route_id};}
+    return null;
+  }
+  function hitZone(px,py){for(const a of M.agents.values())if(Math.hypot(a.x-px,a.y-py)<15)return{type:"agent",id:a.agent_id};for(const st of M.stations.values())if(Math.hypot(st.x-px,st.y-py)<22)return{type:"station",id:st.station_id};if(Math.hypot(cx-px,cy-py)<48)return{type:"port"};return null;}
+  function hitTest(px,py){return view.mode==="network"?hitNetwork(px,py):hitZone(px,py);}
+
+  function toCanvas(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+  canvas.addEventListener("mousemove",e=>{const p=toCanvas(e);mouse.x=p.x;mouse.y=p.y;hovered=hitTest(p.x,p.y);canvas.style.cursor=hovered?"pointer":"default";
+    if(hovered){let label="",sub="";
+      if(hovered.type==="zone"){const z=NM.zones.get(hovered.id);label=z.name;sub=z.health+" · "+z.agents_active+"/"+z.agents_total+" · "+z.tasks_per_min+"/min · click to drill";}
+      else if(hovered.type==="route"){const r=NM.routes.get(hovered.id),a=NM.zones.get(r.from_zone),b=NM.zones.get(r.to_zone);label=a.name+" ⇄ "+b.name;sub=(r.tasks_per_min||0)+"/min · "+(r.in_transit||0)+" in transit · "+r.policy;}
+      else if(hovered.type==="agent"){const a=M.agents.get(hovered.id);label=a.agent_id;sub=actLabel(a);}
+      else if(hovered.type==="station"){const st=M.stations.get(hovered.id);label=st.name;sub=(st.worker_agent_id?"busy":"idle")+" · "+qcount(st.station_id)+" queued";}
+      else{label=(M.config?M.config.zone_name:"")+" hub";sub="click for overview";}
+      D.tip.innerHTML=`${label} <span class="s">· ${sub}</span>`;const rb=canvas.getBoundingClientRect();
+      let ty=p.y;if(hovered.type==="agent"){ty=M.agents.get(hovered.id)?.y??p.y;}else if(hovered.type==="zone"){ty=NM.zones.get(hovered.id).y;}
+      D.tip.style.left=(e.clientX-rb.left)+"px";D.tip.style.top=ty+"px";D.tip.classList.add("on");
+    }else D.tip.classList.remove("on");});
+  canvas.addEventListener("mouseleave",()=>{hovered=null;D.tip.classList.remove("on");canvas.style.cursor="default";});
+  canvas.addEventListener("click",e=>{const p=toCanvas(e),hit=hitTest(p.x,p.y);
+    if(view.mode==="network"){if(hit&&hit.type==="zone")drill(hit.id);else if(hit)select(hit);else clearSelection();}
+    else{hit?select(hit):clearSelection();}});
+
+  /* side-panel clicks */
+  D.zones.addEventListener("click",e=>{const r=e.target.closest("[data-zid]");if(r)drill(r.dataset.zid);});
+  D.zones.addEventListener("keydown",e=>{const r=e.target.closest("[data-zid]");if(r&&(e.key==="Enter"||e.key===" ")){e.preventDefault();drill(r.dataset.zid);}});
+  D.roster.addEventListener("click",e=>{const r=e.target.closest("[data-aid]");if(r)select({type:"agent",id:r.dataset.aid});});
+  D.roster.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")){const r=e.target.closest("[data-aid]");if(r){e.preventDefault();select({type:"agent",id:r.dataset.aid});}}});
+  D.toasts.addEventListener("click",e=>{const t=e.target.closest("[data-tid]");if(!t)return;const f=toasts.find(x=>x.alert_id===t.dataset.tid);if(f&&f.target){if(f.target.type==="zone"&&NM.zones.get(f.target.id)){view.mode==="network"?select({type:"zone",id:f.target.id}):0;}else if(f.target.type==="agent"&&M.agents.get(f.target.id))select(f.target);else if(f.target.type==="port")select({type:"port"});}});
+  D.qchips.addEventListener("click",e=>{const c=e.target.closest("[data-sid]");if(c)select({type:"station",id:c.dataset.sid});});
+  D.inspActions.addEventListener("click",e=>{const b=e.target.closest("[data-cmd]");if(b&&!b.disabled)command(b.dataset.cmd);});
+  el("insp-close").addEventListener("click",clearSelection);
+  el("btn-back").addEventListener("click",backToNetwork);
+
+  /* keyboard */
+  window.addEventListener("keydown",e=>{if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT")return;
+    if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
+    if(e.key==="Escape"){if(view.mode==="zone"&&!selected){backToNetwork();return;}clearSelection();return;}
+    if(view.mode==="zone"&&(e.key==="ArrowDown"||e.key==="ArrowUp")){e.preventDefault();const list=[...M.agents.keys()];if(!list.length)return;let idx=selected&&selected.type==="agent"?list.indexOf(selected.id):-1;idx=(idx+(e.key==="ArrowDown"?1:-1)+list.length)%list.length;select({type:"agent",id:list[idx]});return;}
+    if(view.mode==="network"&&(e.key==="ArrowDown"||e.key==="ArrowUp")){e.preventDefault();const list=[...NM.zones.keys()];if(!list.length)return;let idx=selected&&selected.type==="zone"?list.indexOf(selected.id):-1;idx=(idx+(e.key==="ArrowDown"?1:-1)+list.length)%list.length;select({type:"zone",id:list[idx]});return;}
+    if(view.mode==="network"&&(e.key==="Enter")&&selected&&selected.type==="zone"){drill(selected.id);return;}
+    if(view.mode==="zone"&&selected&&selected.type==="agent"){if(e.key==="r"||e.key==="R")command("recall");if(e.key==="h"||e.key==="H")command("hold");}});
+
+  /* dock */
+  el("btn-play").addEventListener("click",()=>{running=!running;el("play-label").textContent=running?"Pause":"Resume";});
+  el("btn-agent").addEventListener("click",()=>{if(view.mode==="zone")feed.command("fleet.spawn_agent",{type:"port",zone_id:view.zoneId});});
+  function populateInjector(){const sel=el("task-station");sel.innerHTML="";if(!M.config)return;M.config.stations.forEach(s=>{const o=document.createElement("option");o.value=s.station_id;o.textContent=s.name;sel.appendChild(o);});}
+  el("btn-queue").addEventListener("click",()=>{if(view.mode!=="zone")return;const sid=el("task-station").value;if(sid)feed.command("task.enqueue",{type:"station",id:sid,zone_id:view.zoneId});});
+  function populateRouteSelect(){const sel=el("route-sel");if(sel.options.length)return;feed.routeMeta().forEach(r=>{const o=document.createElement("option");o.value=r.route_id;const an=r.a.split(".")[1],bn=r.b.split(".")[1];o.textContent=an+" ⇄ "+bn;sel.appendChild(o);});}
+  el("btn-handoff").addEventListener("click",()=>{const rid=el("route-sel").value;if(rid)feed.command("network.inject_handoff",{type:"route",id:rid});});
+  const sp=el("speed"),spo=el("speed-out");sp.addEventListener("input",()=>{simSpeed=parseFloat(sp.value);spo.textContent=simSpeed.toFixed(2).replace(/0$/,"")+"×";});
+  const wireEl=el("wire");el("wire-h").addEventListener("click",()=>wireEl.classList.toggle("min"));
+  if(window.matchMedia("(max-width:880px)").matches)wireEl.classList.add("min");
+
+  /* ---------- boot + loop ---------- */
+  new ResizeObserver(()=>{DPR=Math.min(window.devicePixelRatio||1,2);layout();}).observe(canvas);
+  const backend=createNetworkBackend();
+  const feed=createFeed(backend);
+  window.__feed=feed;
+  layout();
+  feed.onEnvelope(env=>{view.mode==="network"?routeNet(env):routeZone(env);});
+  feed.setScope("network");                    // → network snapshot → hydrateNetwork
+  positionZones();
+
+  let last=performance.now(),lastPanel=0;
+  function frame(now){
+    let dt=(now-last)/1000;last=now;if(dt>0.05)dt=0.05;
+    const sdt=running?dt*simSpeed:0;
+    feed.tick(sdt);                            // backend advances ALL zones + network
+    if(view.mode==="network"){animateNetwork(sdt);renderNetwork();}
+    else{animateZone(sdt);renderZone();}
+    renderWire();
+    if(toasts.length)renderToasts();
+    if(now-lastPanel>120){view.mode==="network"?refreshNetPanels():refreshZonePanels();lastPanel=now;}
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

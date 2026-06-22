@@ -1,0 +1,4 @@
+# ROBOPORT control-surface collector
+docker>=7.0           # docker-py SDK — daemon events + per-container stats
+fastapi>=0.110        # feed server (/api/state, /api/feed, /api/commands)
+uvicorn[standard]>=0.29   # ASGI server for server.py

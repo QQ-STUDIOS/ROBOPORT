@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ROBOPORT — feed-driven (mock backend)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --floor:#0e1418;--floor2:#0b1015;--panel:#141c22;--panel2:#10171c;
+    --grid:#16202833;--line:#223038;--line2:#2c3c46;
+    --steel:#8a9da8;--steel-dim:#5f717c;--bright:#e8f1f5;
+    --dispatch:#36c6e0;--work:#f2b134;--return:#4fd672;--dock:#6c8cff;--alert:#ff5a52;
+    --r1:5px;--r2:8px;--r3:12px;
+    --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:22px;
+    --t-fast:120ms;--t-base:200ms;--ease:cubic-bezier(.4,0,.2,1);--shadow:0 8px 28px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--floor2);color:var(--steel);font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:13px;-webkit-font-smoothing:antialiased;overflow:hidden}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  .app{height:100dvh;display:grid;grid-template-columns:1fr 332px;grid-template-rows:auto 1fr auto;grid-template-areas:"hud hud" "stage side" "dock dock";gap:1px;background:var(--line)}
+
+  .hud{grid-area:hud;background:var(--panel2);display:flex;align-items:center;gap:var(--s4);padding:10px var(--s4);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+  .brand h1{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:18px;letter-spacing:3px;color:var(--bright);margin:0;white-space:nowrap}
+  .brand .sub{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--steel-dim);white-space:nowrap}
+  .feedbadge{display:inline-flex;align-items:center;gap:6px;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dispatch);border:1px solid rgba(54,198,224,.3);border-radius:20px;padding:3px 9px}
+  .feedbadge .d{width:6px;height:6px;border-radius:50%;background:var(--dispatch);box-shadow:0 0 7px var(--dispatch);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .stats{display:flex;gap:var(--s5);margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+  .stat{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}
+  .stat .v{font-size:17px;font-weight:700;color:var(--bright)}
+  .stat .v.warn{color:var(--work)}.stat .v.bad{color:var(--alert)}
+  .stat .k{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+
+  .stage{grid-area:stage;position:relative;background:var(--floor);overflow:hidden}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:default}
+  .legend{position:absolute;left:12px;top:12px;z-index:3;display:flex;gap:13px;flex-wrap:wrap;background:rgba(10,15,19,.66);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:var(--r2);padding:7px 11px;pointer-events:none}
+  .legend .it{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.5px;color:var(--steel)}
+  .legend .sw{width:9px;height:9px;border-radius:2px;box-shadow:0 0 7px currentColor}
+
+  .toasts{position:absolute;top:12px;right:12px;z-index:6;display:flex;flex-direction:column;gap:8px;width:248px}
+  .toast{display:flex;gap:9px;align-items:flex-start;background:rgba(16,23,28,.94);border:1px solid var(--line2);border-left:3px solid var(--work);border-radius:var(--r2);padding:9px 11px;cursor:pointer;box-shadow:var(--shadow);animation:slidein var(--t-base) var(--ease)}
+  .toast.bad{border-left-color:var(--alert)}.toast.info{border-left-color:var(--dispatch)}
+  .toast .tx{flex:1;min-width:0}.toast .th{color:var(--bright);font-size:11px;font-weight:500}
+  .toast .tb{color:var(--steel-dim);font-size:10px;margin-top:2px}
+  .toast .tg{font-size:9px;color:var(--steel-dim);white-space:nowrap}
+  .toast:hover{border-color:var(--dispatch)}
+  @keyframes slidein{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+
+  .tip{position:absolute;z-index:7;pointer-events:none;background:rgba(10,15,19,.95);border:1px solid var(--line2);border-radius:var(--r1);padding:5px 8px;font-size:10px;color:var(--bright);white-space:nowrap;transform:translate(-50%,-130%);opacity:0;transition:opacity var(--t-fast)}
+  .tip.on{opacity:1}.tip .s{color:var(--steel-dim)}
+
+  /* wire monitor — proves it's event-driven */
+  .wire{position:absolute;left:12px;bottom:48px;z-index:4;width:228px;background:rgba(11,16,21,.92);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;box-shadow:var(--shadow)}
+  .wire-h{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
+  .wire-h .d{width:6px;height:6px;border-radius:50%;background:var(--dispatch);box-shadow:0 0 6px var(--dispatch);animation:pulse 1.4s infinite}
+  .wire-h .t{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel)}
+  .wire-h .c{margin-left:auto;font-size:9px;color:var(--steel-dim)}
+  .wire-b{font-size:10px;line-height:1.55;padding:6px 10px;max-height:128px;overflow:hidden;transition:max-height var(--t-base) var(--ease)}
+  .wire.min .wire-b{max-height:0;padding-top:0;padding-bottom:0}
+  .wire.min .wire-h{border-bottom:none}
+  .wl{display:flex;gap:7px;white-space:nowrap}
+  .wl .sq{color:var(--steel-dim)}
+  .wl .ty{color:var(--steel)}
+
+  .inspector{position:absolute;right:12px;bottom:48px;z-index:5;width:262px;background:rgba(15,22,28,.95);backdrop-filter:blur(10px);border:1px solid var(--line2);border-radius:var(--r3);box-shadow:var(--shadow);overflow:hidden;transform:translateY(12px);opacity:0;pointer-events:none;transition:opacity var(--t-base),transform var(--t-base)}
+  .inspector.on{transform:none;opacity:1;pointer-events:auto}
+  .insp-head{display:flex;align-items:center;gap:9px;padding:11px var(--s3);border-bottom:1px solid var(--line)}
+  .insp-head .ring{width:10px;height:10px;border-radius:50%;box-shadow:0 0 9px currentColor;flex:none}
+  .insp-head .ttl{min-width:0}
+  .insp-head .ttl .n{color:var(--bright);font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .insp-head .ttl .ty{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .insp-head .x{margin-left:auto;background:none;border:none;color:var(--steel-dim);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:4px}
+  .insp-head .x:hover{color:var(--bright);background:var(--panel)}
+  .insp-body{padding:var(--s3)}
+  .insp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px var(--s3);margin-bottom:var(--s3)}
+  .insp-grid .f .k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--steel-dim)}
+  .insp-grid .f .v{color:var(--bright);font-size:12px;margin-top:2px}
+  .insp-bar{height:5px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}
+  .insp-bar i{display:block;height:100%;border-radius:4px;transition:width var(--t-base)}
+  .insp-mini{margin-top:4px;max-height:84px;overflow-y:auto;border-top:1px solid var(--line);padding-top:8px}
+  .insp-mini .ml{font-size:10px;line-height:1.5;color:var(--steel-dim)}
+  .insp-mini .ml b{color:var(--steel);font-weight:400}
+  .insp-actions{display:flex;flex-wrap:wrap;gap:6px;padding:0 var(--s3) var(--s3)}
+  .cmd{appearance:none;flex:1 1 auto;min-width:72px;border:1px solid var(--line2);background:var(--panel);color:var(--bright);font-family:inherit;font-size:10px;letter-spacing:.8px;text-transform:uppercase;padding:7px 8px;border-radius:var(--r1);cursor:pointer;transition:border-color var(--t-fast),background var(--t-fast),color var(--t-fast)}
+  .cmd:hover{border-color:var(--steel-dim)}.cmd:active{transform:translateY(1px)}
+  .cmd:focus-visible{outline:2px solid var(--dispatch);outline-offset:2px}
+  .cmd.go{border-color:rgba(54,198,224,.45);color:var(--dispatch)}
+  .cmd.warn{border-color:rgba(242,177,52,.45);color:var(--work)}
+  .cmd.danger{border-color:rgba(255,90,82,.4);color:var(--alert)}
+  .cmd.on{background:rgba(108,140,255,.16);border-color:var(--dock);color:var(--dock)}
+  .cmd[disabled]{opacity:.38;cursor:not-allowed}
+
+  .qstrip{position:absolute;left:0;right:0;bottom:0;z-index:4;height:36px;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgba(11,16,21,.82);backdrop-filter:blur(6px);border-top:1px solid var(--line)}
+  .qstrip .ql{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim);flex:none}
+  .qchips{display:flex;gap:5px;overflow-x:auto;flex:1;padding:2px 0}
+  .qchips::-webkit-scrollbar{height:0}
+  .qchip{flex:none;display:flex;align-items:center;gap:5px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:3px 9px 3px 6px;font-size:10px;color:var(--steel);cursor:pointer;white-space:nowrap;animation:pop var(--t-base) var(--ease)}
+  .qchip:hover{border-color:var(--line2);color:var(--bright)}
+  .qchip .d{width:7px;height:7px;border-radius:50%;box-shadow:0 0 6px currentColor}
+  @keyframes pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+  .qempty{font-size:10px;color:var(--steel-dim);font-style:italic}
+
+  .side{grid-area:side;background:var(--panel2);display:flex;flex-direction:column;min-height:0}
+  .pane{display:flex;flex-direction:column;min-height:0}
+  .pane.roster{flex:1 1 56%;border-bottom:1px solid var(--line)}
+  .pane.log{flex:1 1 44%}
+  .pane h2{margin:0;padding:10px var(--s4) 8px;font-family:"Space Grotesk",sans-serif;font-weight:500;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--steel);display:flex;align-items:center;gap:8px}
+  .pane h2 .count{margin-left:auto;color:var(--steel-dim);font-family:"JetBrains Mono",monospace}
+  .scroll{overflow-y:auto;padding:0 var(--s2) 10px;min-height:0}
+  .scroll::-webkit-scrollbar{width:8px}.scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+  .agent{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:7px 8px;border-radius:var(--r2);margin:2px 0;cursor:pointer;border:1px solid transparent;transition:background var(--t-fast),border-color var(--t-fast)}
+  .agent:hover{background:var(--panel)}
+  .agent:focus-visible{outline:2px solid var(--dispatch);outline-offset:1px}
+  .agent.sel{background:var(--panel);border-color:var(--line2)}
+  .agent .pip{width:8px;height:8px;border-radius:50%;box-shadow:0 0 8px currentColor}
+  .agent .who{min-width:0}
+  .agent .name{color:var(--bright);font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px}
+  .agent .name .lock{font-size:9px;color:var(--dock)}
+  .agent .act{font-size:10px;color:var(--steel-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .agent .cell{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:46px}
+  .agent .bar{width:46px;height:4px;border-radius:3px;background:var(--line);overflow:hidden}
+  .agent .bar i{display:block;height:100%;border-radius:3px;transition:width var(--t-base)}
+  .agent .pct{font-size:9px;color:var(--steel-dim)}
+  .logline{display:flex;gap:8px;padding:3px 6px;font-size:11px;line-height:1.45;border-radius:var(--r1)}
+  .logline .t{color:var(--steel-dim);flex:none}
+  .logline .m{color:var(--steel)}.logline .m b{font-weight:500}
+
+  .dock{grid-area:dock;background:var(--panel2);border-top:1px solid var(--line);display:flex;align-items:center;gap:var(--s3);padding:9px var(--s4);flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--bright);font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;padding:8px 14px;border-radius:var(--r1);cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:border-color var(--t-fast),background var(--t-fast)}
+  .btn:hover{border-color:var(--steel-dim)}.btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:2px solid var(--dispatch);outline-offset:2px}
+  .btn.primary{border-color:rgba(54,198,224,.4);color:var(--dispatch)}
+  .btn[disabled]{opacity:.38;cursor:not-allowed}
+  .btn .ic{width:9px;height:9px;border-radius:2px;background:currentColor;box-shadow:0 0 7px currentColor}
+  .injector{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r1);padding:4px 4px 4px 11px}
+  .injector label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .injector select{appearance:none;background:var(--panel2);border:1px solid var(--line);color:var(--bright);font-family:inherit;font-size:11px;padding:5px 24px 5px 9px;border-radius:var(--r1);cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--steel-dim) 50%),linear-gradient(135deg,var(--steel-dim) 50%,transparent 50%);background-position:calc(100% - 13px) 50%,calc(100% - 8px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+  .injector select:focus-visible{outline:2px solid var(--dispatch);outline-offset:1px}
+  .injector .queue{border:none;background:var(--dispatch);color:#04181d;font-weight:700;padding:6px 11px;border-radius:var(--r1);font-family:inherit;font-size:10px;letter-spacing:1px;text-transform:uppercase;cursor:pointer}
+  .injector .queue:hover{filter:brightness(1.08)}
+  .injector .queue:focus-visible{outline:2px solid var(--bright);outline-offset:2px}
+  .speed{display:flex;align-items:center;gap:9px;margin-left:auto}
+  .speed label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .speed output{color:var(--bright);min-width:34px;text-align:right;font-weight:500}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:120px;height:4px;border-radius:4px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--dispatch);box-shadow:0 0 8px var(--dispatch);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:var(--dispatch);box-shadow:0 0 8px var(--dispatch);cursor:pointer}
+  input[type=range]:focus-visible{outline:2px solid var(--dispatch);outline-offset:4px}
+  .hint{font-size:9px;color:var(--steel-dim);letter-spacing:.5px;width:100%;padding-top:2px}
+  .hint b{color:var(--steel);font-weight:400}
+
+  @media (max-width:880px){
+    .app{grid-template-columns:1fr;grid-template-rows:auto minmax(44dvh,1fr) auto auto;grid-template-areas:"hud" "stage" "side" "dock"}
+    .side{flex-direction:row;max-height:30dvh}
+    .pane.roster{flex:1 1 50%;border-bottom:none;border-right:1px solid var(--line)}
+    .pane.log{flex:1 1 50%}
+    .brand .sub{display:none}.stats{gap:14px}
+    .inspector{right:8px;left:8px;width:auto;bottom:44px}
+    .wire{display:none}.speed{margin-left:0}.hint{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){.feedbadge .d,.wire-h .d{animation:none}.toast,.qchip{animation:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="hud">
+    <div class="brand"><h1>ROBOPORT</h1><span class="sub">agent control surface</span>
+      <span class="feedbadge"><span class="d"></span><span id="feed-status">feed · mock</span></span></div>
+    <div class="stats">
+      <div class="stat"><span class="v" id="s-rate">0</span><span class="k">tasks / min</span></div>
+      <div class="stat"><span class="v" id="s-done">0</span><span class="k">completed</span></div>
+      <div class="stat"><span class="v" id="s-active">0/0</span><span class="k">active</span></div>
+      <div class="stat"><span class="v" id="s-queue">0</span><span class="k">queued</span></div>
+      <div class="stat"><span class="v" id="s-up">00:00</span><span class="k">uptime</span></div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <canvas id="c" aria-hidden="true"></canvas>
+    <div class="legend" aria-hidden="true">
+      <span class="it"><span class="sw" style="color:var(--dispatch)"></span>dispatched</span>
+      <span class="it"><span class="sw" style="color:var(--work)"></span>working</span>
+      <span class="it"><span class="sw" style="color:var(--return)"></span>returning</span>
+      <span class="it"><span class="sw" style="color:var(--dock)"></span>docked</span>
+      <span class="it"><span class="sw" style="color:var(--alert)"></span>low cell</span>
+    </div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div class="tip" id="tip"></div>
+
+    <div class="wire" id="wire">
+      <div class="wire-h" id="wire-h"><span class="d"></span><span class="t">wire · /api/feed</span><span class="c" id="wire-c">seq 0</span></div>
+      <div class="wire-b" id="wire-b"></div>
+    </div>
+
+    <aside class="inspector" id="inspector" role="region" aria-label="Selection inspector">
+      <div class="insp-head"><span class="ring" id="insp-ring"></span><div class="ttl"><div class="n" id="insp-name">—</div><div class="ty" id="insp-type">—</div></div><button class="x" id="insp-close" aria-label="Clear selection">✕</button></div>
+      <div class="insp-body" id="insp-body"></div>
+      <div class="insp-actions" id="insp-actions"></div>
+    </aside>
+
+    <div class="qstrip"><span class="ql">queue</span><div class="qchips" id="qchips"></div></div>
+  </main>
+
+  <aside class="side">
+    <section class="pane roster"><h2>Agents <span class="count" id="roster-count">0</span></h2><div class="scroll" id="roster" role="listbox" aria-label="Agent fleet" tabindex="0"></div></section>
+    <section class="pane log"><h2>Activity</h2><div class="scroll" id="log" aria-live="off"></div></section>
+  </aside>
+
+  <footer class="dock">
+    <button class="btn primary" id="btn-play"><span class="ic"></span><span id="play-label">Pause</span></button>
+    <button class="btn" id="btn-agent">+ Agent</button>
+    <div class="injector"><label for="task-station">Queue task to</label><select id="task-station" aria-label="Target station"></select><button class="queue" id="btn-queue">Queue</button></div>
+    <div class="speed"><label for="speed">Speed</label><input type="range" id="speed" min="0.25" max="3" step="0.25" value="1" /><output id="speed-out">1.0×</output></div>
+    <div class="hint">Running <b>feed-driven</b> off a mock backend · click an agent / station / hub to inspect &amp; command · <b>↑↓</b> select · <b>R</b> recall · <b>H</b> hold · <b>Esc</b> clear · <b>Space</b> pause</div>
+  </footer>
+</div>
+<div class="sr-only" id="sr" aria-live="polite"></div>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   PART A — MOCK BACKEND  (stands in for FastAPI / SQLAlchemy)
+   Owns ALL truth. Emits §4 envelopes. Accepts §7 commands.
+   Knows ZERO about pixels, canvas, drone positions, or rendering.
+   Swap this whole block for a real server; the contract is identical.
+   ===================================================================== */
+function createMockBackend(){
+  const STATION_CFG=[
+    {station_id:"stn.ingest",name:"Ingest",order:0,hue:"#7ea6ff"},
+    {station_id:"stn.snowflake",name:"Snowflake",order:1,hue:"#36c6e0"},
+    {station_id:"stn.decrypt",name:"Decrypt",order:2,hue:"#c98bff"},
+    {station_id:"stn.rag",name:"RAG",order:3,hue:"#4fd672"},
+    {station_id:"stn.synthesize",name:"Synthesize",order:4,hue:"#f2b134"},
+    {station_id:"stn.validate",name:"Validate",order:5,hue:"#ff8f6b"},
+    {station_id:"stn.publish",name:"Publish",order:6,hue:"#ff5a8a"},
+  ];
+  const CONFIG={stations:STATION_CFG,energy_low_threshold:22,max_agents:12};
+
+  let seq=0, subs=[], born=performance.now();
+  const stations=new Map(), agents=new Map(), tasks=new Map();
+  let agentN=0, taskN=1000, completed=0;
+  const completions=[];          // ts of completions (rolling rate)
+  const alertDeb={};
+  let autoTimer=1.0, metricTimer=0;
+
+  STATION_CFG.forEach(c=>stations.set(c.station_id,{...c,state:"idle",worker_agent_id:null,drain:false,rev:0}));
+
+  const now=()=>new Date().toISOString();
+  function emit(type,data){seq++;const env={v:1,seq,ts:now(),type,data};for(const s of subs)s(env);}
+  const subscribe=cb=>{subs.push(cb);return ()=>{subs=subs.filter(x=>x!==cb);};};
+
+  /* ---- DTO serializers (feed fields only) ---- */
+  const qdepth=sid=>[...tasks.values()].filter(t=>t.status==="queued"&&t.station_id===sid).length;
+  function agentDTO(a){return{agent_id:a.agent_id,name:a.name,state:a.state,energy:+a.energy.toFixed(1),hold:a.hold,task_id:a.task_id,station_id:a.station_id,task_progress:+a.task_progress.toFixed(3),eta_s:a.eta_s,completed_total:a.completed_total,error:a.error,rev:a.rev,updated_at:now()};}
+  function stationDTO(s){return{station_id:s.station_id,name:s.name,order:s.order,state:s.drain?"draining":(s.worker_agent_id?"busy":"idle"),worker_agent_id:s.worker_agent_id,queue_depth:qdepth(s.station_id),drain:s.drain,rev:s.rev};}
+  function taskDTO(t){return{task_id:t.task_id,station_id:t.station_id,status:t.status,priority:t.priority,work_estimate_s:t.work_estimate_s,assigned_agent_id:t.assigned_agent_id,enqueued_at:t.enqueued_at,started_at:t.started_at,finished_at:t.finished_at,result:t.result,error:t.error,rev:t.rev};}
+
+  const pushAgent=(a,t="agent.updated")=>{a.rev++;emit(t,agentDTO(a));};
+  const pushStation=s=>{s.rev++;emit("station.updated",stationDTO(s));};
+  const pushTask=(t,type)=>{t.rev++;emit(type,taskDTO(t));};
+  const pushLog=html=>emit("log.appended",{html,ts:now()});
+  function pushAlert(kind,title,body,target,key){
+    if(key){const n=performance.now();if(alertDeb[key]&&n-alertDeb[key]<8000)return;alertDeb[key]=n;}
+    emit("alert.raised",{alert_id:"al_"+Math.random().toString(36).slice(2,7),kind,title,body,target,raised_at:now(),ttl_s:5});
+  }
+
+  /* ---- agents / tasks ---- */
+  function addAgent(){
+    if(agents.size>=CONFIG.max_agents)return null;
+    agentN++;const id="drone-"+String(agentN).padStart(2,"0");
+    const a={agent_id:id,name:id,state:"docked",energy:60+Math.random()*30,hold:false,task_id:null,station_id:null,task_progress:0,eta_s:null,completed_total:0,error:null,rev:0,_t:0,_work:0};
+    agents.set(id,a);emit("agent.added",agentDTO(a));pushLog(`<b style="color:#6c8cff">${id}</b> came online`);return a;
+  }
+  function enqueue(sid,priority){
+    const st=stations.get(sid);if(!st)return null;
+    taskN++;const id="t_"+taskN.toString(36);
+    const t={task_id:id,station_id:sid,status:"queued",priority:priority??100,work_estimate_s:2.4+Math.random()*2.8,assigned_agent_id:null,enqueued_at:now(),started_at:null,finished_at:null,result:null,error:null,rev:0};
+    tasks.set(id,t);pushTask(t,"task.enqueued");pushStation(st);return t;
+  }
+  function oldestQueuedFree(){
+    let best=null;
+    for(const t of tasks.values()){
+      if(t.status!=="queued")continue;
+      const st=stations.get(t.station_id);if(st.worker_agent_id)continue;
+      if(!best||t.priority<best.priority||(t.priority===best.priority&&t.enqueued_at<best.enqueued_at))best=t;
+    }
+    return best;
+  }
+  function assign(a,t){
+    const st=stations.get(t.station_id);
+    t.status="assigned";t.assigned_agent_id=a.agent_id;pushTask(t,"task.assigned");
+    st.worker_agent_id=a.agent_id;pushStation(st);
+    a.task_id=t.task_id;a.station_id=t.station_id;a.state="dispatched";a.task_progress=0;a._t=1.0+Math.random()*0.8;a.eta_s=a._t;a._work=t.work_estimate_s;
+    pushAgent(a);pushLog(`<b style="color:#36c6e0">${a.agent_id}</b> → <b style="color:${st.hue}">${st.name}</b> · ${t.task_id}`);
+  }
+  function requeue(a,reason){            // abort current task back to queue
+    const t=tasks.get(a.task_id);if(t){t.status="queued";t.assigned_agent_id=null;t.started_at=null;pushTask(t,"task.updated");}
+    const st=stations.get(a.station_id);if(st){st.worker_agent_id=null;pushStation(st);}
+    a.task_id=null;a.station_id=null;a.task_progress=0;
+  }
+  function sendHome(a){a.state="returning";a._t=0.9+Math.random()*0.6;a.eta_s=a._t;}
+
+  /* ---- simulation tick (sim-seconds) ---- */
+  function tick(dt){
+    if(dt<=0)return;
+    autoTimer-=dt;
+    if(autoTimer<=0){autoTimer=1.4+Math.random()*1.8;
+      const open=[...stations.values()].filter(s=>!s.drain);
+      if([...tasks.values()].filter(t=>t.status==="queued").length<14&&open.length)enqueue(open[(Math.random()*open.length)|0].station_id);}
+
+    for(const a of agents.values()){
+      let changed=false;a._acc=(a._acc||0)+dt;
+      if(a.state==="docked"){
+        const e0=a.energy;a.energy=Math.min(100,a.energy+dt*16);
+        if(Math.abs(a.energy-e0)>0.01)changed=true;
+        if(!a.hold&&a.energy>34){const t=oldestQueuedFree();if(t){assign(a,t);continue;}}
+      }
+      else if(a.state==="dispatched"){
+        a.energy-=dt*2.6;a._t-=dt;a.eta_s=Math.max(0,a._t);changed=true;
+        if(a.energy<16){pushAlert("critical",a.agent_id+" low cell",`Aborted trip at ${Math.round(a.energy)}% — returning to charge.`,{type:"agent",id:a.agent_id},"low-"+a.agent_id);requeue(a);sendHome(a);pushAgent(a);pushLog(`<b style="color:#ff5a52">${a.agent_id}</b> low cell — recalled`);continue;}
+        if(a._t<=0){const st=stations.get(a.station_id);const t=tasks.get(a.task_id);t.status="running";t.started_at=now();pushTask(t,"task.progress");a.state="working";a.task_progress=0;a.eta_s=null;st.state="busy";pushStation(st);pushAgent(a);continue;}
+      }
+      else if(a.state==="working"){
+        a.energy-=dt*3.4;a.task_progress=Math.min(1,a.task_progress+dt/a._work);changed=true;
+        if(a.task_progress>=1){
+          const st=stations.get(a.station_id),t=tasks.get(a.task_id);
+          t.status="completed";t.finished_at=now();t.result={ok:true};pushTask(t,"task.completed");
+          st.worker_agent_id=null;pushStation(st);
+          a.completed_total++;completed++;completions.push(performance.now());
+          a.task_id=null;a.task_progress=0;sendHome(a);  // keep station_id for carry colour, cleared on dock
+          pushAgent(a);pushLog(`<b style="color:#4fd672">${a.agent_id}</b> finished <b style="color:${st.hue}">${st.name}</b> · ${t.task_id} ✓`);
+          continue;
+        }
+      }
+      else if(a.state==="returning"){
+        a.energy-=dt*2.2;a._t-=dt;a.eta_s=Math.max(0,a._t);changed=true;
+        if(a._t<=0){a.state="docked";a.station_id=null;a.eta_s=null;pushAgent(a);continue;}
+      }
+      if(changed&&a._acc>=0.25){a._acc=0;pushAgent(a);}
+    }
+
+    while(completions.length&&completions[0]<performance.now()-60000)completions.shift();
+    if([...tasks.values()].filter(t=>t.status==="queued").length>=11)pushAlert("warning","Queue backing up","Add an agent or boost speed.",{type:"port"},"queue-backup");
+
+    metricTimer-=dt;
+    if(metricTimer<=0){metricTimer=1.0;emitMetrics();}
+  }
+  function emitMetrics(){
+    const active=[...agents.values()].filter(a=>a.state!=="docked"||(a.energy<99&&!a.hold)).length;
+    emit("metrics.tick",{tasks_per_min:completions.length,completed_total:completed,active_agents:active,total_agents:agents.size,queued:[...tasks.values()].filter(t=>t.status==="queued").length,uptime_s:Math.floor((performance.now()-born)/1000),ts:now()});
+  }
+
+  /* ---- snapshot ---- */
+  function snapshot(){
+    return{config:CONFIG,agents:[...agents.values()].map(agentDTO),stations:[...stations.values()].map(stationDTO),tasks:[...tasks.values()].filter(t=>t.status!=="completed"&&t.status!=="cancelled").map(taskDTO),alerts:[],metrics:(()=>{const active=[...agents.values()].filter(a=>a.state!=="docked").length;return{tasks_per_min:completions.length,completed_total:completed,active_agents:active,total_agents:agents.size,queued:[...tasks.values()].filter(t=>t.status==="queued").length,uptime_s:Math.floor((performance.now()-born)/1000),ts:now()};})()};
+  }
+  function emitSnapshot(){seq++;const env={v:1,seq,ts:now(),type:"snapshot",data:snapshot()};for(const s of subs)s(env);}
+
+  /* ---- §7 command bus ---- */
+  function handleCommand(cmd){
+    const reject=r=>({command_id:cmd.command_id,status:"rejected",reason:r});
+    const ok=()=>({command_id:cmd.command_id,status:"accepted"});
+    const T=cmd.target||{};
+    try{
+      switch(cmd.type){
+        case "agent.recall":{const a=agents.get(T.id);if(!a)return reject("unknown agent");if(a.state==="docked")return reject("already docked");if(a.task_id)requeue(a);else{const st=stations.get(a.station_id);if(st){st.worker_agent_id=null;pushStation(st);}a.station_id=null;}sendHome(a);pushAgent(a);pushLog(`<b style="color:#6c8cff">${a.agent_id}</b> recalled to hub`);return ok();}
+        case "agent.hold":{const a=agents.get(T.id);if(!a)return reject("unknown agent");a.hold=!!cmd.args.hold;pushAgent(a);pushLog(`<b style="color:#6c8cff">${a.agent_id}</b> ${a.hold?"placed on hold":"resumed"}`);return ok();}
+        case "agent.retire":{const a=agents.get(T.id);if(!a)return reject("unknown agent");if(a.task_id)requeue(a);else if(a.station_id){const st=stations.get(a.station_id);if(st){st.worker_agent_id=null;pushStation(st);}}agents.delete(a.agent_id);emit("agent.removed",{agent_id:a.agent_id});pushLog(`<b style="color:#ff5a52">${a.agent_id}</b> retired`);return ok();}
+        case "fleet.spawn_agent":{if(!addAgent())return reject("fleet at capacity");return ok();}
+        case "task.enqueue":{const st=stations.get(T.id);if(!st)return reject("unknown station");const t=enqueue(T.id,cmd.args.priority);pushLog(`Operator queued <b style="color:${st.hue}">${st.name}</b> · ${t.task_id}`);return ok();}
+        case "station.prioritize":{const st=stations.get(T.id);if(!st)return reject("unknown station");let p=80;for(const t of tasks.values())if(t.status==="queued"&&t.station_id===T.id){t.priority=p--;pushTask(t,"task.updated");}pushLog(`<b style="color:${st.hue}">${st.name}</b> tasks prioritized`);return ok();}
+        case "station.drain":{const st=stations.get(T.id);if(!st)return reject("unknown station");st.drain=!!cmd.args.drain;pushStation(st);pushLog(`<b style="color:${st.hue}">${st.name}</b> intake ${st.drain?"drained":"reopened"}`);return ok();}
+        case "fleet.hold":{const h=!!cmd.args.hold;for(const a of agents.values()){a.hold=h;pushAgent(a);}pushLog(`Fleet ${h?"held":"resumed"}`);return ok();}
+        case "fleet.recall":{for(const a of agents.values())if(a.state!=="docked"){if(a.task_id)requeue(a);else if(a.station_id){const st=stations.get(a.station_id);if(st){st.worker_agent_id=null;pushStation(st);}a.station_id=null;}sendHome(a);pushAgent(a);}pushLog(`<b style="color:#6c8cff">All agents</b> recalled`);return ok();}
+        case "queue.clear":{for(const t of tasks.values())if(t.status==="queued"){t.status="cancelled";pushTask(t,"task.cancelled");}[...stations.values()].forEach(pushStation);pushLog("Queue cleared by operator");return ok();}
+        default:return reject("unknown command "+cmd.type);
+      }
+    }catch(e){return reject("error: "+e.message);}
+  }
+
+  /* boot state */
+  for(let i=0;i<5;i++)addAgent();
+  for(let i=0;i<4;i++)enqueue(STATION_CFG[(Math.random()*STATION_CFG.length)|0].station_id);
+  pushLog(`<b style="color:#4fd672">ROBOPORT online</b> · ${STATION_CFG.length} stations mapped`);
+
+  return {subscribe,getSnapshot:emitSnapshot,handleCommand,tick,CONFIG};
+}
+
+/* =====================================================================
+   PART B — FEED CLIENT  (the swappable transport seam)
+   In mock mode it binds to the in-page backend. To GO LIVE, replace the
+   body of this function with a WebSocket + fetch — nothing in PART C
+   changes:
+     const ws=new WebSocket(`${WS}/api/feed?token=${TOKEN}`);
+     ws.onmessage=e=>route(JSON.parse(e.data));
+     command=(type,target,args)=>fetch(`${API}/api/commands`,{method:"POST",
+       headers:{Authorization:`Bearer ${TOKEN}`,'Content-Type':'application/json'},
+       body:JSON.stringify({command_id:crypto.randomUUID(),type,target,args,issued_by:"operator",ts:new Date().toISOString()})});
+   ===================================================================== */
+function createFeed(backend){
+  let lastSeq=0, onEnvelope=()=>{}, onRaw=()=>{};
+  function route(env){
+    if(env.type!=="snapshot"&&lastSeq&&env.seq!==lastSeq+1){backend.getSnapshot();return;} // gap → resync
+    lastSeq=env.seq;onRaw(env);onEnvelope(env);
+  }
+  backend.subscribe(route);
+  return {
+    connect(){backend.getSnapshot();},
+    onEnvelope(cb){onEnvelope=cb;},
+    onRaw(cb){onRaw=cb;},
+    tick(dt){backend.tick(dt);},                                  // mock-only: drives sim
+    command(type,target,args={}){
+      return backend.handleCommand({command_id:"c_"+Math.random().toString(36).slice(2),type,target,args,issued_by:"operator",ts:new Date().toISOString()});
+    },
+    get seq(){return lastSeq;}
+  };
+}
+
+/* =====================================================================
+   PART C — CLIENT  (render + interaction; PURE FEED CONSUMER)
+   Holds NO logical truth. Never assigns tasks, mutates energy, or
+   completes work. It projects feed envelopes into a model and animates
+   positions toward the logical state. Commands go out via feed.command.
+   ===================================================================== */
+(function(){
+  const reduceMotion=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const canvas=document.getElementById("c"),ctx=canvas.getContext("2d");
+  const T={floor:"#0e1418",steel:"#8a9da8",steelDim:"#5f717c",bright:"#e8f1f5",dispatch:"#36c6e0",work:"#f2b134",return:"#4fd672",dock:"#6c8cff",alert:"#ff5a52"};
+  const SCOL={docked:T.dock,dispatched:T.dispatch,working:T.work,returning:T.return,offline:T.steelDim};
+  let DPR=Math.min(window.devicePixelRatio||1,2),W=0,H=0,cx=0,cy=0,coverR=0;
+
+  /* client model = projection of the feed */
+  const M={config:null,agents:new Map(),stations:new Map(),tasks:new Map(),
+    metrics:{tasks_per_min:0,completed_total:0,active_agents:0,total_agents:0,queued:0,uptime_s:0}};
+  const sparks=[],logEntries=[],toasts=[],wireLines=[];
+  let selected=null,hovered=null,simSpeed=1,running=true,dockCounter=0;
+  const mouse={x:-999,y:-999};
+
+  /* ---------- layout ---------- */
+  function layout(){
+    const r=canvas.getBoundingClientRect();W=r.width;H=r.height;
+    canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);ctx.setTransform(DPR,0,0,DPR,0,0);
+    cx=W/2;cy=H/2;coverR=Math.min(W,H)*0.42;positionStations();
+  }
+  function positionStations(){
+    if(!M.config)return;const r=coverR*0.82,n=M.config.stations.length;
+    for(const c of M.config.stations){const s=M.stations.get(c.station_id);if(!s)continue;
+      const ang=(-Math.PI/2)+(c.order/n)*Math.PI*2,jit=(Math.sin(c.order*12.9)*0.5+0.5)*0.16+0.84;
+      s.x=cx+Math.cos(ang)*r*jit;s.y=cy+Math.sin(ang)*r*jit;}
+  }
+  function dockSlot(i){const ring=46,n=12,ang=(i%n)/n*Math.PI*2+performance.now()*0.00002;return{x:cx+Math.cos(ang)*ring,y:cy+Math.sin(ang)*ring};}
+
+  /* ---------- feed ingestion (no logic, just projection) ---------- */
+  function hydrate(d){
+    M.config=d.config;
+    M.stations.clear();
+    for(const c of d.config.stations)M.stations.set(c.station_id,{...c,state:"idle",worker_agent_id:null,drain:false,queue_depth:0,rev:-1,x:0,y:0,pulse:0});
+    for(const s of d.stations){const st=M.stations.get(s.station_id);Object.assign(st,s);}
+    positionStations();
+    M.agents.clear();for(const a of d.agents)addClientAgent(a);
+    M.tasks.clear();for(const t of d.tasks)M.tasks.set(t.task_id,t);
+    M.metrics=d.metrics;
+    populateInjector();
+  }
+  function addClientAgent(dto){
+    const slot=dockSlot(dockCounter++);
+    const a={...dto,x:slot.x,y:slot.y,_prev:dto.state,trail:[],bob:Math.random()*6.28,spin:Math.random()*6.28,
+      _slot:dockCounter%12,travelDur:0,travelT:0,p0:null,p1:null,p2:null,carry:null,_resultPending:false,tag:""};
+    M.agents.set(a.agent_id,a);return a;
+  }
+  function applyAgent(dto){
+    let a=M.agents.get(dto.agent_id);
+    if(!a){a=addClientAgent(dto);return;}
+    if(dto.rev<=a.rev)return;                               // drop stale revision
+    const prev=a._prev;
+    for(const k in dto)a[k]=dto[k];
+    if(dto.state!==prev)transition(a,prev,dto.state);
+    a._prev=dto.state;
+  }
+  function transition(a,prev,next){
+    if(next==="dispatched"){const st=M.stations.get(a.station_id);a.p0={x:a.x,y:a.y};const p=path(a.p0,st,Math.random()<.5?1:-1);a.p1=p[1];a.p2=p[2];a.travelDur=a.eta_s||1.2;a.travelT=0;a.carry=null;}
+    else if(next==="working"){a.carry=null;}
+    else if(next==="returning"){a.p0={x:a.x,y:a.y};const p=path(a.p0,{x:cx,y:cy},Math.random()<.5?1:-1);a.p1=p[1];a.p2=p[2];a.travelDur=a.eta_s||1.0;a.travelT=0;
+      a.carry=a._resultPending?{hue:(M.stations.get(a.station_id)||{}).hue||T.return}:null;a._resultPending=false;}
+    else if(next==="docked"){a.carry=null;a._slot=dockCounter++%12;}
+  }
+  function applyTask(dto,type){
+    if(type==="task.completed"){const ag=M.agents.get(dto.assigned_agent_id);if(ag)ag._resultPending=true;M.tasks.delete(dto.task_id);return;}
+    if(type==="task.cancelled"){M.tasks.delete(dto.task_id);return;}
+    M.tasks.set(dto.task_id,dto);
+  }
+  function route(env){
+    pushWire(env);
+    switch(env.type){
+      case "snapshot":hydrate(env.data);break;
+      case "agent.added":case "agent.updated":applyAgent(env.data);break;
+      case "agent.removed":{const a=M.agents.get(env.data.agent_id);if(a){M.agents.delete(env.data.agent_id);if(selected&&selected.type==="agent"&&selected.id===env.data.agent_id)clearSelection();}break;}
+      case "task.enqueued":case "task.assigned":case "task.progress":case "task.updated":case "task.completed":case "task.cancelled":case "task.failed":applyTask(env.data,env.type);break;
+      case "station.updated":{const s=M.stations.get(env.data.station_id);if(s&&env.data.rev>s.rev)Object.assign(s,env.data);break;}
+      case "alert.raised":pushToast(env.data);break;
+      case "metrics.tick":M.metrics=env.data;break;
+      case "log.appended":logEntries.unshift({t:hhmm(env.data.ts),html:env.data.html});if(logEntries.length>60)logEntries.pop();logDirty=true;break;
+    }
+  }
+  const hhmm=iso=>{const d=new Date(iso);return String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");};
+
+  /* ---------- geometry helpers ---------- */
+  function path(from,to,dir){const mx=(from.x+to.x)/2,my=(from.y+to.y)/2,dx=to.x-from.x,dy=to.y-from.y,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len,c=len*0.28*dir;return[{x:from.x,y:from.y},{x:mx+nx*c,y:my+ny*c},{x:to.x,y:to.y}];}
+  function bez(p0,p1,p2,t){const u=1-t;return{x:u*u*p0.x+2*u*t*p1.x+t*t*p2.x,y:u*u*p0.y+2*u*t*p1.y+t*t*p2.y};}
+  const easeIO=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+
+  /* ---------- animation (positions ONLY; truth is the feed) ---------- */
+  function animate(sdt){
+    for(const st of M.stations.values())st.pulse=Math.max(0,st.pulse-sdt*2);
+    for(const a of M.agents.values()){
+      a.bob+=sdt*2.2;a.spin+=sdt*(a.state==="docked"?6:16);
+      if(a.state==="docked"){const s=dockSlot(a._slot);a.x+=(s.x-a.x)*Math.min(1,sdt*4);a.y+=(s.y-a.y)*Math.min(1,sdt*4);}
+      else if(a.state==="dispatched"){a.travelT+=sdt;const tt=Math.min(1,a.travelT/Math.max(0.0001,a.travelDur));const p=bez(a.p0,a.p1,a.p2,easeIO(tt));a.x=p.x;a.y=p.y;}
+      else if(a.state==="working"){const st=M.stations.get(a.station_id);if(st){a.x=st.x+Math.sin(a.bob)*2;a.y=st.y-16+Math.cos(a.bob*1.3)*2;st.pulse=Math.max(st.pulse,0.6+0.4*Math.sin(performance.now()*0.01));if(Math.random()<sdt*22)sparks.push({x:st.x+(Math.random()-.5)*22,y:st.y+(Math.random()-.5)*22,vx:(Math.random()-.5)*30,vy:-20-Math.random()*30,life:1,hue:st.hue});}}
+      else if(a.state==="returning"){a.travelT+=sdt;const tt=Math.min(1,a.travelT/Math.max(0.0001,a.travelDur));const p=bez(a.p0,a.p1,a.p2,easeIO(tt));a.x=p.x;a.y=p.y;}
+      if(a.state!=="docked"){a.trail.push({x:a.x,y:a.y});if(a.trail.length>16)a.trail.shift();}else if(a.trail.length)a.trail.shift();
+      a.tag=tagFor(a);
+    }
+    for(let i=sparks.length-1;i>=0;i--){const s=sparks[i];s.x+=s.vx*sdt;s.y+=s.vy*sdt;s.vy+=80*sdt;s.life-=sdt*1.6;if(s.life<=0)sparks.splice(i,1);}
+  }
+  function tagFor(a){
+    const low=a.energy<22&&a.state!=="docked";
+    if(a.state==="docked")return a.hold?"⏸ hold":(a.energy<99?"↺ "+Math.round(a.energy)+"%":"● ready");
+    if(a.state==="dispatched")return "→ "+(M.stations.get(a.station_id)||{}).name;
+    if(a.state==="working")return "⚙ "+Math.round(a.task_progress*100)+"%";
+    if(a.state==="returning")return low?"⚠ low cell":(a.carry?"✓ result":"↩ recalled");
+    return "";
+  }
+  function stateColor(a){return(a.energy<22&&a.state!=="docked")?T.alert:(SCOL[a.state]||T.dock);}
+
+  /* ---------- render (unchanged visual language) ---------- */
+  const dimWhenSel=()=>selected?0.4:1;
+  function isSel(o){return selected&&((o.type==="agent"&&selected.type==="agent"&&selected.id===o.id)||(o.type==="station"&&selected.type==="station"&&selected.id===o.id)||(o.type==="port"&&selected.type==="port"));}
+  function selectionRing(x,y,r,col){const t=performance.now()*0.002;ctx.save();ctx.translate(x,y);ctx.rotate(reduceMotion?0:t);ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.setLineDash([4,5]);ctx.globalAlpha=0.95;ctx.beginPath();ctx.arc(0,0,r,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+  function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+
+  function drawGrid(){ctx.fillStyle=T.floor;ctx.fillRect(0,0,W,H);ctx.strokeStyle="rgba(22,32,40,.32)";ctx.lineWidth=1;const g=42;ctx.beginPath();for(let x=cx%g;x<W;x+=g){ctx.moveTo(x,0);ctx.lineTo(x,H);}for(let y=cy%g;y<H;y+=g){ctx.moveTo(0,y);ctx.lineTo(W,y);}ctx.stroke();const gr=ctx.createRadialGradient(cx,cy,coverR*0.4,cx,cy,Math.max(W,H)*0.75);gr.addColorStop(0,"rgba(0,0,0,0)");gr.addColorStop(1,"rgba(0,0,0,0.55)");ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);}
+  function drawCoverage(){const t=performance.now()*0.0004;ctx.save();ctx.translate(cx,cy);ctx.rotate(reduceMotion?0:t);ctx.strokeStyle="rgba(108,140,255,0.2)";ctx.lineWidth=1.5;ctx.setLineDash([6,12]);ctx.beginPath();ctx.arc(0,0,coverR,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.restore();ctx.strokeStyle="rgba(108,140,255,0.08)";ctx.beginPath();ctx.arc(cx,cy,coverR*0.55,0,6.283);ctx.stroke();}
+  function drawLinks(){for(const a of M.agents.values()){if(a.station_id&&(a.state==="dispatched"||a.state==="working")){const st=M.stations.get(a.station_id);if(!st)continue;const hot=isSel({type:"agent",id:a.agent_id})||isSel({type:"station",id:a.station_id});ctx.strokeStyle=hot?"rgba(54,198,224,0.4)":"rgba(54,198,224,0.10)";ctx.lineWidth=hot?1.5:1;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(st.x,st.y);ctx.stroke();}}}
+  function drawStations(){
+    for(const st of M.stations.values()){
+      const sel=isSel({type:"station",id:st.station_id}),hov=hovered&&hovered.type==="station"&&hovered.id===st.station_id;
+      ctx.globalAlpha=sel||hov?1:dimWhenSel();const R=17;
+      if(st.pulse>0){ctx.save();ctx.globalAlpha=ctx.globalAlpha*st.pulse*0.5;ctx.fillStyle=st.hue;ctx.shadowColor=st.hue;ctx.shadowBlur=24;ctx.beginPath();ctx.arc(st.x,st.y,R+6,0,6.283);ctx.fill();ctx.restore();}
+      ctx.save();ctx.translate(st.x,st.y);ctx.beginPath();for(let i=0;i<6;i++){const ang=Math.PI/6+i*Math.PI/3,px=Math.cos(ang)*R,py=Math.sin(ang)*R;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();
+      ctx.fillStyle=st.drain?"#191319":"#121b21";ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle=st.worker_agent_id?st.hue:(hov?"rgba(232,241,245,.7)":"rgba(138,157,168,0.5)");ctx.stroke();
+      ctx.fillStyle=st.hue;ctx.shadowColor=st.hue;ctx.shadowBlur=st.worker_agent_id?12:5;ctx.beginPath();ctx.arc(0,0,4,0,6.283);ctx.fill();
+      if(st.drain){ctx.shadowBlur=0;ctx.strokeStyle="rgba(255,90,82,.8)";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-6,-6);ctx.lineTo(6,6);ctx.stroke();}ctx.restore();
+      const qn=qcount(st.station_id);
+      if(qn>0){ctx.save();ctx.translate(st.x+R-2,st.y-R+2);ctx.fillStyle="#0b1015";ctx.strokeStyle=st.hue;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,8,0,6.283);ctx.fill();ctx.stroke();ctx.fillStyle=st.hue;ctx.font="700 9px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(qn,0,0.5);ctx.restore();}
+      ctx.font="500 11px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="top";ctx.fillStyle=sel||hov?"rgba(232,241,245,1)":"rgba(232,241,245,0.82)";ctx.fillText(st.name,st.x,st.y+R+6);
+      if(sel)selectionRing(st.x,st.y,R+9,st.hue);ctx.globalAlpha=1;
+    }
+  }
+  function drawPort(){
+    const t=performance.now()*0.001,sel=isSel({type:"port"});ctx.globalAlpha=selected&&!sel?dimWhenSel():1;
+    ctx.save();ctx.globalAlpha=ctx.globalAlpha*0.5;const g=ctx.createRadialGradient(cx,cy,4,cx,cy,70);g.addColorStop(0,"rgba(108,140,255,0.5)");g.addColorStop(1,"rgba(108,140,255,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,70,0,6.283);ctx.fill();ctx.restore();
+    ctx.strokeStyle="rgba(108,140,255,0.35)";ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx,cy,46,0,6.283);ctx.stroke();
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(reduceMotion?0:t*1.4);ctx.strokeStyle="rgba(108,140,255,0.7)";ctx.lineWidth=2.5;ctx.lineCap="round";for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(0,0,46,i*2.1,i*2.1+0.7);ctx.stroke();}ctx.restore();
+    ctx.save();ctx.translate(cx,cy);for(let ring=0;ring<2;ring++){const rr=26-ring*9;ctx.beginPath();for(let i=0;i<8;i++){const ang=i*Math.PI/4+(ring?t*0.4:-t*0.3),px=Math.cos(ang)*rr,py=Math.sin(ang)*rr;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();ctx.fillStyle=ring?"#1b2740":"#13202e";ctx.fill();ctx.strokeStyle="rgba(124,158,255,0.55)";ctx.lineWidth=1.5;ctx.stroke();}
+    ctx.fillStyle="#9db8ff";ctx.shadowColor="#6c8cff";ctx.shadowBlur=18;ctx.beginPath();ctx.arc(0,0,5+Math.sin(t*3)*1.2,0,6.283);ctx.fill();ctx.restore();
+    if(sel)selectionRing(cx,cy,54,T.dock);ctx.globalAlpha=1;
+  }
+  function drawDrone(a){
+    const col=stateColor(a),sel=isSel({type:"agent",id:a.agent_id}),hov=hovered&&hovered.type==="agent"&&hovered.id===a.agent_id;
+    const bob=reduceMotion?0:Math.sin(a.bob)*2,x=a.x,y=a.y+bob;ctx.globalAlpha=sel||hov?1:dimWhenSel();
+    if(a.trail.length>1&&!reduceMotion){ctx.lineWidth=2;ctx.lineCap="round";for(let i=1;i<a.trail.length;i++){const p0=a.trail[i-1],p1=a.trail[i];ctx.strokeStyle=col;ctx.globalAlpha=(sel||hov?1:dimWhenSel())*(i/a.trail.length)*0.5;ctx.beginPath();ctx.moveTo(p0.x,p0.y);ctx.lineTo(p1.x,p1.y);ctx.stroke();}ctx.globalAlpha=sel||hov?1:dimWhenSel();}
+    ctx.save();ctx.translate(x,y);
+    if(!reduceMotion){ctx.globalAlpha=ctx.globalAlpha*0.22;for(let i=0;i<4;i++){const ang=Math.PI/4+i*Math.PI/2;ctx.fillStyle=col;ctx.beginPath();ctx.arc(Math.cos(ang)*9,Math.sin(ang)*9,4.5,0,6.283);ctx.fill();}ctx.globalAlpha=sel||hov?1:dimWhenSel();}
+    if(a.hold){ctx.strokeStyle=T.dock;ctx.lineWidth=1.5;ctx.globalAlpha=ctx.globalAlpha*0.6;ctx.beginPath();ctx.arc(0,0,13,0,6.283);ctx.stroke();ctx.globalAlpha=sel||hov?1:dimWhenSel();}
+    ctx.shadowColor=col;ctx.shadowBlur=hov||sel?16:12;ctx.fillStyle="#0f1820";roundRect(ctx,-6,-6,12,12,3);ctx.fill();ctx.shadowBlur=0;ctx.lineWidth=1.5;ctx.strokeStyle=col;ctx.stroke();
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(0,0,2.6,0,6.283);ctx.fill();
+    ctx.strokeStyle=col;ctx.lineWidth=1.4;ctx.globalAlpha=ctx.globalAlpha*0.8;for(let i=0;i<4;i++){const ang=Math.PI/4+i*Math.PI/2;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(ang)*9,Math.sin(ang)*9);ctx.stroke();}ctx.globalAlpha=sel||hov?1:dimWhenSel();
+    if(a.carry){ctx.save();ctx.translate(0,11);ctx.rotate(a.spin*0.4);ctx.shadowColor=a.carry.hue;ctx.shadowBlur=10;ctx.fillStyle=a.carry.hue;roundRect(ctx,-4,-4,8,8,1.5);ctx.fill();ctx.restore();}
+    ctx.restore();
+    if(sel){selectionRing(x,y,18,col);ctx.save();ctx.translate(x,y);ctx.strokeStyle="rgba(255,255,255,.12)";ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(0,0,23,0,6.283);ctx.stroke();ctx.strokeStyle=a.energy<22?T.alert:T.return;ctx.beginPath();ctx.arc(0,0,23,-Math.PI/2,-Math.PI/2+(a.energy/100)*6.283);ctx.stroke();ctx.restore();}
+    if(a.tag){ctx.font="500 9px 'JetBrains Mono',monospace";const tw=ctx.measureText(a.agent_id+"  "+a.tag).width+12,tx=x-tw/2,ty=y-22;ctx.fillStyle="rgba(10,15,19,0.8)";roundRect(ctx,tx,ty,tw,15,4);ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=ctx.globalAlpha*0.5;ctx.lineWidth=1;roundRect(ctx,tx,ty,tw,15,4);ctx.stroke();ctx.globalAlpha=sel||hov?1:dimWhenSel();ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillStyle="rgba(232,241,245,0.65)";ctx.fillText(a.agent_id,tx+6,ty+7.5);const idw=ctx.measureText(a.agent_id+"  ").width;ctx.fillStyle=col;ctx.fillText(a.tag,tx+6+idw,ty+7.5);}
+    ctx.globalAlpha=1;
+  }
+  function drawSparks(){for(const s of sparks){ctx.globalAlpha=Math.max(0,s.life)*(selected?dimWhenSel():1);ctx.fillStyle=s.hue;ctx.shadowColor=s.hue;ctx.shadowBlur=6;ctx.beginPath();ctx.arc(s.x,s.y,1.6,0,6.283);ctx.fill();}ctx.globalAlpha=1;ctx.shadowBlur=0;}
+  function render(){drawGrid();drawCoverage();drawLinks();drawStations();drawSparks();drawPort();[...M.agents.values()].sort((a,b)=>a.y-b.y).forEach(drawDrone);}
+
+  /* ---------- derived helpers ---------- */
+  const qcount=sid=>{let n=0;for(const t of M.tasks.values())if(t.status==="queued"&&t.station_id===sid)n++;return n;};
+  function queuedList(){return[...M.tasks.values()].filter(t=>t.status==="queued").sort((a,b)=>(a.priority-b.priority)||(a.enqueued_at<b.enqueued_at?-1:1));}
+
+  /* ---------- DOM ---------- */
+  const el=id=>document.getElementById(id);
+  const D={rate:el("s-rate"),done:el("s-done"),active:el("s-active"),queue:el("s-queue"),up:el("s-up"),roster:el("roster"),rosterCount:el("roster-count"),log:el("log"),qchips:el("qchips"),insp:el("inspector"),inspRing:el("insp-ring"),inspName:el("insp-name"),inspType:el("insp-type"),inspBody:el("insp-body"),inspActions:el("insp-actions"),toasts:el("toasts"),tip:el("tip"),sr:el("sr"),wireB:el("wire-b"),wireC:el("wire-c")};
+  let logDirty=true;
+  function actLabel(a){if(a.hold&&a.state==="docked")return"on hold";if(a.state==="dispatched")return"dispatched · "+(M.stations.get(a.station_id)||{}).name;if(a.state==="working")return"working · "+(M.stations.get(a.station_id)||{}).name;if(a.state==="returning")return a.energy<22?"low cell · returning":"returning";return a.energy<99?"docked · charging":"docked · ready";}
+  const ecolor=e=>e<22?T.alert:(e<55?T.work:T.return);
+
+  function refreshPanels(){
+    D.rate.textContent=M.metrics.tasks_per_min;D.done.textContent=M.metrics.completed_total;
+    D.active.textContent=M.metrics.active_agents+"/"+M.metrics.total_agents;
+    D.queue.textContent=M.metrics.queued;D.queue.className="v"+(M.metrics.queued>=11?" bad":M.metrics.queued>=7?" warn":"");
+    const s=M.metrics.uptime_s;D.up.textContent=String((s/60)|0).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+    D.rosterCount.textContent=M.agents.size;
+    D.roster.innerHTML=[...M.agents.values()].map(a=>{const col=stateColor(a),sc=(selected&&selected.type==="agent"&&selected.id===a.agent_id)?" sel":"";return `<div class="agent${sc}" role="option" tabindex="0" data-aid="${a.agent_id}" aria-selected="${sc?"true":"false"}"><span class="pip" style="color:${col};background:${col}"></span><div class="who"><div class="name">${a.agent_id}${a.hold?'<span class="lock">⏸</span>':''}</div><div class="act">${actLabel(a)}</div></div><div class="cell"><div class="bar"><i style="width:${a.energy}%;background:${ecolor(a.energy)};box-shadow:0 0 6px ${ecolor(a.energy)}"></i></div><div class="pct">${Math.round(a.energy)}%</div></div></div>`;}).join("");
+    if(logDirty){D.log.innerHTML=logEntries.map(e=>`<div class="logline"><span class="t">${e.t}</span><span class="m">${e.html}</span></div>`).join("");logDirty=false;}
+    renderQueue();if(selected)renderInspector();
+    el("btn-agent").disabled=M.config&&M.agents.size>=M.config.max_agents;
+  }
+  function renderQueue(){const q=queuedList();if(!q.length){D.qchips.innerHTML='<span class="qempty">idle — no pending tasks</span>';return;}D.qchips.innerHTML=q.slice(0,18).map(t=>{const st=M.stations.get(t.station_id);return `<div class="qchip" data-sid="${t.station_id}"><span class="d" style="color:${st.hue}"></span>${st.name} <span style="color:var(--steel-dim)">${t.task_id}</span></div>`;}).join("")+(q.length>18?`<span class="qempty">+${q.length-18}</span>`:"");}
+
+  /* toasts */
+  function pushToast(al){toasts.push({...al,born:performance.now()});if(toasts.length>4)toasts.shift();renderToasts();setTimeout(()=>{toasts.splice(0,toasts.length,...toasts.filter(t=>t.alert_id!==al.alert_id));renderToasts();},(al.ttl_s||5)*1000);}
+  function renderToasts(){const k={info:"info",warning:"warn",critical:"bad"};D.toasts.innerHTML=toasts.map(t=>`<div class="toast ${k[t.kind]||"info"}" data-tid="${t.alert_id}"><div class="tx"><div class="th">${t.title}</div><div class="tb">${t.body}</div></div><div class="tg">${Math.round((performance.now()-t.born)/1000)}s</div></div>`).join("");}
+
+  /* wire monitor */
+  const WCAT={snapshot:"#4fd672",log:"#4fd672","agent":"#36c6e0","task":"#f2b134","station":"#6c8cff","alert":"#ff5a52","metrics":"#5f717c"};
+  function pushWire(env){const cat=env.type.split(".")[0];wireLines.unshift({seq:env.seq,type:env.type,c:WCAT[cat]||"#8a9da8"});if(wireLines.length>7)wireLines.pop();wireDirty=true;}
+  let wireDirty=true;
+  function renderWire(){D.wireC.textContent="seq "+(feed?feed.seq:0);if(!wireDirty)return;D.wireB.innerHTML=wireLines.map(w=>`<div class="wl"><span class="sq">${w.seq}</span><span class="ty" style="color:${w.c}">${w.type}</span></div>`).join("");wireDirty=false;}
+
+  /* inspector */
+  function renderInspector(){
+    if(!selected){D.insp.classList.remove("on");return;}D.insp.classList.add("on");
+    if(selected.type==="agent"){const a=M.agents.get(selected.id);if(!a){clearSelection();return;}const col=stateColor(a);D.inspRing.style.color=col;D.inspRing.style.background=col;D.inspName.textContent=a.agent_id;D.inspType.textContent="agent · "+(a.hold?"hold":a.state);
+      D.inspBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">task</div><div class="v">${a.task_id||"—"}</div></div><div class="f"><div class="k">station</div><div class="v">${(M.stations.get(a.station_id)||{}).name||"—"}</div></div><div class="f"><div class="k">completed</div><div class="v">${a.completed_total}</div></div><div class="f"><div class="k">energy</div><div class="v">${Math.round(a.energy)}%</div></div></div><div class="insp-bar"><i style="width:${a.energy}%;background:${ecolor(a.energy)};box-shadow:0 0 6px ${ecolor(a.energy)}"></i></div>`;
+      D.inspActions.innerHTML=`<button class="cmd go" data-cmd="recall" ${a.state==="docked"?"disabled":""}>Recall</button><button class="cmd ${a.hold?"on":"warn"}" data-cmd="hold">${a.hold?"Resume":"Hold"}</button><button class="cmd danger" data-cmd="retire">Retire</button>`;}
+    else if(selected.type==="station"){const st=M.stations.get(selected.id),qn=qcount(st.station_id),worker=st.worker_agent_id;D.inspRing.style.color=st.hue;D.inspRing.style.background=st.hue;D.inspName.textContent=st.name;D.inspType.textContent="station · step "+(st.order+1);
+      D.inspBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">status</div><div class="v" style="color:${worker?st.hue:"var(--steel)"}">${worker?"busy":"idle"}</div></div><div class="f"><div class="k">worker</div><div class="v">${worker||"—"}</div></div><div class="f"><div class="k">queued</div><div class="v">${qn}</div></div><div class="f"><div class="k">intake</div><div class="v" style="color:${st.drain?"var(--alert)":"var(--return)"}">${st.drain?"drained":"open"}</div></div></div>`;
+      D.inspActions.innerHTML=`<button class="cmd go" data-cmd="queuehere">Queue task</button><button class="cmd" data-cmd="priority" ${qn?"":"disabled"}>Prioritize</button><button class="cmd ${st.drain?"on":"warn"}" data-cmd="drain">${st.drain?"Open":"Drain"}</button>`;}
+    else if(selected.type==="port"){const docked=[...M.agents.values()].filter(a=>a.state==="docked").length,held=[...M.agents.values()].filter(a=>a.hold).length;D.inspRing.style.color=T.dock;D.inspRing.style.background=T.dock;D.inspName.textContent="ROBOPORT hub";D.inspType.textContent="system overview";
+      D.inspBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">fleet</div><div class="v">${M.agents.size} agents</div></div><div class="f"><div class="k">docked</div><div class="v">${docked}</div></div><div class="f"><div class="k">held</div><div class="v">${held}</div></div><div class="f"><div class="k">queue</div><div class="v">${M.metrics.queued}</div></div></div>`;
+      const allHeld=M.agents.size&&[...M.agents.values()].every(a=>a.hold);
+      D.inspActions.innerHTML=`<button class="cmd warn" data-cmd="holdall">${allHeld?"Resume all":"Hold all"}</button><button class="cmd go" data-cmd="recallall">Recall all</button><button class="cmd danger" data-cmd="clearq" ${M.metrics.queued?"":"disabled"}>Clear queue</button>`;}
+  }
+
+  /* ---------- commands → feed.command (no local mutation) ---------- */
+  function command(cmd){
+    if(!selected)return;
+    if(selected.type==="agent"){const id=selected.id;
+      if(cmd==="recall")feed.command("agent.recall",{type:"agent",id});
+      else if(cmd==="hold"){const a=M.agents.get(id);feed.command("agent.hold",{type:"agent",id},{hold:!a.hold});}
+      else if(cmd==="retire")feed.command("agent.retire",{type:"agent",id});}
+    else if(selected.type==="station"){const id=selected.id;const st=M.stations.get(id);
+      if(cmd==="queuehere")feed.command("task.enqueue",{type:"station",id});
+      else if(cmd==="priority")feed.command("station.prioritize",{type:"station",id});
+      else if(cmd==="drain")feed.command("station.drain",{type:"station",id},{drain:!st.drain});}
+    else if(selected.type==="port"){
+      if(cmd==="recallall")feed.command("fleet.recall",{type:"port"});
+      else if(cmd==="holdall"){const allHeld=[...M.agents.values()].every(a=>a.hold);feed.command("fleet.hold",{type:"port"},{hold:!allHeld});}
+      else if(cmd==="clearq")feed.command("queue.clear",{type:"port"});}
+  }
+
+  /* ---------- selection ---------- */
+  function select(o){selected=o;D.insp.classList.add("on");renderInspector();refreshPanels();announce();}
+  function clearSelection(){selected=null;D.insp.classList.remove("on");refreshPanels();}
+  function announce(){if(!selected){D.sr.textContent="Selection cleared.";return;}if(selected.type==="agent"){const a=M.agents.get(selected.id);if(a)D.sr.textContent=`${a.agent_id} selected. ${actLabel(a)}. Energy ${Math.round(a.energy)} percent.`;}else if(selected.type==="station"){D.sr.textContent=`${M.stations.get(selected.id).name} station selected.`;}else D.sr.textContent="Hub overview selected.";}
+
+  /* ---------- pointer / hit test ---------- */
+  function hitTest(px,py){for(const a of M.agents.values())if(Math.hypot(a.x-px,a.y-py)<15)return{type:"agent",id:a.agent_id};for(const st of M.stations.values())if(Math.hypot(st.x-px,st.y-py)<22)return{type:"station",id:st.station_id};if(Math.hypot(cx-px,cy-py)<48)return{type:"port"};return null;}
+  function toCanvas(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+  canvas.addEventListener("mousemove",e=>{const p=toCanvas(e);mouse.x=p.x;mouse.y=p.y;hovered=hitTest(p.x,p.y);canvas.style.cursor=hovered?"pointer":"default";if(hovered){let label="",sub="";if(hovered.type==="agent"){const a=M.agents.get(hovered.id);label=a.agent_id;sub=actLabel(a);}else if(hovered.type==="station"){const st=M.stations.get(hovered.id);label=st.name;sub=(st.worker_agent_id?"busy":"idle")+" · "+qcount(st.station_id)+" queued";}else{label="ROBOPORT hub";sub="click for overview";}D.tip.innerHTML=`${label} <span class="s">· ${sub}</span>`;const rb=canvas.getBoundingClientRect();D.tip.style.left=e.clientX-rb.left+"px";D.tip.style.top=(hovered.type==="agent"?(M.agents.get(hovered.id)?.y??p.y):p.y)+"px";D.tip.classList.add("on");}else D.tip.classList.remove("on");});
+  canvas.addEventListener("mouseleave",()=>{hovered=null;D.tip.classList.remove("on");canvas.style.cursor="default";});
+  canvas.addEventListener("click",e=>{const p=toCanvas(e),hit=hitTest(p.x,p.y);hit?select(hit):clearSelection();});
+
+  D.roster.addEventListener("click",e=>{const r=e.target.closest("[data-aid]");if(r)select({type:"agent",id:r.dataset.aid});});
+  D.roster.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")){const r=e.target.closest("[data-aid]");if(r){e.preventDefault();select({type:"agent",id:r.dataset.aid});}}});
+  D.toasts.addEventListener("click",e=>{const t=e.target.closest("[data-tid]");if(!t)return;const f=toasts.find(x=>x.alert_id===t.dataset.tid);if(f&&f.target){if(f.target.type==="agent"&&M.agents.get(f.target.id))select(f.target);else if(f.target.type==="port")select({type:"port"});}});
+  D.qchips.addEventListener("click",e=>{const c=e.target.closest("[data-sid]");if(c)select({type:"station",id:c.dataset.sid});});
+  D.inspActions.addEventListener("click",e=>{const b=e.target.closest("[data-cmd]");if(b&&!b.disabled)command(b.dataset.cmd);});
+  el("insp-close").addEventListener("click",clearSelection);
+
+  window.addEventListener("keydown",e=>{if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT")return;
+    if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
+    if(e.key==="Escape"){clearSelection();return;}
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();const list=[...M.agents.keys()];if(!list.length)return;let idx=selected&&selected.type==="agent"?list.indexOf(selected.id):-1;idx=(idx+(e.key==="ArrowDown"?1:-1)+list.length)%list.length;select({type:"agent",id:list[idx]});return;}
+    if(selected&&selected.type==="agent"){if(e.key==="r"||e.key==="R")command("recall");if(e.key==="h"||e.key==="H")command("hold");}});
+
+  /* dock */
+  el("btn-play").addEventListener("click",()=>{running=!running;el("play-label").textContent=running?"Pause":"Resume";});
+  el("btn-agent").addEventListener("click",()=>feed.command("fleet.spawn_agent",{type:"port"}));
+  function populateInjector(){const sel=el("task-station");if(sel.options.length||!M.config)return;M.config.stations.forEach(s=>{const o=document.createElement("option");o.value=s.station_id;o.textContent=s.name;sel.appendChild(o);});}
+  el("btn-queue").addEventListener("click",()=>{const sid=el("task-station").value;if(sid)feed.command("task.enqueue",{type:"station",id:sid});});
+  const sp=el("speed"),spo=el("speed-out");sp.addEventListener("input",()=>{simSpeed=parseFloat(sp.value);spo.textContent=simSpeed.toFixed(2).replace(/0$/,"")+"×";});
+  const wire=el("wire");el("wire-h").addEventListener("click",()=>wire.classList.toggle("min"));
+  if(window.matchMedia("(max-width:880px)").matches)wire.classList.add("min");
+
+  /* ---------- boot + loop ---------- */
+  new ResizeObserver(()=>{DPR=Math.min(window.devicePixelRatio||1,2);layout();}).observe(canvas);
+  const backend=createMockBackend();
+  const feed=createFeed(backend);
+  layout();
+  feed.onEnvelope(route);
+  feed.connect();                          // → snapshot → hydrate
+
+  let last=performance.now(),lastPanel=0;
+  function frame(now){
+    let dt=(now-last)/1000;last=now;if(dt>0.05)dt=0.05;
+    const sdt=running?dt*simSpeed:0;
+    feed.tick(sdt);                        // mock backend advances (server-side in prod)
+    animate(sdt);                          // client animates toward feed state
+    render();
+    renderWire();
+    if(toasts.length)renderToasts();
+    if(now-lastPanel>110){refreshPanels();lastPanel=now;}
+    requestAnimationFrame(frame);
+  }
+  // expose feed for wire seq readout
+  window.__feed=feed;
+  requestAnimationFrame(frame);
+  // make `feed` visible to renderWire closure
+  renderWire.feed=feed;
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>ROBOPORT — agent control surface</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --floor:#0e1418;
+    --floor2:#0b1015;
+    --panel:#141c22;
+    --panel2:#10171c;
+    --grid:#1a242d;
+    --line:#223038;
+    --steel:#8a9da8;
+    --steel-dim:#5f717c;
+    --bright:#e8f1f5;
+    --cyan:#36c6e0;
+    --amber:#f2b134;
+    --green:#4fd672;
+    --red:#ff5a52;
+    --violet:#6c8cff;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--floor2);
+    color:var(--steel);
+    font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;
+    font-size:13px;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  .app{
+    height:100dvh;
+    display:grid;
+    grid-template-columns:1fr 320px;
+    grid-template-rows:auto 1fr auto;
+    grid-template-areas:
+      "hud  hud"
+      "stage side"
+      "dock dock";
+    gap:1px;
+    background:var(--line);
+  }
+
+  /* ---------- HUD bar ---------- */
+  .hud{
+    grid-area:hud;
+    background:var(--panel2);
+    display:flex;align-items:center;gap:18px;
+    padding:10px 16px;
+    border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+  .brand h1{
+    font-family:"Space Grotesk",sans-serif;
+    font-weight:700;font-size:18px;letter-spacing:3px;
+    color:var(--bright);margin:0;white-space:nowrap;
+  }
+  .brand .sub{
+    font-size:10px;letter-spacing:2px;text-transform:uppercase;
+    color:var(--steel-dim);white-space:nowrap;
+  }
+  .live{display:inline-flex;align-items:center;gap:6px;color:var(--green);font-size:10px;letter-spacing:2px}
+  .live .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .stats{display:flex;gap:22px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+  .stat{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}
+  .stat .v{font-size:17px;font-weight:700;color:var(--bright)}
+  .stat .k{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+
+  /* ---------- stage ---------- */
+  .stage{grid-area:stage;position:relative;background:var(--floor);overflow:hidden}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .legend{
+    position:absolute;left:12px;bottom:12px;z-index:3;
+    display:flex;gap:14px;flex-wrap:wrap;
+    background:rgba(10,15,19,.66);backdrop-filter:blur(6px);
+    border:1px solid var(--line);border-radius:8px;padding:8px 12px;
+    pointer-events:none;
+  }
+  .legend .it{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.5px;color:var(--steel)}
+  .legend .sw{width:9px;height:9px;border-radius:2px;box-shadow:0 0 7px currentColor}
+
+  /* ---------- side panels ---------- */
+  .side{grid-area:side;background:var(--panel2);display:flex;flex-direction:column;min-height:0}
+  .pane{display:flex;flex-direction:column;min-height:0}
+  .pane.roster{flex:1 1 56%;border-bottom:1px solid var(--line)}
+  .pane.log{flex:1 1 44%}
+  .pane h2{
+    margin:0;padding:10px 14px 8px;
+    font-family:"Space Grotesk",sans-serif;font-weight:500;
+    font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--steel);
+    display:flex;align-items:center;gap:8px;
+  }
+  .pane h2 .count{margin-left:auto;color:var(--steel-dim);font-family:"JetBrains Mono",monospace}
+  .scroll{overflow-y:auto;padding:0 8px 10px;min-height:0}
+  .scroll::-webkit-scrollbar{width:8px}
+  .scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+
+  .agent{
+    display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;
+    padding:7px 8px;border-radius:8px;margin:2px 0;
+  }
+  .agent:hover{background:var(--panel)}
+  .agent .pip{width:8px;height:8px;border-radius:50%;box-shadow:0 0 8px currentColor}
+  .agent .who{min-width:0}
+  .agent .name{color:var(--bright);font-size:12px;font-weight:500}
+  .agent .act{font-size:10px;color:var(--steel-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .agent .cell{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:46px}
+  .agent .bar{width:46px;height:4px;border-radius:3px;background:var(--line);overflow:hidden}
+  .agent .bar i{display:block;height:100%;border-radius:3px;transition:width .25s}
+  .agent .pct{font-size:9px;color:var(--steel-dim)}
+
+  .logline{display:flex;gap:8px;padding:3px 6px;font-size:11px;line-height:1.45;border-radius:5px}
+  .logline .t{color:var(--steel-dim);flex:none}
+  .logline .m{color:var(--steel)}
+  .logline .m b{font-weight:500}
+
+  /* ---------- control dock ---------- */
+  .dock{
+    grid-area:dock;background:var(--panel2);border-top:1px solid var(--line);
+    display:flex;align-items:center;gap:14px;padding:9px 16px;flex-wrap:wrap;
+  }
+  .btn{
+    appearance:none;border:1px solid var(--line);background:var(--panel);
+    color:var(--bright);font-family:inherit;font-size:11px;letter-spacing:1px;
+    text-transform:uppercase;padding:8px 14px;border-radius:7px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:7px;transition:border-color .15s,background .15s;
+  }
+  .btn:hover{border-color:var(--steel-dim)}
+  .btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .btn.primary{border-color:rgba(54,198,224,.4);color:var(--cyan)}
+  .btn .ic{width:9px;height:9px;border-radius:2px;background:currentColor;box-shadow:0 0 7px currentColor}
+  .speed{display:flex;align-items:center;gap:9px;margin-left:auto}
+  .speed label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .speed output{color:var(--bright);min-width:34px;text-align:right;font-weight:500}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:130px;height:4px;border-radius:4px;
+    background:var(--line);outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:var(--cyan);box-shadow:0 0 8px var(--cyan);cursor:pointer;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:14px;height:14px;border:none;border-radius:50%;
+    background:var(--cyan);box-shadow:0 0 8px var(--cyan);cursor:pointer;
+  }
+  input[type=range]:focus-visible{outline:2px solid var(--cyan);outline-offset:4px}
+
+  @media (max-width:860px){
+    .app{
+      grid-template-columns:1fr;
+      grid-template-rows:auto minmax(46dvh,1fr) auto auto;
+      grid-template-areas:"hud" "stage" "side" "dock";
+    }
+    .side{flex-direction:row;max-height:30dvh}
+    .pane.roster{flex:1 1 50%;border-bottom:none;border-right:1px solid var(--line)}
+    .pane.log{flex:1 1 50%}
+    .brand .sub{display:none}
+    .stats{gap:16px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .live .dot{animation:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="hud">
+    <div class="brand">
+      <h1>ROBOPORT</h1>
+      <span class="sub">agent control surface</span>
+      <span class="live"><span class="dot"></span>LIVE</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="v" id="s-rate">0</span><span class="k">tasks / min</span></div>
+      <div class="stat"><span class="v" id="s-done">0</span><span class="k">completed</span></div>
+      <div class="stat"><span class="v" id="s-active">0/0</span><span class="k">active</span></div>
+      <div class="stat"><span class="v" id="s-queue">0</span><span class="k">queued</span></div>
+      <div class="stat"><span class="v" id="s-up">00:00</span><span class="k">uptime</span></div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <canvas id="c"></canvas>
+    <div class="legend">
+      <span class="it"><span class="sw" style="color:var(--cyan)"></span>dispatched</span>
+      <span class="it"><span class="sw" style="color:var(--amber)"></span>working</span>
+      <span class="it"><span class="sw" style="color:var(--green)"></span>returning</span>
+      <span class="it"><span class="sw" style="color:var(--violet)"></span>charging</span>
+    </div>
+  </main>
+
+  <aside class="side">
+    <section class="pane roster">
+      <h2>Agents <span class="count" id="roster-count">0</span></h2>
+      <div class="scroll" id="roster"></div>
+    </section>
+    <section class="pane log">
+      <h2>Activity</h2>
+      <div class="scroll" id="log"></div>
+    </section>
+  </aside>
+
+  <footer class="dock">
+    <button class="btn primary" id="btn-play"><span class="ic"></span><span id="play-label">Pause</span></button>
+    <button class="btn" id="btn-agent">+ Agent</button>
+    <button class="btn" id="btn-task">+ Task burst</button>
+    <div class="speed">
+      <label for="speed">Speed</label>
+      <input type="range" id="speed" min="0.25" max="3" step="0.25" value="1" />
+      <output id="speed-out">1.0×</output>
+    </div>
+  </footer>
+</div>
+
+<script>
+"use strict";
+(function(){
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+  let W = 0, H = 0, cx = 0, cy = 0, coverR = 0;
+
+  // ---- station definitions (an agent pipeline) ----
+  const STATION_DEFS = [
+    {name:"Ingest",     hue:"#7ea6ff"},
+    {name:"Snowflake",  hue:"#36c6e0"},
+    {name:"Decrypt",    hue:"#c98bff"},
+    {name:"RAG",        hue:"#4fd672"},
+    {name:"Synthesize", hue:"#f2b134"},
+    {name:"Validate",   hue:"#ff8f6b"},
+    {name:"Publish",    hue:"#ff5a8a"},
+  ];
+  let stations = [];
+
+  // ---- state ----
+  const STATE = {DISPATCH:"DISPATCH", WORK:"WORK", RETURN:"RETURN", DOCK:"DOCK"};
+  const COLOR = {DISPATCH:"#36c6e0", WORK:"#f2b134", RETURN:"#4fd672", DOCK:"#6c8cff", LOW:"#ff5a52"};
+  let agents = [];
+  const taskQueue = [];
+  let taskSeq = 1000;
+  let agentSeq = 0;
+  let completed = 0;
+  let running = true;
+  let speed = 1;
+  let startTime = performance.now();
+  const completionTimes = [];   // for rolling tasks/min
+  const sparks = [];
+  const logEntries = [];
+  let dockSeq = 0;
+
+  // ---------- geometry ----------
+  function layout(){
+    const rect = canvas.getBoundingClientRect();
+    W = rect.width; H = rect.height;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    cx = W/2; cy = H/2;
+    coverR = Math.min(W,H)*0.42;
+    placeStations();
+  }
+  function placeStations(){
+    const r = coverR*0.82;
+    stations = STATION_DEFS.map((d,i)=>{
+      const ang = (-Math.PI/2) + (i/STATION_DEFS.length)*Math.PI*2;
+      const jit = (Math.sin(i*12.9)*0.5+0.5)*0.16 + 0.84;
+      return {
+        ...d, idx:i,
+        x: cx + Math.cos(ang)*r*jit,
+        y: cy + Math.sin(ang)*r*jit,
+        busy:false, pulse:0
+      };
+    });
+  }
+
+  // ---------- agents ----------
+  function dockSlot(i){
+    const ring = 46, n = 12;
+    const ang = (i % n)/n * Math.PI*2 + performance.now()*0.00002;
+    return {x: cx + Math.cos(ang)*ring, y: cy + Math.sin(ang)*ring};
+  }
+  function addAgent(){
+    if(agents.length >= 12) return;
+    agentSeq++;
+    const slot = dockSlot(dockSeq++);
+    const a = {
+      id:"drone-"+String(agentSeq).padStart(2,"0"),
+      state:STATE.DOCK,
+      x:slot.x, y:slot.y, hx:slot.x, hy:slot.y,
+      energy: 60 + Math.random()*30,
+      task:null, station:null,
+      t:0, dur:0, p0:null, p1:null, p2:null,
+      bob:Math.random()*Math.PI*2,
+      spin:Math.random()*Math.PI*2,
+      trail:[],
+      carry:null,
+      tag:""
+    };
+    agents.push(a);
+    log(`<b style="color:${COLOR.DOCK}">${a.id}</b> came online`);
+  }
+
+  // ---------- tasks ----------
+  function spawnTask(station){
+    const st = station || stations[(Math.random()*stations.length)|0];
+    taskSeq++;
+    taskQueue.push({id:taskSeq, station:st, work: 2.4 + Math.random()*2.8});
+  }
+  function spawnBurst(){
+    for(let i=0;i<5;i++) spawnTask();
+    log(`<b style="color:var(--amber)">+5 tasks</b> queued by operator`);
+  }
+
+  // ---------- bezier ----------
+  function bez(p0,p1,p2,t){
+    const u=1-t;
+    return {
+      x:u*u*p0.x + 2*u*t*p1.x + t*t*p2.x,
+      y:u*u*p0.y + 2*u*t*p1.y + t*t*p2.y
+    };
+  }
+  function makePath(from,to,dir){
+    const mx=(from.x+to.x)/2, my=(from.y+to.y)/2;
+    const dx=to.x-from.x, dy=to.y-from.y;
+    const len=Math.hypot(dx,dy)||1;
+    const nx=-dy/len, ny=dx/len;
+    const curve = len*0.28*dir;
+    return [{x:from.x,y:from.y},{x:mx+nx*curve,y:my+ny*curve},{x:to.x,y:to.y}];
+  }
+  const easeIO = t => t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
+
+  // ---------- log ----------
+  function log(html){
+    const d = new Date();
+    const t = String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");
+    logEntries.unshift({t, html});
+    if(logEntries.length>60) logEntries.pop();
+    logDirty = true;
+  }
+
+  // ---------- simulation ----------
+  function tryAssign(a){
+    if(!taskQueue.length) return;
+    // claim oldest task whose station is free
+    for(let i=0;i<taskQueue.length;i++){
+      if(!taskQueue[i].station.busy){
+        const task = taskQueue.splice(i,1)[0];
+        a.task = task; a.station = task.station; task.station.busy = true;
+        const slot = {x:a.x,y:a.y};
+        a.p0=slot; const path=makePath(slot, task.station, Math.random()<.5?1:-1);
+        a.p1=path[1]; a.p2=path[2];
+        a.t=0; a.dur = (Math.hypot(task.station.x-a.x, task.station.y-a.y))/180 + 0.6;
+        a.state=STATE.DISPATCH; a.carry=null;
+        a.tag = "→ "+task.station.name;
+        log(`<b style="color:${COLOR.DISPATCH}">${a.id}</b> → <b style="color:${task.station.hue}">${task.station.name}</b> · task #${task.id}`);
+        return;
+      }
+    }
+  }
+
+  function update(dt){
+    // ambient task generation
+    autoTimer -= dt;
+    if(autoTimer<=0){
+      autoTimer = 1.4 + Math.random()*1.8;
+      if(taskQueue.length < 14) spawnTask();
+    }
+
+    for(const a of agents){
+      a.bob += dt*2.2;
+      a.spin += dt*(a.state===STATE.DOCK?6:16);
+
+      // trail
+      if(a.state!==STATE.DOCK){
+        a.trail.push({x:a.x,y:a.y});
+        if(a.trail.length>16) a.trail.shift();
+      } else if(a.trail.length){ a.trail.shift(); }
+
+      if(a.state===STATE.DOCK){
+        // recharge & decide
+        a.energy = Math.min(100, a.energy + dt*16);
+        const slot = dockSlot(a._slot ?? (a._slot = (dockSeq++ % 12)));
+        a.x += (slot.x - a.x)*Math.min(1,dt*4);
+        a.y += (slot.y - a.y)*Math.min(1,dt*4);
+        a.tag = a.energy<99 ? "↺ "+Math.round(a.energy)+"%" : "● ready";
+        if(a.energy>34) tryAssign(a);
+      }
+      else if(a.state===STATE.DISPATCH){
+        a.energy -= dt*2.6;
+        a.t += dt/a.dur;
+        const p = bez(a.p0,a.p1,a.p2, Math.min(1,easeIO(a.t)));
+        a.x=p.x; a.y=p.y;
+        if(a.t>=1){
+          a.state=STATE.WORK; a.t=0; a.dur=a.task.work;
+          a.station.pulse=1;
+        }
+      }
+      else if(a.state===STATE.WORK){
+        a.energy -= dt*3.4;
+        a.t += dt/a.dur;
+        // hover near station
+        a.x = a.station.x + Math.sin(a.bob)*2;
+        a.y = a.station.y - 16 + Math.cos(a.bob*1.3)*2;
+        a.tag = "⚙ "+Math.min(99,Math.round(a.t*100))+"%";
+        a.station.pulse = Math.max(a.station.pulse, 0.6+0.4*Math.sin(performance.now()*0.01));
+        // sparks
+        if(Math.random()<dt*22){
+          sparks.push({x:a.station.x+(Math.random()-.5)*22, y:a.station.y+(Math.random()-.5)*22,
+            vx:(Math.random()-.5)*30, vy:-20-Math.random()*30, life:1, hue:a.station.hue});
+        }
+        if(a.t>=1){
+          a.carry = {hue:a.station.hue};
+          a.station.busy=false; a.station.pulse=0;
+          const slot=dockSlot(a._slot ?? (a._slot=0));
+          a.p0={x:a.x,y:a.y}; const path=makePath(a.p0, {x:cx,y:cy}, Math.random()<.5?1:-1);
+          a.p1=path[1]; a.p2=path[2];
+          a.t=0; a.dur=(Math.hypot(cx-a.x,cy-a.y))/200+0.5;
+          a.state=STATE.RETURN; a.tag="✓ result";
+          completed++; completionTimes.push(performance.now());
+          log(`<b style="color:${COLOR.RETURN}">${a.id}</b> finished <b style="color:${a.station.hue}">${a.station.name}</b> · #${a.task.id} ✓`);
+          a.task=null;
+        }
+      }
+      else if(a.state===STATE.RETURN){
+        a.energy -= dt*2.2;
+        a.t += dt/a.dur;
+        const p=bez(a.p0,a.p1,a.p2,Math.min(1,easeIO(a.t)));
+        a.x=p.x; a.y=p.y;
+        if(a.t>=1){
+          a.state=STATE.DOCK; a.station=null; a.carry=null; a._slot=null;
+        }
+      }
+
+      // forced low-energy return
+      if(a.energy<16 && (a.state===STATE.DISPATCH)){
+        // abandon trip, head home (rare)
+        a.task && (a.task.station.busy=false);
+        a.task=null; a.station=null;
+        const slot={x:a.x,y:a.y};
+        a.p0=slot; const path=makePath(slot,{x:cx,y:cy},1);
+        a.p1=path[1]; a.p2=path[2]; a.t=0; a.dur=(Math.hypot(cx-a.x,cy-a.y))/200+0.4;
+        a.state=STATE.RETURN; a.tag="⚠ low cell"; a.carry=null;
+      }
+    }
+
+    // sparks
+    for(let i=sparks.length-1;i>=0;i--){
+      const s=sparks[i];
+      s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=80*dt; s.life-=dt*1.6;
+      if(s.life<=0) sparks.splice(i,1);
+    }
+    // station pulse decay
+    for(const st of stations){ if(!st.busy) st.pulse=Math.max(0,st.pulse-dt*2); }
+
+    // rolling rate
+    const cutoff=performance.now()-60000;
+    while(completionTimes.length && completionTimes[0]<cutoff) completionTimes.shift();
+  }
+  let autoTimer = 1.0;
+
+  // ---------- render ----------
+  function stateColor(a){
+    if(a.energy<22 && a.state!==STATE.DOCK) return COLOR.LOW;
+    return COLOR[a.state] || COLOR.DOCK;
+  }
+
+  function drawGrid(){
+    ctx.fillStyle = "#0e1418";
+    ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle="#16202833"; ctx.lineWidth=1;
+    const g=42;
+    ctx.beginPath();
+    for(let x=(cx%g);x<W;x+=g){ctx.moveTo(x,0);ctx.lineTo(x,H);}
+    for(let y=(cy%g);y<H;y+=g){ctx.moveTo(0,y);ctx.lineTo(W,y);}
+    ctx.stroke();
+    // vignette
+    const grd=ctx.createRadialGradient(cx,cy,coverR*0.4,cx,cy,Math.max(W,H)*0.75);
+    grd.addColorStop(0,"rgba(0,0,0,0)");
+    grd.addColorStop(1,"rgba(0,0,0,0.55)");
+    ctx.fillStyle=grd; ctx.fillRect(0,0,W,H);
+  }
+
+  function drawCoverage(){
+    const t=performance.now()*0.0004;
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(reduceMotion?0:t);
+    ctx.strokeStyle="rgba(108,140,255,0.22)";
+    ctx.lineWidth=1.5; ctx.setLineDash([6,12]);
+    ctx.beginPath(); ctx.arc(0,0,coverR,0,Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    // inner faint ring
+    ctx.strokeStyle="rgba(108,140,255,0.08)";
+    ctx.beginPath(); ctx.arc(cx,cy,coverR*0.55,0,Math.PI*2); ctx.stroke();
+  }
+
+  function drawLinks(){
+    for(const a of agents){
+      if(a.station && (a.state===STATE.DISPATCH||a.state===STATE.WORK)){
+        ctx.strokeStyle="rgba(54,198,224,0.10)"; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(a.station.x,a.station.y); ctx.stroke();
+      }
+    }
+  }
+
+  function drawStations(){
+    for(const st of stations){
+      const R=17;
+      // pulse glow
+      if(st.pulse>0){
+        ctx.save();
+        ctx.globalAlpha=st.pulse*0.5;
+        ctx.fillStyle=st.hue; ctx.shadowColor=st.hue; ctx.shadowBlur=24;
+        ctx.beginPath(); ctx.arc(st.x,st.y,R+6,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+      // hex pad
+      ctx.save();
+      ctx.translate(st.x,st.y);
+      ctx.beginPath();
+      for(let i=0;i<6;i++){
+        const ang=Math.PI/6 + i*Math.PI/3;
+        const px=Math.cos(ang)*R, py=Math.sin(ang)*R;
+        i?ctx.lineTo(px,py):ctx.moveTo(px,py);
+      }
+      ctx.closePath();
+      ctx.fillStyle="#121b21"; ctx.fill();
+      ctx.lineWidth=1.5; ctx.strokeStyle=st.busy?st.hue:"rgba(138,157,168,0.5)"; ctx.stroke();
+      // core dot
+      ctx.fillStyle=st.hue; ctx.shadowColor=st.hue; ctx.shadowBlur=st.busy?12:5;
+      ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+      // label
+      ctx.font="500 11px 'JetBrains Mono', monospace";
+      ctx.textAlign="center"; ctx.textBaseline="top";
+      ctx.fillStyle="rgba(232,241,245,0.82)";
+      ctx.fillText(st.name, st.x, st.y+R+6);
+    }
+  }
+
+  function drawPort(){
+    const t=performance.now()*0.001;
+    // base glow
+    ctx.save();
+    ctx.globalAlpha=0.5;
+    const g=ctx.createRadialGradient(cx,cy,4,cx,cy,70);
+    g.addColorStop(0,"rgba(108,140,255,0.5)");
+    g.addColorStop(1,"rgba(108,140,255,0)");
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,70,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    // charging dock ring
+    ctx.strokeStyle="rgba(108,140,255,0.35)"; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(cx,cy,46,0,Math.PI*2); ctx.stroke();
+    // rotating charge arcs
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(reduceMotion?0:t*1.4);
+    ctx.strokeStyle="rgba(108,140,255,0.7)"; ctx.lineWidth=2.5; ctx.lineCap="round";
+    for(let i=0;i<3;i++){
+      ctx.beginPath();
+      ctx.arc(0,0,46, i*2.1, i*2.1+0.7);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // hub body — layered octagon
+    ctx.save(); ctx.translate(cx,cy);
+    for(let ring=0;ring<2;ring++){
+      const rr=26-ring*9;
+      ctx.beginPath();
+      for(let i=0;i<8;i++){
+        const ang=i*Math.PI/4 + (ring?t*0.4:-t*0.3);
+        const px=Math.cos(ang)*rr, py=Math.sin(ang)*rr;
+        i?ctx.lineTo(px,py):ctx.moveTo(px,py);
+      }
+      ctx.closePath();
+      ctx.fillStyle=ring?"#1b2740":"#13202e";
+      ctx.fill();
+      ctx.strokeStyle="rgba(124,158,255,0.55)"; ctx.lineWidth=1.5; ctx.stroke();
+    }
+    // core
+    ctx.fillStyle="#9db8ff"; ctx.shadowColor="#6c8cff"; ctx.shadowBlur=18;
+    ctx.beginPath(); ctx.arc(0,0,5+Math.sin(t*3)*1.2,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawDrone(a){
+    const col = stateColor(a);
+    const bob = reduceMotion?0:Math.sin(a.bob)*2;
+    const x=a.x, y=a.y+bob;
+
+    // trail
+    if(a.trail.length>1 && !reduceMotion){
+      ctx.lineWidth=2; ctx.lineCap="round";
+      for(let i=1;i<a.trail.length;i++){
+        const p0=a.trail[i-1], p1=a.trail[i];
+        ctx.strokeStyle=col; ctx.globalAlpha=(i/a.trail.length)*0.5;
+        ctx.beginPath(); ctx.moveTo(p0.x,p0.y); ctx.lineTo(p1.x,p1.y); ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+    }
+
+    ctx.save();
+    ctx.translate(x,y);
+
+    // rotor blur (4 corners)
+    if(!reduceMotion){
+      ctx.globalAlpha=0.22;
+      for(let i=0;i<4;i++){
+        const ang=Math.PI/4 + i*Math.PI/2;
+        const rx=Math.cos(ang)*9, ry=Math.sin(ang)*9;
+        ctx.fillStyle=col;
+        ctx.beginPath(); ctx.arc(rx,ry,4.5,0,Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha=1;
+    }
+
+    // body
+    ctx.shadowColor=col; ctx.shadowBlur=12;
+    ctx.fillStyle="#0f1820";
+    ctx.beginPath();
+    roundRect(ctx,-6,-6,12,12,3); ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.lineWidth=1.5; ctx.strokeStyle=col; ctx.stroke();
+    // core
+    ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(0,0,2.6,0,Math.PI*2); ctx.fill();
+
+    // arms
+    ctx.strokeStyle=col; ctx.lineWidth=1.4; ctx.globalAlpha=0.8;
+    for(let i=0;i<4;i++){
+      const ang=Math.PI/4 + i*Math.PI/2;
+      ctx.beginPath(); ctx.moveTo(0,0);
+      ctx.lineTo(Math.cos(ang)*9,Math.sin(ang)*9); ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+
+    // carried result cube
+    if(a.carry){
+      ctx.save();
+      ctx.translate(0,11); ctx.rotate(a.spin*0.4);
+      ctx.shadowColor=a.carry.hue; ctx.shadowBlur=10;
+      ctx.fillStyle=a.carry.hue;
+      ctx.beginPath(); roundRect(ctx,-4,-4,8,8,1.5); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // status tag
+    if(a.tag){
+      ctx.font="500 9px 'JetBrains Mono', monospace";
+      const tw=ctx.measureText(a.id+"  "+a.tag).width+12;
+      const tx=x-tw/2, ty=y-22;
+      ctx.fillStyle="rgba(10,15,19,0.8)";
+      roundRect(ctx,tx,ty,tw,15,4); ctx.fill();
+      ctx.strokeStyle=col; ctx.globalAlpha=0.5; ctx.lineWidth=1;
+      roundRect(ctx,tx,ty,tw,15,4); ctx.stroke(); ctx.globalAlpha=1;
+      ctx.textAlign="left"; ctx.textBaseline="middle";
+      ctx.fillStyle="rgba(232,241,245,0.65)";
+      ctx.fillText(a.id, tx+6, ty+7.5);
+      const idw=ctx.measureText(a.id+"  ").width;
+      ctx.fillStyle=col;
+      ctx.fillText(a.tag, tx+6+idw, ty+7.5);
+    }
+  }
+
+  function drawSparks(){
+    for(const s of sparks){
+      ctx.globalAlpha=Math.max(0,s.life);
+      ctx.fillStyle=s.hue; ctx.shadowColor=s.hue; ctx.shadowBlur=6;
+      ctx.beginPath(); ctx.arc(s.x,s.y,1.6,0,Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  }
+
+  function roundRect(c,x,y,w,h,r){
+    c.beginPath();
+    c.moveTo(x+r,y);
+    c.arcTo(x+w,y,x+w,y+h,r);
+    c.arcTo(x+w,y+h,x,y+h,r);
+    c.arcTo(x,y+h,x,y,r);
+    c.arcTo(x,y,x+w,y,r);
+    c.closePath();
+  }
+
+  function render(){
+    drawGrid();
+    drawCoverage();
+    drawLinks();
+    drawStations();
+    drawSparks();
+    drawPort();
+    // drones sorted by y for depth
+    [...agents].sort((a,b)=>a.y-b.y).forEach(drawDrone);
+  }
+
+  // ---------- DOM panels ----------
+  let logDirty=true, lastPanel=0;
+  const el = {
+    rate:document.getElementById("s-rate"),
+    done:document.getElementById("s-done"),
+    active:document.getElementById("s-active"),
+    queue:document.getElementById("s-queue"),
+    up:document.getElementById("s-up"),
+    roster:document.getElementById("roster"),
+    rosterCount:document.getElementById("roster-count"),
+    log:document.getElementById("log"),
+  };
+  function actLabel(a){
+    if(a.state===STATE.DISPATCH) return "dispatched · "+(a.station?a.station.name:"");
+    if(a.state===STATE.WORK) return "working · "+(a.station?a.station.name:"");
+    if(a.state===STATE.RETURN) return a.energy<22?"low cell · returning":"returning result";
+    return a.energy<99?"docked · charging":"docked · ready";
+  }
+  function refreshPanels(){
+    // HUD
+    el.rate.textContent = completionTimes.length;
+    el.done.textContent = completed;
+    const act = agents.filter(a=>a.state!==STATE.DOCK || a.energy<99).length;
+    el.active.textContent = act+"/"+agents.length;
+    el.queue.textContent = taskQueue.length;
+    const sec=Math.floor((performance.now()-startTime)/1000);
+    el.up.textContent = String((sec/60)|0).padStart(2,"0")+":"+String(sec%60).padStart(2,"0");
+    // roster
+    el.rosterCount.textContent = agents.length;
+    el.roster.innerHTML = agents.map(a=>{
+      const col=stateColor(a);
+      const ecol = a.energy<22?COLOR.LOW:(a.energy<55?COLOR.WORK:COLOR.GREEN||"#4fd672");
+      return `<div class="agent">
+        <span class="pip" style="color:${col};background:${col}"></span>
+        <div class="who">
+          <div class="name">${a.id}</div>
+          <div class="act">${actLabel(a)}</div>
+        </div>
+        <div class="cell">
+          <div class="bar"><i style="width:${a.energy}%;background:${ecol};box-shadow:0 0 6px ${ecol}"></i></div>
+          <div class="pct">${Math.round(a.energy)}%</div>
+        </div>
+      </div>`;
+    }).join("");
+    // log
+    if(logDirty){
+      el.log.innerHTML = logEntries.map(e=>
+        `<div class="logline"><span class="t">${e.t}</span><span class="m">${e.html}</span></div>`
+      ).join("");
+      logDirty=false;
+    }
+  }
+
+  // ---------- loop ----------
+  let last=performance.now();
+  function frame(now){
+    let dt=(now-last)/1000; last=now;
+    if(dt>0.05) dt=0.05;
+    if(running) update(dt*speed);
+    render();
+    if(now-lastPanel>120){ refreshPanels(); lastPanel=now; }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- controls ----------
+  const btnPlay=document.getElementById("btn-play");
+  const playLabel=document.getElementById("play-label");
+  btnPlay.addEventListener("click",()=>{
+    running=!running;
+    playLabel.textContent=running?"Pause":"Resume";
+    if(running) last=performance.now();
+  });
+  document.getElementById("btn-agent").addEventListener("click",()=>{ addAgent(); });
+  document.getElementById("btn-task").addEventListener("click",()=>{ spawnBurst(); });
+  const speedR=document.getElementById("speed"), speedOut=document.getElementById("speed-out");
+  speedR.addEventListener("input",()=>{ speed=parseFloat(speedR.value); speedOut.textContent=speed.toFixed(2).replace(/0$/,"")+"×"; });
+  window.addEventListener("keydown",e=>{
+    if(e.code==="Space" && e.target.tagName!=="INPUT"){ e.preventDefault(); btnPlay.click(); }
+  });
+
+  // ---------- boot ----------
+  const ro=new ResizeObserver(()=>{ DPR=Math.min(window.devicePixelRatio||1,2); layout(); });
+  ro.observe(canvas);
+  layout();
+  for(let i=0;i<5;i++) addAgent();
+  for(let i=0;i<4;i++) spawnTask();
+  log(`<b style="color:var(--green)">ROBOPORT online</b> · ${stations.length} stations mapped`);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

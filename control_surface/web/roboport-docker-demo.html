@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ROBOPORT — Docker daemon (fake feed)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --floor:#0e1418;--floor2:#0b1015;--panel:#141c22;--panel2:#10171c;
+    --line:#223038;--line2:#2c3c46;--steel:#8a9da8;--steel-dim:#5f717c;--bright:#e8f1f5;
+    --dispatch:#36c6e0;--work:#f2b134;--return:#4fd672;--dock:#6c8cff;--alert:#ff5a52;
+    --r1:5px;--r2:8px;--r3:12px;--s2:8px;--s3:12px;--s4:16px;--s5:22px;
+    --t-fast:120ms;--t-base:200ms;--ease:cubic-bezier(.4,0,.2,1);--shadow:0 8px 28px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--floor2);color:var(--steel);font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:13px;-webkit-font-smoothing:antialiased;overflow:hidden}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  .app{height:100dvh;display:grid;grid-template-columns:1fr 332px;grid-template-rows:auto 1fr auto;grid-template-areas:"hud hud" "stage side" "dock dock";gap:1px;background:var(--line)}
+
+  .hud{grid-area:hud;background:var(--panel2);display:flex;align-items:center;gap:var(--s4);padding:10px var(--s4);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .brand h1{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:18px;letter-spacing:3px;color:var(--bright);margin:0;white-space:nowrap}
+  .brand .sub{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--steel-dim);white-space:nowrap}
+  .feedbadge{display:inline-flex;align-items:center;gap:6px;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--work);border:1px solid rgba(242,177,52,.3);border-radius:20px;padding:3px 9px;white-space:nowrap}
+  .feedbadge .d{width:6px;height:6px;border-radius:50%;background:var(--work);box-shadow:0 0 7px var(--work);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .stats{display:flex;gap:var(--s5);margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+  .stat{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}
+  .stat .v{font-size:17px;font-weight:700;color:var(--bright)}
+  .stat .v.warn{color:var(--work)}.stat .v.bad{color:var(--alert)}
+  .stat .k{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+
+  .stage{grid-area:stage;position:relative;background:var(--floor);overflow:hidden}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:default}
+  .legend{position:absolute;left:12px;top:12px;z-index:3;display:flex;gap:13px;flex-wrap:wrap;background:rgba(10,15,19,.66);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:var(--r2);padding:7px 11px;pointer-events:none}
+  .legend .it{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.5px;color:var(--steel)}
+  .legend .sw{width:9px;height:9px;border-radius:2px;box-shadow:0 0 7px currentColor}
+
+  .toasts{position:absolute;top:12px;right:12px;z-index:6;display:flex;flex-direction:column;gap:8px;width:250px}
+  .toast{display:flex;gap:9px;align-items:flex-start;background:rgba(16,23,28,.94);border:1px solid var(--line2);border-left:3px solid var(--work);border-radius:var(--r2);padding:9px 11px;cursor:pointer;box-shadow:var(--shadow);animation:slidein var(--t-base) var(--ease)}
+  .toast.bad{border-left-color:var(--alert)}.toast.info{border-left-color:var(--dispatch)}
+  .toast .th{color:var(--bright);font-size:11px;font-weight:500}
+  .toast .tb{color:var(--steel-dim);font-size:10px;margin-top:2px}
+  .toast .tg{font-size:9px;color:var(--steel-dim);white-space:nowrap;margin-left:auto}
+  @keyframes slidein{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+
+  .tip{position:absolute;z-index:7;pointer-events:none;background:rgba(10,15,19,.95);border:1px solid var(--line2);border-radius:var(--r1);padding:5px 8px;font-size:10px;color:var(--bright);white-space:nowrap;transform:translate(-50%,-130%);opacity:0;transition:opacity var(--t-fast)}
+  .tip.on{opacity:1}.tip .s{color:var(--steel-dim)}
+
+  .wire{position:absolute;left:12px;bottom:12px;z-index:4;width:248px;background:rgba(11,16,21,.92);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;box-shadow:var(--shadow)}
+  .wire-h{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
+  .wire-h .d{width:6px;height:6px;border-radius:50%;background:var(--work);box-shadow:0 0 6px var(--work);animation:pulse 1.4s infinite}
+  .wire-h .t{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel)}
+  .wire-h .c{margin-left:auto;font-size:9px;color:var(--steel-dim)}
+  .wire-b{font-size:10px;line-height:1.5;padding:6px 10px;max-height:132px;overflow:hidden;transition:max-height var(--t-base) var(--ease)}
+  .wire.min .wire-b{max-height:0;padding-top:0;padding-bottom:0}
+  .wire.min .wire-h{border-bottom:none}
+  .wl{display:flex;gap:7px;white-space:nowrap}
+  .wl .sq{color:var(--steel-dim)}.wl .ty{color:var(--steel)}
+
+  .inspector{position:absolute;right:12px;bottom:12px;z-index:5;width:266px;background:rgba(15,22,28,.95);backdrop-filter:blur(10px);border:1px solid var(--line2);border-radius:var(--r3);box-shadow:var(--shadow);overflow:hidden;transform:translateY(12px);opacity:0;pointer-events:none;transition:opacity var(--t-base),transform var(--t-base)}
+  .inspector.on{transform:none;opacity:1;pointer-events:auto}
+  .insp-head{display:flex;align-items:center;gap:9px;padding:11px var(--s3);border-bottom:1px solid var(--line)}
+  .insp-head .ring{width:10px;height:10px;border-radius:50%;box-shadow:0 0 9px currentColor;flex:none}
+  .insp-head .ttl{min-width:0}
+  .insp-head .ttl .n{color:var(--bright);font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .insp-head .ttl .ty{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .insp-head .x{margin-left:auto;background:none;border:none;color:var(--steel-dim);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:4px}
+  .insp-head .x:hover{color:var(--bright);background:var(--panel)}
+  .insp-body{padding:var(--s3)}
+  .insp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px var(--s3);margin-bottom:var(--s3)}
+  .insp-grid .f .k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--steel-dim)}
+  .insp-grid .f .v{color:var(--bright);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar{height:5px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%;border-radius:4px;transition:width var(--t-base)}
+  .barlbl{display:flex;justify-content:space-between;font-size:9px;color:var(--steel-dim);text-transform:uppercase;letter-spacing:1px;margin-top:8px}
+  .insp-actions{display:flex;flex-wrap:wrap;gap:6px;padding:10px var(--s3) var(--s3)}
+  .cmd{appearance:none;flex:1 1 auto;min-width:70px;border:1px solid var(--line2);background:var(--panel);color:var(--bright);font-family:inherit;font-size:10px;letter-spacing:.8px;text-transform:uppercase;padding:7px 8px;border-radius:var(--r1);cursor:pointer;transition:border-color var(--t-fast),background var(--t-fast),color var(--t-fast)}
+  .cmd:hover{border-color:var(--steel-dim)}.cmd:active{transform:translateY(1px)}
+  .cmd:focus-visible{outline:2px solid var(--dispatch);outline-offset:2px}
+  .cmd.go{border-color:rgba(54,198,224,.45);color:var(--dispatch)}
+  .cmd.warn{border-color:rgba(242,177,52,.45);color:var(--work)}
+  .cmd.danger{border-color:rgba(255,90,82,.4);color:var(--alert)}
+  .cmd.on{background:rgba(108,140,255,.16);border-color:var(--dock);color:var(--dock)}
+  .cmd[disabled]{opacity:.38;cursor:not-allowed}
+
+  .side{grid-area:side;background:var(--panel2);display:flex;flex-direction:column;min-height:0}
+  .pane{display:flex;flex-direction:column;min-height:0}
+  .pane.top{flex:1 1 60%;border-bottom:1px solid var(--line)}
+  .pane.bot{flex:1 1 40%}
+  .pane h2{margin:0;padding:10px var(--s4) 8px;font-family:"Space Grotesk",sans-serif;font-weight:500;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--steel);display:flex;align-items:center;gap:8px}
+  .pane h2 .count{margin-left:auto;color:var(--steel-dim)}
+  .scroll{overflow-y:auto;padding:0 var(--s2) 10px;min-height:0}
+  .scroll::-webkit-scrollbar{width:8px}.scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+  .proj{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim);padding:9px 8px 4px;display:flex;align-items:center;gap:7px}
+  .proj .pd{width:8px;height:8px;border-radius:2px;box-shadow:0 0 7px currentColor}
+  .ctr{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:7px 8px;border-radius:var(--r2);margin:2px 0;cursor:pointer;border:1px solid transparent;transition:background var(--t-fast),border-color var(--t-fast)}
+  .ctr:hover{background:var(--panel)}.ctr:focus-visible{outline:2px solid var(--dispatch);outline-offset:1px}
+  .ctr.sel{background:var(--panel);border-color:var(--line2)}
+  .ctr .pip{width:8px;height:8px;border-radius:50%;box-shadow:0 0 8px currentColor}
+  .ctr .who{min-width:0}
+  .ctr .name{color:var(--bright);font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ctr .img{font-size:9px;color:var(--steel-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ctr .met{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:48px}
+  .ctr .met .cpu{font-size:10px;color:var(--steel)}
+  .ctr .met .mini{width:46px;height:3px;border-radius:3px;background:var(--line);overflow:hidden}
+  .ctr .met .mini i{display:block;height:100%;border-radius:3px}
+  .logline{display:flex;gap:8px;padding:3px 6px;font-size:11px;line-height:1.45}
+  .logline .t{color:var(--steel-dim);flex:none}.logline .m{color:var(--steel)}.logline .m b{font-weight:500}
+
+  .dock{grid-area:dock;background:var(--panel2);border-top:1px solid var(--line);display:flex;align-items:center;gap:var(--s3);padding:9px var(--s4);flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--bright);font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;padding:8px 14px;border-radius:var(--r1);cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:border-color var(--t-fast)}
+  .btn:hover{border-color:var(--steel-dim)}.btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:2px solid var(--dispatch);outline-offset:2px}
+  .btn.primary{border-color:rgba(242,177,52,.4);color:var(--work)}
+  .btn .ic{width:9px;height:9px;border-radius:2px;background:currentColor;box-shadow:0 0 7px currentColor}
+  .injector{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r1);padding:4px 4px 4px 11px}
+  .injector label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .injector select{appearance:none;background:var(--panel2);border:1px solid var(--line);color:var(--bright);font-family:inherit;font-size:11px;padding:5px 24px 5px 9px;border-radius:var(--r1);cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--steel-dim) 50%),linear-gradient(135deg,var(--steel-dim) 50%,transparent 50%);background-position:calc(100% - 13px) 50%,calc(100% - 8px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+  .injector .run{border:none;background:var(--work);color:#1a1304;font-weight:700;padding:6px 11px;border-radius:var(--r1);font-family:inherit;font-size:10px;letter-spacing:1px;text-transform:uppercase;cursor:pointer}
+  .speed{display:flex;align-items:center;gap:9px;margin-left:auto}
+  .speed label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .speed output{color:var(--bright);min-width:34px;text-align:right;font-weight:500}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:120px;height:4px;border-radius:4px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--work);box-shadow:0 0 8px var(--work);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:var(--work);box-shadow:0 0 8px var(--work);cursor:pointer}
+  .hint{font-size:9px;color:var(--steel-dim);letter-spacing:.5px;width:100%;padding-top:2px}
+  .hint b{color:var(--steel);font-weight:400}
+
+  @media (max-width:880px){
+    .app{grid-template-columns:1fr;grid-template-rows:auto minmax(44dvh,1fr) auto auto;grid-template-areas:"hud" "stage" "side" "dock"}
+    .side{flex-direction:row;max-height:30dvh}.pane.top{flex:1 1 50%;border-bottom:none;border-right:1px solid var(--line)}.pane.bot{flex:1 1 50%}
+    .wire{display:none}.inspector{right:8px;left:8px;width:auto}.speed{margin-left:0}.hint{display:none}.brand .sub{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){.feedbadge .d,.wire-h .d{animation:none}.toast{animation:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="hud">
+    <div class="brand"><h1>ROBOPORT</h1><span class="sub">docker daemon</span>
+      <span class="feedbadge"><span class="d"></span><span>feed · fake docker</span></span></div>
+    <div class="stats">
+      <div class="stat"><span class="v" id="s-run">0</span><span class="k">running</span></div>
+      <div class="stat"><span class="v" id="s-total">0</span><span class="k">containers</span></div>
+      <div class="stat"><span class="v" id="s-proj">0</span><span class="k">projects</span></div>
+      <div class="stat"><span class="v" id="s-cpu">0%</span><span class="k">avg cpu</span></div>
+      <div class="stat"><span class="v" id="s-alerts">0</span><span class="k">alerts</span></div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <canvas id="c" aria-hidden="true"></canvas>
+    <div class="legend" aria-hidden="true">
+      <span class="it"><span class="sw" style="color:var(--return)"></span>running · idle</span>
+      <span class="it"><span class="sw" style="color:var(--work)"></span>busy cpu</span>
+      <span class="it"><span class="sw" style="color:var(--alert)"></span>hot / unhealthy</span>
+      <span class="it"><span class="sw" style="color:var(--dispatch)"></span>starting</span>
+      <span class="it"><span class="sw" style="color:var(--dock)"></span>paused</span>
+      <span class="it"><span class="sw" style="color:var(--steel-dim)"></span>exited</span>
+    </div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div class="tip" id="tip"></div>
+    <div class="wire" id="wire">
+      <div class="wire-h" id="wire-h"><span class="d"></span><span class="t">wire · /api/feed</span><span class="c" id="wire-c">seq 0</span></div>
+      <div class="wire-b" id="wire-b"></div>
+    </div>
+    <aside class="inspector" id="inspector" role="region" aria-label="Container inspector">
+      <div class="insp-head"><span class="ring" id="i-ring"></span><div class="ttl"><div class="n" id="i-name">—</div><div class="ty" id="i-type">—</div></div><button class="x" id="i-close" aria-label="Clear">✕</button></div>
+      <div class="insp-body" id="i-body"></div>
+      <div class="insp-actions" id="i-actions"></div>
+    </aside>
+  </main>
+
+  <aside class="side">
+    <section class="pane top"><h2>Containers <span class="count" id="ctr-count">0</span></h2><div class="scroll" id="ctrs" role="listbox" aria-label="Containers" tabindex="0"></div></section>
+    <section class="pane bot"><h2>Daemon events</h2><div class="scroll" id="log" aria-live="off"></div></section>
+  </aside>
+
+  <footer class="dock">
+    <button class="btn primary" id="btn-play"><span class="ic"></span><span id="play-label">Pause</span></button>
+    <div class="injector"><label for="run-img">docker run</label><select id="run-img" aria-label="Image to run"></select><button class="run" id="btn-run">Run</button></div>
+    <div class="speed"><label for="speed">Speed</label><input type="range" id="speed" min="0.25" max="3" step="0.25" value="1" /><output id="speed-out">1.0×</output></div>
+    <div class="hint"><b>Fake daemon</b> — containers start, churn CPU, OOM &amp; restart, all through the real envelope contract · click a container to inspect &amp; <b>docker stop / pause / restart</b> · <b>Space</b> pause</div>
+  </footer>
+</div>
+<div class="sr-only" id="sr" aria-live="polite"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   PART A — FAKE DOCKER DAEMON  (stands in for collector.py + dockerd)
+   Owns all truth about containers. Emits the SAME §4 envelopes the real
+   collector emits, so PART C is a byte-for-byte preview of production.
+   ===================================================================== */
+function createFakeDocker(){
+  const PROJECTS=[
+    {project:"agent-swarm",color:"#36c6e0"},
+    {project:"rag-pipeline",color:"#4fd672"},
+    {project:"tools",color:"#f2b134"},
+  ];
+  const IMAGES=[
+    {image:"anthropic/agent:latest",service:"agent",project:"agent-swarm",base:35},
+    {image:"anthropic/agent:latest",service:"agent",project:"agent-swarm",base:30},
+    {image:"orchestrator:py3.12",service:"orchestrator",project:"agent-swarm",base:18},
+    {image:"rag/retriever:1.4",service:"retriever",project:"rag-pipeline",base:25},
+    {image:"chroma:0.4.24",service:"vectordb",project:"rag-pipeline",base:14},
+    {image:"embed-worker:cuda",service:"embedder",project:"rag-pipeline",base:40},
+    {image:"tool-exec:1.2",service:"tool-exec",project:"tools",base:20},
+    {image:"redis:7-alpine",service:"cache",project:"tools",base:6},
+  ];
+  let seq=0, subs=[], idN=0, born=performance.now();
+  const containers=new Map();
+  let spawnTimer=6, chaosTimer=5, metricTimer=0, alertN=0;
+  const now=()=>new Date().toISOString();
+
+  function emit(type,data){seq++;const env={v:1,seq,ts:now(),type,data};for(const s of subs)s(env);}
+  const subscribe=cb=>{subs.push(cb);return()=>{subs=subs.filter(x=>x!==cb);};};
+  const log=html=>emit("log.appended",{html,ts:now()});
+  function alert(kind,title,body,target){emit("alert.raised",{alert_id:"al_"+(++alertN),kind,title,body,target,raised_at:now(),ttl_s:6});}
+
+  function shortId(){return (Math.random().toString(16)+"000000000000").slice(2,14);}
+  const projColor=p=>(PROJECTS.find(x=>x.project===p)||{}).color||"#8a9da8";
+
+  function state(c){
+    if(c.status==="created"||c.status==="restarting")return "dispatched";
+    if(c.status==="paused")return "returning";
+    if(c.status==="exited")return "docked";
+    return c.cpu>=12?"working":"docked";   // running
+  }
+  function dto(c){return{agent_id:c.id,name:c.name,zone_id:"zone."+c.project,station_id:"stn."+c.service,
+    state:state(c),energy:+Math.max(0,100-c.cpu).toFixed(1),hold:c.status==="paused",
+    cpu_pct:+c.cpu.toFixed(1),mem_pct:+c.mem.toFixed(1),image:c.image,service:c.service,project:c.project,
+    status:c.status,color:projColor(c.project),completed_total:c.restarts,error:c.error,rev:c.rev,updated_at:now()};}
+  const push=(c,t="agent.updated")=>{c.rev++;emit(t,dto(c));};
+
+  function create(spec,silent){
+    idN++;const id=shortId();
+    const c={id,name:spec.service+"-"+String(idN).padStart(2,"0"),image:spec.image,service:spec.service,
+      project:spec.project,base:spec.base,cpu:0,mem:8+Math.random()*10,status:"created",restarts:0,error:null,rev:0,_age:0};
+    containers.set(id,c);
+    push(c,"agent.added");
+    if(!silent)log(`<b style="color:${projColor(c.project)}">${c.name}</b> created`);
+    // created -> running shortly
+    c._startIn=0.5+Math.random()*0.8;
+    return c;
+  }
+
+  function tick(dt){
+    if(dt<=0)return;
+    for(const c of containers.values()){
+      c._age+=dt;
+      if(c.status==="created"){c._startIn-=dt;if(c._startIn<=0){c.status="running";c.cpu=c.base*0.4;push(c);log(`<b style="color:${projColor(c.project)}">${c.name}</b> started`);}continue;}
+      if(c.status!=="running")continue;
+      // CPU random-walk around base + occasional bursts; mem creeps
+      const target=c.base*(0.5+0.9*(0.5+0.5*Math.sin(c._age*0.6+c.base)));
+      c.cpu+=(target-c.cpu)*Math.min(1,dt*1.4)+(Math.random()-0.5)*6*dt;
+      if(Math.random()<dt*0.05)c.cpu=Math.min(98,c.cpu+30+Math.random()*30); // burst
+      c.cpu=Math.max(0,Math.min(100,c.cpu));
+      c.mem=Math.max(4,Math.min(100,c.mem+(Math.random()-0.42)*4*dt+(c.cpu>70?2*dt:0)));
+      if(c._age%1<dt){push(c);}                     // ~1/s telemetry like the poller
+      if(c.cpu>92)alert("warning",c.name+" hot",`CPU ${Math.round(c.cpu)}% on ${c.name}.`,{type:"agent",id:c.id});
+      if(c.mem>=99){c.status="exited";c.error="OOMKilled";c.restarts++;push(c);alert("critical",c.name+" OOMKilled","Container exceeded its memory limit.",{type:"agent",id:c.id});log(`<b style="color:#ff5a52">${c.name}</b> OOMKilled`);c._restartIn=1.2+Math.random();}
+    }
+    // exited containers with restart policy come back
+    for(const c of containers.values()){if(c.status==="exited"&&c._restartIn!=null){c._restartIn-=dt;if(c._restartIn<=0){c._restartIn=null;c.status="running";c.error=null;c.cpu=c.base*0.4;c.mem=10+Math.random()*8;c.restarts++;push(c,"agent.updated");log(`<b style="color:#4fd672">${c.name}</b> restarted`);}}}
+
+    // spontaneous lifecycle churn so it feels live
+    spawnTimer-=dt;
+    if(spawnTimer<=0){spawnTimer=7+Math.random()*7;
+      if(containers.size<14&&Math.random()<0.7)create(IMAGES[(Math.random()*IMAGES.length)|0]);
+    }
+    chaosTimer-=dt;
+    if(chaosTimer<=0){chaosTimer=9+Math.random()*8;
+      const running=[...containers.values()].filter(c=>c.status==="running");
+      if(running.length>4&&Math.random()<0.5){const c=running[(Math.random()*running.length)|0];
+        c.status="exited";c.error="Exited (0)";push(c);log(`<b style="color:#8a9da8">${c.name}</b> exited (0)`);
+        setTimeout(()=>{},0);c._gcIn=3+Math.random()*4;}
+    }
+    // garbage-collect long-exited (no restart) containers
+    for(const c of [...containers.values()]){if(c._gcIn!=null){c._gcIn-=dt;if(c._gcIn<=0){containers.delete(c.id);emit("agent.removed",{agent_id:c.id});log(`<b style="color:#8a9da8">${c.name}</b> removed`);}}}
+
+    metricTimer-=dt;if(metricTimer<=0){metricTimer=1.0;emit("metrics.tick",metrics());}
+  }
+
+  function metrics(){const all=[...containers.values()];const run=all.filter(c=>c.status==="running");
+    const cpu=run.length?run.reduce((a,c)=>a+c.cpu,0)/run.length:0;
+    return{running:run.length,total:all.length,projects:new Set(all.map(c=>c.project)).size,avg_cpu:+cpu.toFixed(0),
+      active_agents:run.length,total_agents:all.length,uptime_s:Math.floor((performance.now()-born)/1000),ts:now()};}
+
+  function snapshot(){return{config:{network:"Docker daemon",source:"docker-mock",images:IMAGES.map(i=>i.image).filter((v,i,a)=>a.indexOf(v)===i)},
+    agents:[...containers.values()].map(dto),projects:PROJECTS,metrics:metrics()};}
+  function emitSnapshot(){seq++;const env={v:1,seq,ts:now(),type:"snapshot",data:snapshot()};for(const s of subs)s(env);}
+
+  function handleCommand(cmd){
+    const c=containers.get((cmd.target||{}).id);const ok=()=>({command_id:cmd.command_id,status:"accepted"});
+    const rej=r=>({command_id:cmd.command_id,status:"rejected",reason:r});
+    if(!c&&cmd.type!=="docker.run")return rej("unknown container");
+    try{switch(cmd.type){
+      case "agent.hold":case "agent.recall":if(c.status!=="running")return rej("not running");c.status="paused";push(c);log(`<b style="color:#6c8cff">${c.name}</b> paused`);return ok();
+      case "agent.resume":if(c.status!=="paused")return rej("not paused");c.status="running";push(c);log(`<b style="color:#4fd672">${c.name}</b> unpaused`);return ok();
+      case "agent.retire":c.status="exited";c.error="Stopped";c._gcIn=2.5;push(c);log(`<b style="color:#ff5a52">${c.name}</b> stopped`);return ok();
+      case "agent.restart":c.status="running";c.error=null;c.cpu=c.base*0.4;c.mem=10;c.restarts++;c._gcIn=null;c._restartIn=null;push(c);log(`<b style="color:#4fd672">${c.name}</b> restarted`);return ok();
+      case "docker.run":{const spec=IMAGES.find(i=>i.image===(cmd.args||{}).image)||IMAGES[0];create(spec);return ok();}
+      default:return rej("unsupported "+cmd.type);
+    }}catch(e){return rej(e.message);}
+  }
+
+  // boot state — seed every project so the daemon reads full immediately
+  IMAGES.forEach(s=>{const c=create(s,true);c.status="running";c.cpu=s.base*(0.4+Math.random()*0.5);c.mem=15+Math.random()*25;});
+  log(`<b style="color:#4fd672">dockerd online</b> · ${containers.size} containers · ${PROJECTS.length} projects`);
+
+  return {subscribe,getSnapshot:emitSnapshot,handleCommand,tick,IMAGES,PROJECTS,get seq(){return seq;}};
+}
+
+/* =====================================================================
+   PART B — FEED CLIENT  (identical seam to production; mock-bound here)
+   To go live: swap this body for a WebSocket to ws://host/api/feed and
+   POST /api/commands (see roboport-collector/README.md). PART C unchanged.
+   ===================================================================== */
+function createFeed(backend){
+  let lastSeq=0,onEnvelope=()=>{};
+  function route(env){if(env.type!=="snapshot"&&lastSeq&&env.seq!==lastSeq+1){backend.getSnapshot();return;}lastSeq=env.seq;onEnvelope(env);}
+  backend.subscribe(route);
+  return {connect(){backend.getSnapshot();},onEnvelope(cb){onEnvelope=cb;},tick(dt){backend.tick(dt);},
+    command(type,target,args={}){return backend.handleCommand({command_id:"c_"+Math.random().toString(36).slice(2),type,target,args,issued_by:"operator",ts:new Date().toISOString()});},
+    images(){return backend.IMAGES;},get seq(){return lastSeq;}};
+}
+
+/* =====================================================================
+   PART C — CLIENT  (pure feed consumer: project envelopes -> render)
+   ===================================================================== */
+(function(){
+  const reduceMotion=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const canvas=document.getElementById("c"),ctx=canvas.getContext("2d");
+  const T={floor:"#0e1418",steel:"#8a9da8",steelDim:"#5f717c",bright:"#e8f1f5",dispatch:"#36c6e0",work:"#f2b134",return:"#4fd672",dock:"#6c8cff",alert:"#ff5a52"};
+  let DPR=Math.min(window.devicePixelRatio||1,2),W=0,H=0,cx=0,cy=0,ringR=0;
+  const M={containers:new Map(),projects:[],metrics:{running:0,total:0,projects:0,avg_cpu:0}};
+  const sparks=[],logE=[],toasts=[],wireLines=[];
+  let selected=null,hovered=null,running=true,simSpeed=1;
+  let logDirty=true,wireDirty=true,alertCount=0;
+  const mouse={x:-999,y:-999};
+
+  function layout(){const r=canvas.getBoundingClientRect();W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);ctx.setTransform(DPR,0,0,DPR,0,0);cx=W/2;cy=H/2;ringR=Math.min(W,H)*0.40;}
+
+  /* slot geometry: containers fan across the top hemisphere (clears wire + inspector) */
+  const FAN=Math.PI*1.18;
+  function projAngle(project){const i=Math.max(0,M.projects.findIndex(p=>p.project===project));const n=Math.max(1,M.projects.length);return -Math.PI/2+((i-(n-1)/2)/n)*FAN;}
+  function slot(c){
+    const base=projAngle(c.project), span=(FAN/Math.max(1,M.projects.length))*0.62;
+    const peers=[...M.containers.values()].filter(x=>x.project===c.project);
+    const k=peers.findIndex(x=>x.agent_id===c.agent_id), n=Math.max(1,peers.length);
+    const ang=base+(n>1?(k/(n-1)-0.5):0)*span;
+    const out=(c.status==="exited")?0.34:0.74+((k%2)?0.08:0);
+    return {x:cx+Math.cos(ang)*ringR*out,y:cy+Math.sin(ang)*ringR*out};
+  }
+
+  /* ---- ingestion ---- */
+  function hydrate(d){M.projects=d.projects||[];M.containers.clear();for(const a of d.agents)addC(a);M.metrics=d.metrics;populateRun(d);}
+  function addC(dto){const s={...dto,x:cx,y:cy,_prev:dto.state,bob:Math.random()*6.28,spin:Math.random()*6.28,trail:[],spawn:performance.now()};const p=slot(s);s.x=p.x+(Math.random()-.5)*4;s.y=p.y+(Math.random()-.5)*4;M.containers.set(dto.agent_id,s);return s;}
+  function applyC(dto){let c=M.containers.get(dto.agent_id);if(!c){addC(dto);return;}if(dto.rev<c.rev)return;for(const k in dto)c[k]=dto[k];}
+  function route(env){
+    pushWire(env);
+    switch(env.type){
+      case "snapshot":hydrate(env.data);break;
+      case "agent.added":case "agent.updated":applyC(env.data);break;
+      case "agent.removed":{const c=M.containers.get(env.data.agent_id);if(c){M.containers.delete(env.data.agent_id);if(selected&&selected===env.data.agent_id)clearSel();}break;}
+      case "metrics.tick":M.metrics=env.data;break;
+      case "alert.raised":pushToast(env.data);break;
+      case "log.appended":logE.unshift({t:hhmm(env.data.ts),html:env.data.html});if(logE.length>60)logE.pop();logDirty=true;break;
+    }
+  }
+  const hhmm=iso=>{const d=new Date(iso);return String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");};
+
+  /* ---- color / state ---- */
+  function ccolor(c){
+    if(c.status==="exited")return T.steelDim;
+    if(c.status==="paused")return T.dock;
+    if(c.status==="created"||c.status==="restarting")return T.dispatch;
+    if(c.cpu_pct>85)return T.alert;
+    if(c.cpu_pct>45)return T.work;
+    return T.return;
+  }
+  function tagFor(c){if(c.status==="exited")return c.error||"exited";if(c.status==="paused")return "⏸ paused";if(c.status==="created")return "starting…";return Math.round(c.cpu_pct)+"% cpu";}
+
+  /* ---- animation (positions only) ---- */
+  function animate(sdt){
+    for(const c of M.containers.values()){
+      c.bob+=sdt*2;c.spin+=sdt*(c.status==="running"?14:5);
+      const p=slot(c);const lerp=c.status==="created"?2.5:4;c.x+=(p.x-c.x)*Math.min(1,sdt*lerp);c.y+=(p.y-c.y)*Math.min(1,sdt*lerp);
+      const moving=Math.hypot(p.x-c.x,p.y-c.y)>2;
+      if(moving){c.trail.push({x:c.x,y:c.y});if(c.trail.length>14)c.trail.shift();}else if(c.trail.length)c.trail.shift();
+      if(c.status==="running"&&c.cpu_pct>45&&Math.random()<sdt*(c.cpu_pct/8)){const col=ccolor(c);sparks.push({x:c.x+(Math.random()-.5)*18,y:c.y+(Math.random()-.5)*18,vx:(Math.random()-.5)*24,vy:-16-Math.random()*26,life:1,hue:col});}
+      c.tag=tagFor(c);
+    }
+    for(let i=sparks.length-1;i>=0;i--){const s=sparks[i];s.x+=s.vx*sdt;s.y+=s.vy*sdt;s.vy+=70*sdt;s.life-=sdt*1.6;if(s.life<=0)sparks.splice(i,1);}
+  }
+
+  /* ---- render ---- */
+  function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+  function selRing(x,y,r,col){const t=performance.now()*0.002;ctx.save();ctx.translate(x,y);ctx.rotate(reduceMotion?0:t);ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.setLineDash([4,5]);ctx.globalAlpha=.95;ctx.beginPath();ctx.arc(0,0,r,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+  const dim=()=>selected?0.4:1;
+
+  function drawGrid(){ctx.fillStyle=T.floor;ctx.fillRect(0,0,W,H);ctx.strokeStyle="rgba(22,32,40,.32)";ctx.lineWidth=1;const g=42;ctx.beginPath();for(let x=cx%g;x<W;x+=g){ctx.moveTo(x,0);ctx.lineTo(x,H);}for(let y=cy%g;y<H;y+=g){ctx.moveTo(0,y);ctx.lineTo(W,y);}ctx.stroke();const gr=ctx.createRadialGradient(cx,cy,ringR*0.4,cx,cy,Math.max(W,H)*0.78);gr.addColorStop(0,"rgba(0,0,0,0)");gr.addColorStop(1,"rgba(0,0,0,0.5)");ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);}
+  function drawSectors(){
+    M.projects.forEach((p)=>{const ang=projAngle(p.project);const lx=cx+Math.cos(ang)*ringR*0.98,ly=cy+Math.sin(ang)*ringR*0.98;
+      const cnt=[...M.containers.values()].filter(c=>c.project===p.project).length;
+      ctx.save();ctx.globalAlpha=.45;ctx.strokeStyle=p.color;ctx.lineWidth=1;ctx.setLineDash([3,7]);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(ang)*ringR*0.9,cy+Math.sin(ang)*ringR*0.9);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+      ctx.font="600 11px 'Space Grotesk',sans-serif";ctx.textAlign=Math.cos(ang)<-.2?"end":Math.cos(ang)>.2?"start":"center";ctx.textBaseline="bottom";ctx.fillStyle=p.color;ctx.globalAlpha=.92;ctx.fillText(p.project+" ("+cnt+")",lx,ly);ctx.globalAlpha=1;});
+  }
+  function drawHost(){
+    const t=performance.now()*0.001;
+    ctx.save();ctx.globalAlpha=.5;const g=ctx.createRadialGradient(cx,cy,4,cx,cy,64);g.addColorStop(0,"rgba(242,177,52,0.4)");g.addColorStop(1,"rgba(242,177,52,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,64,0,6.283);ctx.fill();ctx.restore();
+    ctx.strokeStyle="rgba(242,177,52,0.3)";ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx,cy,42,0,6.283);ctx.stroke();
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(reduceMotion?0:t);
+    for(let i=0;i<2;i++){const rr2=24-i*8;ctx.beginPath();for(let k=0;k<6;k++){const a=k*Math.PI/3+(i?t*0.5:-t*0.4),px=Math.cos(a)*rr2,py=Math.sin(a)*rr2;k?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();ctx.fillStyle=i?"#27200f":"#1c1708";ctx.fill();ctx.strokeStyle="rgba(242,177,52,0.55)";ctx.lineWidth=1.4;ctx.stroke();}
+    ctx.fillStyle="#f7d488";ctx.shadowColor="#f2b134";ctx.shadowBlur=16;ctx.beginPath();ctx.arc(0,0,5+Math.sin(t*3)*1,0,6.283);ctx.fill();ctx.restore();
+    ctx.font="500 9px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="bottom";ctx.fillStyle="rgba(232,241,245,.6)";ctx.fillText("dockerd",cx,cy-50);
+  }
+  function drawContainer(c){
+    const col=ccolor(c),sel=selected===c.agent_id,hov=hovered===c.agent_id;
+    const bob=reduceMotion?0:Math.sin(c.bob)*1.6,x=c.x,y=c.y+bob;
+    ctx.globalAlpha=sel||hov?1:dim();
+    if(c.trail.length>1&&!reduceMotion){ctx.lineWidth=2;ctx.lineCap="round";for(let i=1;i<c.trail.length;i++){ctx.strokeStyle=col;ctx.globalAlpha=(sel||hov?1:dim())*(i/c.trail.length)*0.5;ctx.beginPath();ctx.moveTo(c.trail[i-1].x,c.trail[i-1].y);ctx.lineTo(c.trail[i].x,c.trail[i].y);ctx.stroke();}ctx.globalAlpha=sel||hov?1:dim();}
+    ctx.save();ctx.translate(x,y);
+    // container = a box (a "shipping crate")
+    if(c.status==="running"&&!reduceMotion){ctx.globalAlpha=ctx.globalAlpha*0.2;ctx.strokeStyle=col;ctx.lineWidth=1;ctx.beginPath();ctx.arc(0,0,13,c.spin,c.spin+4.2);ctx.stroke();ctx.globalAlpha=sel||hov?1:dim();}
+    if(c.hold||c.status==="paused"){ctx.strokeStyle=T.dock;ctx.lineWidth=1.5;ctx.globalAlpha=ctx.globalAlpha*0.6;ctx.beginPath();ctx.arc(0,0,13,0,6.283);ctx.stroke();ctx.globalAlpha=sel||hov?1:dim();}
+    ctx.shadowColor=col;ctx.shadowBlur=hov||sel?15:(c.status==="exited"?3:11);ctx.fillStyle="#0f1820";rr(ctx,-7,-7,14,14,2.5);ctx.fill();ctx.shadowBlur=0;ctx.lineWidth=1.5;ctx.strokeStyle=col;ctx.stroke();
+    // crate cross-lines
+    ctx.strokeStyle=col;ctx.globalAlpha=ctx.globalAlpha*0.5;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-7,0);ctx.lineTo(7,0);ctx.moveTo(0,-7);ctx.lineTo(0,7);ctx.stroke();ctx.globalAlpha=sel||hov?1:dim();
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(0,0,2,0,6.283);ctx.fill();
+    ctx.restore();
+    // cpu ring when selected
+    if(sel){selRing(x,y,19,col);ctx.save();ctx.translate(x,y);ctx.strokeStyle="rgba(255,255,255,.12)";ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(0,0,24,0,6.283);ctx.stroke();ctx.strokeStyle=col;ctx.beginPath();ctx.arc(0,0,24,-Math.PI/2,-Math.PI/2+(c.cpu_pct/100)*6.283);ctx.stroke();ctx.restore();}
+    if(c.tag){ctx.font="500 9px 'JetBrains Mono',monospace";const label=c.name,tw=ctx.measureText(label+"  "+c.tag).width+12,tx=x-tw/2,ty=y-23;ctx.fillStyle="rgba(10,15,19,0.8)";rr(ctx,tx,ty,tw,15,4);ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=(sel||hov?1:dim())*0.5;ctx.lineWidth=1;rr(ctx,tx,ty,tw,15,4);ctx.stroke();ctx.globalAlpha=sel||hov?1:dim();ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillStyle="rgba(232,241,245,0.7)";ctx.fillText(label,tx+6,ty+7.5);const lw=ctx.measureText(label+"  ").width;ctx.fillStyle=col;ctx.fillText(c.tag,tx+6+lw,ty+7.5);}
+    ctx.globalAlpha=1;
+  }
+  function drawSparks(){for(const s of sparks){ctx.globalAlpha=Math.max(0,s.life)*(selected?dim():1);ctx.fillStyle=s.hue;ctx.shadowColor=s.hue;ctx.shadowBlur=6;ctx.beginPath();ctx.arc(s.x,s.y,1.5,0,6.283);ctx.fill();}ctx.globalAlpha=1;ctx.shadowBlur=0;}
+  function render(){drawGrid();drawSectors();drawHost();drawSparks();[...M.containers.values()].sort((a,b)=>a.y-b.y).forEach(drawContainer);}
+
+  /* ---- DOM ---- */
+  const el=id=>document.getElementById(id);
+  const D={run:el("s-run"),total:el("s-total"),proj:el("s-proj"),cpu:el("s-cpu"),alerts:el("s-alerts"),
+    ctrs:el("ctrs"),ctrCount:el("ctr-count"),log:el("log"),toasts:el("toasts"),tip:el("tip"),sr:el("sr"),
+    wireB:el("wire-b"),wireC:el("wire-c"),iRing:el("i-ring"),iName:el("i-name"),iType:el("i-type"),iBody:el("i-body"),iActions:el("i-actions"),insp:el("inspector")};
+  const ecolor=p=>p>85?T.alert:p>45?T.work:T.return;
+
+  function refresh(){
+    D.run.textContent=M.metrics.running;D.total.textContent=M.metrics.total;D.proj.textContent=M.metrics.projects;
+    D.cpu.textContent=M.metrics.avg_cpu+"%";D.cpu.className="v"+(M.metrics.avg_cpu>70?" bad":M.metrics.avg_cpu>45?" warn":"");
+    D.alerts.textContent=alertCount;D.alerts.className="v"+(alertCount?" bad":"");
+    D.ctrCount.textContent=M.containers.size;
+    // group by project
+    let html="";
+    for(const p of M.projects){
+      const list=[...M.containers.values()].filter(c=>c.project===p.project);
+      if(!list.length)continue;
+      html+=`<div class="proj"><span class="pd" style="color:${p.color}"></span>${p.project}</div>`;
+      html+=list.map(c=>{const col=ccolor(c),sc=selected===c.agent_id?" sel":"";return `<div class="ctr${sc}" role="option" tabindex="0" data-cid="${c.agent_id}" aria-selected="${sc?"true":"false"}"><span class="pip" style="color:${col};background:${col}"></span><div class="who"><div class="name">${c.name}</div><div class="img">${c.image}</div></div><div class="met"><div class="cpu">${c.status==="running"?Math.round(c.cpu_pct)+"%":c.status}</div><div class="mini"><i style="width:${c.status==="running"?c.cpu_pct:0}%;background:${col}"></i></div></div></div>`;}).join("");
+    }
+    D.ctrs.innerHTML=html||'<div class="proj">no containers</div>';
+    if(logDirty){D.log.innerHTML=logE.map(e=>`<div class="logline"><span class="t">${e.t}</span><span class="m">${e.html}</span></div>`).join("");logDirty=false;}
+    if(selected)renderInsp();
+  }
+
+  function renderInsp(){
+    const c=M.containers.get(selected);if(!c){clearSel();return;}const col=ccolor(c);
+    D.insp.classList.add("on");D.iRing.style.color=col;D.iRing.style.background=col;D.iName.textContent=c.name;D.iType.textContent=c.image;
+    D.iBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">status</div><div class="v" style="color:${col}">${c.status}</div></div><div class="f"><div class="k">project</div><div class="v">${c.project}</div></div><div class="f"><div class="k">service</div><div class="v">${c.service}</div></div><div class="f"><div class="k">restarts</div><div class="v">${c.completed_total||0}</div></div></div>
+      <div class="barlbl"><span>cpu</span><span>${Math.round(c.cpu_pct)}%</span></div><div class="bar"><i style="width:${c.cpu_pct}%;background:${ecolor(c.cpu_pct)};box-shadow:0 0 6px ${ecolor(c.cpu_pct)}"></i></div>
+      <div class="barlbl"><span>mem</span><span>${Math.round(c.mem_pct)}%</span></div><div class="bar"><i style="width:${c.mem_pct}%;background:${ecolor(c.mem_pct)};box-shadow:0 0 6px ${ecolor(c.mem_pct)}"></i></div>
+      ${c.error?`<div class="barlbl" style="color:var(--alert)"><span>last error</span><span>${c.error}</span></div>`:""}`;
+    const run=c.status==="running",paused=c.status==="paused",exited=c.status==="exited";
+    D.iActions.innerHTML=`<button class="cmd ${paused?"on":"warn"}" data-cmd="${paused?"agent.resume":"agent.hold"}" ${exited?"disabled":""}>${paused?"Unpause":"Pause"}</button><button class="cmd go" data-cmd="agent.restart">Restart</button><button class="cmd danger" data-cmd="agent.retire" ${exited?"disabled":""}>Stop</button>`;
+  }
+  function pushToast(al){alertCount++;toasts.push({...al,born:performance.now()});if(toasts.length>4)toasts.shift();renderToasts();setTimeout(()=>{toasts.splice(0,toasts.length,...toasts.filter(t=>t.alert_id!==al.alert_id));renderToasts();},(al.ttl_s||6)*1000);}
+  function renderToasts(){const k={info:"info",warning:"warn",critical:"bad"};D.toasts.innerHTML=toasts.map(t=>`<div class="toast ${k[t.kind]||"info"}" data-tid="${t.alert_id}"><div><div class="th">${t.title}</div><div class="tb">${t.body}</div></div><div class="tg">${Math.round((performance.now()-t.born)/1000)}s</div></div>`).join("");}
+  const WCAT={snapshot:"#4fd672",log:"#4fd672",agent:"#36c6e0",metrics:"#5f717c",alert:"#ff5a52"};
+  function pushWire(env){const cat=env.type.split(".")[0];wireLines.unshift({seq:env.seq,type:env.type,c:WCAT[cat]||"#8a9da8"});if(wireLines.length>7)wireLines.pop();wireDirty=true;}
+  function renderWire(){D.wireC.textContent="seq "+feed.seq;if(!wireDirty)return;D.wireB.innerHTML=wireLines.map(w=>`<div class="wl"><span class="sq">${w.seq}</span><span class="ty" style="color:${w.c}">${w.type}</span></div>`).join("");wireDirty=false;}
+
+  /* ---- selection / commands ---- */
+  function sel(id){selected=id;D.insp.classList.add("on");renderInsp();refresh();const c=M.containers.get(id);if(c)D.sr.textContent=`${c.name} selected. ${c.status}. CPU ${Math.round(c.cpu_pct)} percent.`;}
+  function clearSel(){selected=null;D.insp.classList.remove("on");refresh();}
+  function command(type){if(!selected)return;feed.command(type,{type:"agent",id:selected});}
+
+  /* ---- pointer ---- */
+  function hit(px,py){let best=null,bd=16;for(const c of M.containers.values()){const d=Math.hypot(c.x-px,c.y-py);if(d<bd){bd=d;best=c.agent_id;}}return best;}
+  function toC(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+  canvas.addEventListener("mousemove",e=>{const p=toC(e);mouse.x=p.x;mouse.y=p.y;hovered=hit(p.x,p.y);canvas.style.cursor=hovered?"pointer":"default";if(hovered){const c=M.containers.get(hovered);D.tip.innerHTML=`${c.name} <span class="s">· ${c.status} · ${Math.round(c.cpu_pct)}% cpu</span>`;const rb=canvas.getBoundingClientRect();D.tip.style.left=(e.clientX-rb.left)+"px";D.tip.style.top=c.y+"px";D.tip.classList.add("on");}else D.tip.classList.remove("on");});
+  canvas.addEventListener("mouseleave",()=>{hovered=null;D.tip.classList.remove("on");canvas.style.cursor="default";});
+  canvas.addEventListener("click",e=>{const p=toC(e),h=hit(p.x,p.y);h?sel(h):clearSel();});
+  D.ctrs.addEventListener("click",e=>{const r=e.target.closest("[data-cid]");if(r)sel(r.dataset.cid);});
+  D.ctrs.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){const r=e.target.closest("[data-cid]");if(r){e.preventDefault();sel(r.dataset.cid);}}});
+  D.toasts.addEventListener("click",e=>{const t=e.target.closest("[data-tid]");if(!t)return;const f=toasts.find(x=>x.alert_id===t.dataset.tid);if(f&&f.target&&M.containers.get(f.target.id))sel(f.target.id);});
+  D.iActions.addEventListener("click",e=>{const b=e.target.closest("[data-cmd]");if(b&&!b.disabled)command(b.dataset.cmd);});
+  el("i-close").addEventListener("click",clearSel);
+  window.addEventListener("keydown",e=>{if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT")return;if(e.code==="Space"){e.preventDefault();el("btn-play").click();}if(e.key==="Escape")clearSel();});
+
+  /* ---- dock ---- */
+  el("btn-play").addEventListener("click",()=>{running=!running;el("play-label").textContent=running?"Pause":"Resume";});
+  function populateRun(d){const s=el("run-img");if(s.options.length)return;const imgs=[...new Set(feed.images().map(i=>i.image))];imgs.forEach(im=>{const o=document.createElement("option");o.value=im;o.textContent=im;s.appendChild(o);});}
+  el("btn-run").addEventListener("click",()=>{const im=el("run-img").value;if(im)feed.command("docker.run",{type:"daemon"},{image:im});});
+  const sp=el("speed"),spo=el("speed-out");sp.addEventListener("input",()=>{simSpeed=parseFloat(sp.value);spo.textContent=simSpeed.toFixed(2).replace(/0$/,"")+"×";});
+  const wireEl=el("wire");el("wire-h").addEventListener("click",()=>wireEl.classList.toggle("min"));
+  if(window.matchMedia("(max-width:880px)").matches)wireEl.classList.add("min");
+
+  /* ---- boot + loop ---- */
+  new ResizeObserver(()=>{DPR=Math.min(window.devicePixelRatio||1,2);layout();}).observe(canvas);
+  const backend=createFakeDocker();
+  const feed=createFeed(backend);
+  window.__feed=feed;
+  layout();
+  feed.onEnvelope(route);
+  feed.connect();
+  let last=performance.now(),lastPanel=0;
+  function frame(now){let dt=(now-last)/1000;last=now;if(dt>0.05)dt=0.05;const sdt=running?dt*simSpeed:0;feed.tick(sdt);animate(sdt);render();renderWire();if(toasts.length)renderToasts();if(now-lastPanel>120){refresh();lastPanel=now;}requestAnimationFrame(frame);}
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
