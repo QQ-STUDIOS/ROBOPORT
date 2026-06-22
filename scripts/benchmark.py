@@ -105,32 +105,69 @@ def jsonl_append(path: Path, obj: dict) -> None:
         f.write(json.dumps(obj, default=str) + "\n")
 
 
-def run_one(eval_obj: dict, run_dir: Path, registry: dict) -> dict:
-    """Execute a single (eval × run) pair. Returns a small summary."""
+def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None) -> dict:
+    """Execute a single (eval × run) pair. Returns a small summary.
+
+    If `feed` (a roboport_runtime.feed_log.FeedLog) is provided, the run also
+    emits control-surface lifecycle telemetry — the runtime-native feed that
+    lights up control_surface/. The runtime emits only logical state; the
+    dashboard owns all motion.
+    """
     run_dir.mkdir(parents=True, exist_ok=True)
     log = run_dir / "run.log"
     plan = call_planner(eval_obj["prompt"], context={}, registry=registry)
     (run_dir / "plan.json").write_text(json.dumps(plan, indent=2))
     jsonl_append(log, {"event": "plan_emitted", "ts": datetime.now(timezone.utc).isoformat()})
 
+    if feed is not None:
+        from roboport_runtime.feed_log import stations_from_plan  # lazy
+        feed.crew_start(eval_obj.get("target") or "crew",
+                        stations_from_plan(plan), input=eval_obj.get("prompt"))
+
     accumulated: dict = {}
     for step in plan["steps"]:
+        sid = step["id"]
+        task_id, agent_id = f"t_{sid}", f"drone-{sid}"
+        station_id = f"stn.{step['owner']}"
+        # deterministic steps run fast; LLM steps get a longer work estimate.
+        est = 0.8 if step.get("deterministic") else 2.4
+        if feed is not None:
+            feed.task_enqueue(task_id, station_id, agent_id,
+                              wave=int(step.get("wave", 0)), work_estimate_s=est)
+            feed.task_start(task_id, agent_id, station_id, eta_s=1.2)
+            feed.task_progress(task_id, agent_id, 0.05, eta_s=est)
+
         result = call_executor(step, accumulated, registry)
+
         jsonl_append(log, {
             "event": "step_done",
-            "step_id": step["id"],
+            "step_id": sid,
             "status": result["status"],
             "criteria_results": result.get("criteria_results", []),
             "tool_calls": result.get("tool_calls", 0),
             "llm_calls": result.get("llm_calls", 0),
             "error": result.get("error"),
         })
+        if feed is not None:
+            ok = result["status"] == "ok"
+            if ok:
+                feed.task_progress(task_id, agent_id, 1.0, eta_s=0.0)
+            feed.task_end(task_id, agent_id,
+                          status="ok" if ok else "error",
+                          error=result.get("error"),
+                          llm_calls=result.get("llm_calls", 0),
+                          tool_calls=result.get("tool_calls", 0),
+                          deterministic=bool(step.get("deterministic")))
         if result["status"] != "ok":
+            if feed is not None:
+                feed.crew_end(status="failed")
             (run_dir / "final_output.json").write_text(json.dumps(
                 {"status": "failed", "error": result.get("error")}, indent=2))
-            return {"status": "failed", "step_failed": step["id"]}
-        accumulated[step["id"]] = result["output"]
+            return {"status": "failed", "step_failed": sid}
+        accumulated[sid] = result["output"]
 
+    if feed is not None:
+        feed.crew_end(status="ok")
     final = list(accumulated.values())[-1] if accumulated else {}
     (run_dir / "final_output.json").write_text(json.dumps(final, indent=2))
     return {"status": "ok"}
@@ -144,6 +181,10 @@ def main() -> int:
     ap.add_argument("--label", default=None, help="Output folder label; defaults to timestamp")
     ap.add_argument("--out", default=None, help="Override benchmark output dir")
     ap.add_argument("--grade", action="store_true", help="Run grader after each run")
+    ap.add_argument("--feed-log", default=None, metavar="PATH",
+                    help="Also emit control-surface lifecycle telemetry (JSONL) to "
+                         "PATH. Tail it with control_surface/collector (runtime feed) "
+                         "to watch the crew run on the dashboard.")
     ap.add_argument("--live", action="store_true",
                     help="Use the model-backed runtime (scripts/roboport_runtime) "
                          "instead of the stubs.")
@@ -203,7 +244,16 @@ def main() -> int:
         ev_summary = {"id": ev["id"], "runs": []}
         for n in range(1, args.runs + 1):
             run_dir = ev_dir / f"run_{n}"
-            outcome = run_one(ev, run_dir, registry)
+            ev.setdefault("target", args.target)
+            feed = None
+            if args.feed_log:
+                from roboport_runtime.feed_log import FeedLog  # lazy; stdlib-only
+                feed = FeedLog(args.feed_log, run_id=f"{label}/{ev['id']}/run_{n}")
+            try:
+                outcome = run_one(ev, run_dir, registry, feed=feed)
+            finally:
+                if feed is not None:
+                    feed.close()
             grading = None
             if args.grade:
                 grading = call_grader(ev["expectations"], run_dir / "run.log", run_dir)

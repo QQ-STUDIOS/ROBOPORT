@@ -35,6 +35,8 @@ Run:
 from __future__ import annotations
 import asyncio
 import json
+import os
+from pathlib import Path
 from typing import Optional, Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -42,12 +44,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
-from collector import DockerCollector
-
 app = FastAPI(title="ROBOPORT feed")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-collector = DockerCollector()
+
+# ---- feed source selection (env-driven; default Docker) -----------------
+# ROBOPORT_FEED_SOURCE = docker | runtime | runtime-demo
+#   docker        -> collector.py (the Docker daemon; requires docker-py)
+#   runtime       -> runtime_feed.py tailing ROBOPORT_FEED_GLOB (a real crew run)
+#   runtime-demo  -> runtime_feed.py running a synthetic crew (no model, no deps)
+# Imports are lazy so runtime mode never needs docker-py installed.
+_SOURCE = os.environ.get("ROBOPORT_FEED_SOURCE", "docker")
+
+
+def _make_collector():
+    if _SOURCE in ("runtime", "runtime-demo"):
+        from runtime_feed import RuntimeCrewCollector
+        registry = os.environ.get(
+            "ROBOPORT_REGISTRY",
+            str(Path(__file__).resolve().parents[2] / "agents" / "registry.json"))
+        return RuntimeCrewCollector(
+            registry_path=registry,
+            crew=os.environ.get("ROBOPORT_CREW", "jd_crew"),
+            feed_glob=os.environ.get("ROBOPORT_FEED_GLOB"),
+            simulate=(_SOURCE == "runtime-demo"))
+    from collector import DockerCollector
+    return DockerCollector()
+
+
+collector = _make_collector()
 _loop: Optional[asyncio.AbstractEventLoop] = None
 _clients: "Set[_Client]" = set()
 
@@ -63,9 +88,14 @@ class _Client:
 # ---- which envelopes a scope subscribes to (mirrors the mock's relevant()) ----
 _ALWAYS = ("snapshot", "metrics.tick", "alert.raised", "log.appended")
 _NETWORK = ("zone.updated", "route.updated", "task.handoff")
+# Single-plane firehose: forward everything. Used by the single-host surfaces
+# (the runtime crew feed has no zones to roll up).
+_FIREHOSE = ("all", "crew", "host")
 
 def _relevant(env: dict, scope: str) -> bool:
     t = env.get("type", "")
+    if scope in _FIREHOSE:
+        return True
     if t in _ALWAYS:
         return True
     if scope == "network":

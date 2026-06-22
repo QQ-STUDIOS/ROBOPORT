@@ -1,4 +1,55 @@
-# ROBOPORT — Docker collector
+# ROBOPORT — feed collectors
+
+Two reference producers feed the control surface. Both emit the exact contract
+envelopes the UI consumes and implement the same interface, so `server.py`
+mounts either via `ROBOPORT_FEED_SOURCE`:
+
+| `ROBOPORT_FEED_SOURCE` | Module | Drones are… |
+|---|---|---|
+| `docker` (default) | `collector.py` | running containers |
+| `runtime` | `runtime_feed.py` | a real ROBOPORT crew run (tails `--feed-log`) |
+| `runtime-demo` | `runtime_feed.py` | a synthetic crew (no model, no deps) |
+
+---
+
+## Runtime-native feed — a crew run as drones
+
+Light the dashboard up from ROBOPORT's **own** agents. Each crew agent becomes a
+station around the hub; each plan step becomes a task; a drone flies to its
+station, fills the work ring, and returns.
+
+```bash
+pip install fastapi "uvicorn[standard]"      # no docker-py needed for runtime mode
+
+# A) zero setup — synthetic jd_crew:
+ROBOPORT_FEED_SOURCE=runtime-demo python server.py        # http://localhost:8000
+
+# B) a REAL crew: serve the feed, then run the crew with --feed-log
+ROBOPORT_FEED_SOURCE=runtime ROBOPORT_FEED_GLOB=/tmp/feed.jsonl python server.py
+python ../../scripts/benchmark.py --target jd_crew --live --feed-log /tmp/feed.jsonl
+```
+
+Open `../web/roboport-feed.html`, set `const LIVE = true` at the top of PART B,
+and reload. Env knobs: `ROBOPORT_CREW` (default `jd_crew`), `ROBOPORT_REGISTRY`,
+`ROBOPORT_FEED_GLOB`.
+
+**How it's sourced.** The runtime emits logical lifecycle lines via
+`scripts/roboport_runtime/feed_log.py` (`crew_start` / `task_enqueue` /
+`task_start` / `task_progress` / `task_end`); `runtime_feed.py` tails them and
+projects the §6 single-host envelopes. The wire never carries x/y — the runtime
+says *what* each agent is doing; the dashboard animates *where*. `benchmark.py`
+without `--feed-log` is completely unaffected.
+
+Quick check, no browser or server:
+
+```bash
+python runtime_feed.py --simulate --frames 40        # print a synthetic crew's envelopes
+python runtime_feed.py --replay /tmp/feed.jsonl      # project a saved crew log
+```
+
+---
+
+## Docker collector
 
 Make ROBOPORT show your **actual running containers** as live drones — agentless,
 no changes to the containers themselves. The collector watches the Docker daemon

@@ -44,15 +44,42 @@ open control_surface/web/roboport-docker-demo.html   # fake Docker daemon
 open control_surface/web/roboport-mcp-network.html   # MCP zones + drill-through
 ```
 
-## Wire it to real containers
+## Wire it to a live ROBOPORT crew  (runtime-native feed)
 
-The collector watches the Docker daemon and emits the same envelopes the mock
-produces — so the UI swaps source with a one-flag change (see
-[`collector/README.md`](collector/README.md)).
+The dashboard lights up from the framework's **own** agents — a real
+`benchmark.py` crew run, not just Docker. The runtime emits logical lifecycle
+telemetry; the runtime feed producer projects it onto the contract.
 
 ```bash
 pip install -r control_surface/collector/requirements.txt
-python control_surface/collector/server.py        # http://localhost:8000
+
+# zero setup — a synthetic jd_crew, no model, no deps beyond FastAPI:
+ROBOPORT_FEED_SOURCE=runtime-demo python control_surface/collector/server.py
+
+# or a REAL crew run: serve the feed, then run the crew with --feed-log
+ROBOPORT_FEED_SOURCE=runtime ROBOPORT_FEED_GLOB=/tmp/feed.jsonl \
+  python control_surface/collector/server.py            # terminal 1
+python scripts/benchmark.py --target jd_crew --live --feed-log /tmp/feed.jsonl   # terminal 2
+```
+
+Then open `web/roboport-feed.html` and flip the switch at the top of PART B:
+
+```js
+const LIVE = true;                            // was false (in-page mock)
+const FEED_BASE = "http://localhost:8000";    // server.py origin
+```
+
+Each crew agent becomes a station around the hub; each plan step becomes a task;
+a drone flies to its station, fills the work ring, and returns. See
+[`collector/README.md`](collector/README.md#runtime-native-feed-a-crew-run-as-drones).
+
+## Wire it to real containers (Docker)
+
+The collector watches the Docker daemon and emits the same envelopes — so the UI
+swaps source with a one-flag change (see [`collector/README.md`](collector/README.md)).
+
+```bash
+python control_surface/collector/server.py        # default ROBOPORT_FEED_SOURCE=docker
 ```
 
 Then flip the live switch at the top of `web/roboport-mcp-network.html`:
@@ -67,15 +94,21 @@ const FEED_BASE = "http://localhost:8000";
 The core repo (`agents/`, `workflows/`, `scripts/roboport_runtime/`) is the
 *runtime* — typed agents executing crews. This directory is the *control
 surface* over a running fleet. They meet at the feed contract: anything that can
-emit the [`CONTRACT.md`](CONTRACT.md) envelopes (the Docker collector here, a
-Kubernetes collector, or the runtime itself) lights up the dashboard. The
-collector is the reference producer; it proves the contract end-to-end without
-touching agent code.
+emit the [`CONTRACT.md`](CONTRACT.md) envelopes lights up the dashboard. Two
+reference producers ship today:
+
+- **`collector/runtime_feed.py`** — a ROBOPORT crew run (the framework's own
+  agents). Sourced from the lifecycle telemetry `scripts/benchmark.py --feed-log`
+  writes (`scripts/roboport_runtime/feed_log.py`), or a synthetic crew in
+  `simulate` mode. **This is the runtime-native path.**
+- **`collector/collector.py`** — the Docker daemon (agentless, containers as drones).
+
+Both implement the same producer interface, so `server.py` mounts either via
+`ROBOPORT_FEED_SOURCE`.
 
 ## Status & next steps
 
-Landed as the design package: working UIs + a reference Docker/logtail
-collector + the full contract. Open threads (see `CONTRACT.md` §11): auth on the
-socket (Entra bearer), task-payload schemas per station, completed-task history
-endpoint, and a runtime-native feed producer so a live `benchmark.py` crew
-streams straight onto the surface.
+Landed: working UIs + the full contract + two reference producers (runtime crew
++ Docker). Open threads (see `CONTRACT.md` §11): auth on the socket (Entra
+bearer), per-station task-payload schemas, and a completed-task history
+endpoint for the activity log.
