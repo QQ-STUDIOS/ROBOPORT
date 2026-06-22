@@ -184,5 +184,16 @@ async def feed(ws: WebSocket) -> None:
         _clients.discard(c)
 
 
+# ---- optionally serve the dashboards from this same origin --------------
+# Set ROBOPORT_SERVE_WEB=1 so the UI and the feed share one origin (one URL to
+# open, one thing to put behind a tunnel/deploy). Mounted last so /api/* wins.
+if os.environ.get("ROBOPORT_SERVE_WEB"):
+    from fastapi.staticfiles import StaticFiles
+    _web = Path(__file__).resolve().parents[1] / "web"
+    if _web.is_dir():
+        app.mount("/", StaticFiles(directory=str(_web), html=True), name="web")
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")),
+                log_level="info")

@@ -42,7 +42,13 @@ in-page fake feed:
 open control_surface/web/roboport.html
 open control_surface/web/roboport-docker-demo.html   # fake Docker daemon
 open control_surface/web/roboport-mcp-network.html   # MCP zones + drill-through
+open control_surface/web/roboport-replay.html        # a REAL jd_crew run, baked in (no server)
 ```
+
+`roboport-replay.html` is a self-contained recording of an actual runtime-feed
+crew run — open it locally or drop it on any static host (Vercel/Netlify/Pages)
+for a public URL. Regenerate it from a fresh run with
+[`collector/make_replay.py`](collector/make_replay.py).
 
 ## Wire it to a live ROBOPORT crew  (runtime-native feed)
 

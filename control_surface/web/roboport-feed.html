@@ -423,16 +423,22 @@ function createFeed(backend){
 }
 
 /* ---- GO LIVE: point at control_surface/collector/server.py -----------
-   Flip LIVE to true to consume a real backend over the contract instead of
-   the in-page mock. Nothing in PART C changes — same envelopes, same model.
+   Two ways to consume a real backend over the contract instead of the in-page
+   mock — nothing in PART C changes (same envelopes, same model):
+     • set LIVE=true below, or
+     • open this page with ?live=1 (handy when server.py serves it). When served
+       over http(s) the feed defaults to the same origin, so it works behind a
+       tunnel/deploy with no edit; override with ?feed=https://host:port.
      ROBOPORT_FEED_SOURCE=runtime-demo python server.py   # synthetic crew
      ROBOPORT_FEED_SOURCE=runtime ROBOPORT_FEED_GLOB=feed.jsonl python server.py
    then run:  python scripts/benchmark.py --target jd_crew --feed-log feed.jsonl
 */
-const LIVE = false;
-const FEED_BASE = "http://localhost:8000";   // server.py origin
-const FEED_SCOPE = "all";                     // single-plane firehose
-const FEED_TOKEN = "";                        // Entra bearer in production
+const _Q = new URLSearchParams(location.search);
+const LIVE = _Q.has("live") ? _Q.get("live") !== "0" : false;
+const FEED_BASE = _Q.get("feed")
+  || (location.protocol.startsWith("http") ? location.origin : "http://localhost:8000");
+const FEED_SCOPE = _Q.get("scope") || "all";  // single-plane firehose
+const FEED_TOKEN = "";                          // Entra bearer in production
 
 function createLiveFeed(base, scope){
   const http = base.replace(/\/+$/,"");
