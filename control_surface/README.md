@@ -56,6 +56,21 @@ The dashboard lights up from the framework's **own** agents — a real
 `benchmark.py` crew run, not just Docker. The runtime emits logical lifecycle
 telemetry; the runtime feed producer projects it onto the contract.
 
+**One command (Docker) — live & interactive:**
+
+```bash
+docker compose -f control_surface/docker-compose.yml up --build
+# open http://localhost:8000/roboport-feed.html?live=1
+```
+
+Drones fly to the crew stations and the command buttons actually mutate the live
+view (the change returns through the feed). Drive it from a *real* crew run
+instead of the synthetic demo by setting `ROBOPORT_FEED_SOURCE=runtime` +
+`ROBOPORT_FEED_GLOB` and mounting a `--feed-log` dir — see the comments in
+[`docker-compose.yml`](docker-compose.yml).
+
+**Or run it directly:**
+
 ```bash
 pip install -r control_surface/collector/requirements.txt
 

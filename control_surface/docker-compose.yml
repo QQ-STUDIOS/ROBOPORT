@@ -1,0 +1,31 @@
+# One command — live, interactive control surface:
+#
+#   docker compose -f control_surface/docker-compose.yml up --build
+#   open http://localhost:8000/roboport-feed.html?live=1
+#
+# Drones fly to the crew stations, fill work rings, and return; the command
+# buttons (recall / hold / drain / spawn) actually mutate the live view and the
+# change comes back through the feed.
+services:
+  control-surface:
+    build:
+      context: ..                         # repo root (needs agents/registry.json)
+      dockerfile: control_surface/Dockerfile
+    image: roboport-control-surface
+    ports:
+      - "8000:8000"
+    environment:
+      ROBOPORT_FEED_SOURCE: runtime-demo  # synthetic jd_crew — no model needed
+      ROBOPORT_SERVE_WEB: "1"
+      ROBOPORT_CREW: jd_crew
+
+    # ---- drive it from a REAL crew run instead of the synthetic demo ----
+    # 1) flip the source + point it at a mounted feed log:
+    #      ROBOPORT_FEED_SOURCE: runtime
+    #      ROBOPORT_FEED_GLOB: /feed/feed.jsonl
+    # 2) mount the dir the benchmark writes to:
+    # volumes:
+    #   - ./feed:/feed
+    # 3) on the host, run the crew (needs Ollama or ANTHROPIC_API_KEY):
+    #      python scripts/benchmark.py --target jd_crew --live \
+    #        --feed-log control_surface/feed/feed.jsonl
