@@ -155,7 +155,22 @@ Full walkthrough — both surfaces, the emitters, Docker, and which view when �
 
 ## Adding an agent
 
-Short version (full version in [`docs/agent_design_principles.md`](docs/agent_design_principles.md)):
+**Scaffold it** (does all six steps below, then validates):
+
+```bash
+python scripts/new_agent.py --name market_scanner --role domain \
+  --title "Market Scanner" --output-type MarketScan \
+  --model-hint tool-use-capable --tools fetch_url,parse_html
+# add --crew jd_crew --after synthesizer to wire it into a crew
+# add --dry-run to preview every change first
+```
+
+It writes the spec, the registry entry, an output-schema stub, the tool
+whitelist + override, and an eval set with a blocker — each as a minimal,
+in-place edit — then runs `validate.py`. Fill in the `TODO`s it leaves (the spec
+body *is* the prompt) and run the benchmark.
+
+Manual version (full detail in [`docs/agent_design_principles.md`](docs/agent_design_principles.md)):
 
 1. Write `agents/<role>/<n>.md` with frontmatter + the seven required sections.
 2. Add an entry to `agents/registry.json`.
