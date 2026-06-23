@@ -105,30 +105,44 @@ def jsonl_append(path: Path, obj: dict) -> None:
         f.write(json.dumps(obj, default=str) + "\n")
 
 
-def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None) -> dict:
+def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=None) -> dict:
     """Execute a single (eval × run) pair. Returns a small summary.
 
     If `feed` (a roboport_runtime.feed_log.FeedLog) is provided, the run also
     emits control-surface lifecycle telemetry — the runtime-native feed that
     lights up control_surface/. The runtime emits only logical state; the
     dashboard owns all motion.
+
+    If `run_log` (a roboport_runtime.run_log.RunLog) is provided, the run emits
+    the Ops Console event stream (run.start / plan.created / step.* /
+    run.complete) that dashboard/bridge.py tails.
     """
+    import time as _time
     run_dir.mkdir(parents=True, exist_ok=True)
     log = run_dir / "run.log"
+    crew = eval_obj.get("target") or "crew"
+    if run_log is not None:
+        run_log.run_start(crew)
+    _t_run = _time.perf_counter()
+
     plan = call_planner(eval_obj["prompt"], context={}, registry=registry)
     (run_dir / "plan.json").write_text(json.dumps(plan, indent=2))
     jsonl_append(log, {"event": "plan_emitted", "ts": datetime.now(timezone.utc).isoformat()})
 
     if feed is not None:
         from roboport_runtime.feed_log import stations_from_plan  # lazy
-        feed.crew_start(eval_obj.get("target") or "crew",
-                        stations_from_plan(plan), input=eval_obj.get("prompt"))
+        feed.crew_start(crew, stations_from_plan(plan), input=eval_obj.get("prompt"))
+    if run_log is not None:
+        run_log.plan_created(plan)
 
     accumulated: dict = {}
+    durations_ms: list[int] = []
+    llm_total = tool_total = 0
     for step in plan["steps"]:
         sid = step["id"]
+        owner = step["owner"]
         task_id, agent_id = f"t_{sid}", f"drone-{sid}"
-        station_id = f"stn.{step['owner']}"
+        station_id = f"stn.{owner}"
         # deterministic steps run fast; LLM steps get a longer work estimate.
         est = 0.8 if step.get("deterministic") else 2.4
         if feed is not None:
@@ -136,8 +150,12 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None) -> dict:
                               wave=int(step.get("wave", 0)), work_estimate_s=est)
             feed.task_start(task_id, agent_id, station_id, eta_s=1.2)
             feed.task_progress(task_id, agent_id, 0.05, eta_s=est)
+        if run_log is not None:
+            run_log.step_start(sid, owner, wave=int(step.get("wave", 0)))
 
+        _t_step = _time.perf_counter()
         result = call_executor(step, accumulated, registry)
+        dur_ms = int((_time.perf_counter() - _t_step) * 1000)
 
         jsonl_append(log, {
             "event": "step_done",
@@ -148,8 +166,11 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None) -> dict:
             "llm_calls": result.get("llm_calls", 0),
             "error": result.get("error"),
         })
+        ok = result["status"] == "ok"
+        llm_total += result.get("llm_calls", 0)
+        tool_total += result.get("tool_calls", 0)
+        durations_ms.append(dur_ms)
         if feed is not None:
-            ok = result["status"] == "ok"
             if ok:
                 feed.task_progress(task_id, agent_id, 1.0, eta_s=0.0)
             feed.task_end(task_id, agent_id,
@@ -158,9 +179,18 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None) -> dict:
                           llm_calls=result.get("llm_calls", 0),
                           tool_calls=result.get("tool_calls", 0),
                           deterministic=bool(step.get("deterministic")))
-        if result["status"] != "ok":
+        if run_log is not None:
+            if ok:
+                run_log.step_complete(sid, owner, duration_ms=dur_ms,
+                                      llm_calls=result.get("llm_calls", 0),
+                                      tool_calls=result.get("tool_calls", 0))
+            else:
+                run_log.step_failed(sid, owner, result.get("error"), layer="criterion_failed")
+        if not ok:
             if feed is not None:
                 feed.crew_end(status="failed")
+            if run_log is not None:
+                run_log.run_complete(_run_summary(durations_ms, llm_total, tool_total, _t_run, _time))
             (run_dir / "final_output.json").write_text(json.dumps(
                 {"status": "failed", "error": result.get("error")}, indent=2))
             return {"status": "failed", "step_failed": sid}
@@ -168,9 +198,27 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None) -> dict:
 
     if feed is not None:
         feed.crew_end(status="ok")
+    if run_log is not None:
+        run_log.run_complete(_run_summary(durations_ms, llm_total, tool_total, _t_run, _time))
     final = list(accumulated.values())[-1] if accumulated else {}
     (run_dir / "final_output.json").write_text(json.dumps(final, indent=2))
     return {"status": "ok"}
+
+
+def _run_summary(durations_ms, llm_total, tool_total, t_run_start, _time) -> dict:
+    """run.complete payload — counts + wall time + p95 step latency."""
+    p95 = 0
+    if durations_ms:
+        ordered = sorted(durations_ms)
+        idx = max(0, int(round(0.95 * (len(ordered) - 1))))
+        p95 = ordered[idx]
+    return {
+        "steps": len(durations_ms),
+        "llm_calls": llm_total,
+        "tool_calls": tool_total,
+        "wall_ms": int((_time.perf_counter() - t_run_start) * 1000),
+        "p95_ms": p95,
+    }
 
 
 def main() -> int:
@@ -185,6 +233,10 @@ def main() -> int:
                     help="Also emit control-surface lifecycle telemetry (JSONL) to "
                          "PATH. Tail it with control_surface/collector (runtime feed) "
                          "to watch the crew run on the dashboard.")
+    ap.add_argument("--run-log", nargs="?", const="runs", default=None, metavar="DIR",
+                    help="Also emit the Ops Console event stream to "
+                         "DIR/<run_id>/run.log (default DIR: runs/). Tail it with "
+                         "dashboard/bridge.py to watch the crew on the Ops Console.")
     ap.add_argument("--live", action="store_true",
                     help="Use the model-backed runtime (scripts/roboport_runtime) "
                          "instead of the stubs.")
@@ -249,11 +301,18 @@ def main() -> int:
             if args.feed_log:
                 from roboport_runtime.feed_log import FeedLog  # lazy; stdlib-only
                 feed = FeedLog(args.feed_log, run_id=f"{label}/{ev['id']}/run_{n}")
+            run_log = None
+            if args.run_log:
+                from roboport_runtime.run_log import RunLog  # lazy; stdlib-only
+                rl_id = f"{label}_{ev['id']}_run{n}"
+                run_log = RunLog(Path(args.run_log) / rl_id, run_id=rl_id)
             try:
-                outcome = run_one(ev, run_dir, registry, feed=feed)
+                outcome = run_one(ev, run_dir, registry, feed=feed, run_log=run_log)
             finally:
                 if feed is not None:
                     feed.close()
+                if run_log is not None:
+                    run_log.close()
             grading = None
             if args.grade:
                 grading = call_grader(ev["expectations"], run_dir / "run.log", run_dir)

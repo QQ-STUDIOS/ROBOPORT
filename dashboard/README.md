@@ -49,24 +49,33 @@ python dashboard/serve.py --run runs/<run_id> --watch    # follow a live run
 
 ## Quick start (live mode)
 
-**1 — Start a ROBOPORT run**
+**1 — Start a ROBOPORT run, emitting the Ops Console event stream**
+
+`--run-log` writes `runs/<run_id>/run.log` (the `run_log.jsonl` this bridge
+tails). It's opt-in via `scripts/roboport_runtime/run_log.py`; normal runs are
+untouched.
 
 ```bash
 python scripts/benchmark.py \
-  --target jd_crew \
-  --input "Senior backend engineer, remote-US, posted last 14 days"
+  --target jd_crew --live --runs 1 \
+  --input "Senior backend engineer, remote-US, posted last 14 days" \
+  --run-log runs
 ```
+
+> Use `--live` for the real 8-station crew (needs Ollama or `ANTHROPIC_API_KEY`).
+> Without `--live` the stub planner emits a single `stub` step — the event
+> pipeline still works, but you won't see the full DAG.
 
 **2 — Launch the bridge server**
 
 ```bash
-# Auto-detects the most-recent run in runs/
+# Auto-detects the most-recent run in runs/ and tails it as it grows
 python dashboard/bridge.py --runs-dir runs/
 
 # Or point at a specific run
 python dashboard/bridge.py --run-id <run_id>
 
-# Bridge is now live at http://localhost:4242
+# Bridge is now live at http://localhost:4242 (also serves the console)
 ```
 
 **3 — Open the console**
