@@ -1,0 +1,5 @@
+{"goal":"Senior backend roles, remote US","deliverable":"final_output.json",
+ "steps":[
+   {"id":"scout","owner":"job_scout","wave":0,"output_type":"object","success_criteria":["jobs found"],"deterministic":false},
+   {"id":"synth","owner":"synthesizer","wave":1,"output_type":"FinalReport","success_criteria":["report merged"],"deterministic":true}
+ ]}

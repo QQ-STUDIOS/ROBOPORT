@@ -1,0 +1,1 @@
+{"run_id":"cand_pass","results":[{"expectation":"Every Job has a source_url","verdict":"PASS","evidence":"x","blocker":true}],"pass_rate":1.0,"blocker_failed":false}
