@@ -80,8 +80,10 @@ workflows/            executable specs: how a crew runs end-to-end
 evals/evals.json      live eval set (4 evals, all with blockers)
 scripts/              validate, benchmark, aggregate
 runs/                 produced artifacts; one dir per run
-docs/                 architecture, design principles, onboarding
+docs/                 architecture, design principles, onboarding, observability
 config/agent_config.yaml   model bindings, temps, budgets, tool whitelist
+control_surface/      operator surface #1 — the port/drones view + feed collector
+dashboard/            operator surface #2 — the Ops Console (wave DAG) + SSE bridge
 ```
 
 The 19 registered agents — 4 core, 3 evaluation, 4 generic domain, 8 crew_builder — are listed in `agents/registry.json`.
@@ -134,6 +136,23 @@ Full taxonomy: [`resources/prompts/error_handling.md`](resources/prompts/error_h
 
 ---
 
+## Watching a run
+
+Two operator surfaces render a live crew run over the same wire contract — the
+**control surface** ([`control_surface/`](control_surface/README.md), a port of
+drones) and the **Ops Console** ([`dashboard/`](dashboard/README.md), the wave
+DAG). A benchmark run streams to either (or both) via opt-in emitters; a normal
+run is untouched.
+
+```bash
+python scripts/benchmark.py --target jd_crew --live --feed-log /tmp/feed.jsonl --run-log runs
+```
+
+Full walkthrough — both surfaces, the emitters, Docker, and which view when — in
+[`docs/observability.md`](docs/observability.md).
+
+---
+
 ## Adding an agent
 
 Short version (full version in [`docs/agent_design_principles.md`](docs/agent_design_principles.md)):
@@ -155,6 +174,7 @@ Short version (full version in [`docs/agent_design_principles.md`](docs/agent_de
 | [`docs/onboarding.md`](docs/onboarding.md) | First — clone-to-running in 30 minutes. |
 | [`docs/architecture.md`](docs/architecture.md) | Second — how the pieces fit. |
 | [`docs/agent_design_principles.md`](docs/agent_design_principles.md) | Third — the opinions, before you add an agent. |
+| [`docs/observability.md`](docs/observability.md) | Watching a run — the two operator surfaces and how they're fed. |
 | [`workflows/jd_crew_flow.md`](workflows/jd_crew_flow.md) | The flagship crew, end-to-end. |
 | [`resources/prompts/reasoning_patterns.md`](resources/prompts/reasoning_patterns.md) | Reference for prompt design. |
 | [`resources/prompts/error_handling.md`](resources/prompts/error_handling.md) | Reference for failure modes. |

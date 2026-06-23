@@ -1,5 +1,10 @@
 # ROBOPORT Ops Console — Integration Guide
 
+> One of ROBOPORT's two operator surfaces (the wave-DAG view). Its sibling is the
+> **control surface** ([`../control_surface/`](../control_surface/README.md), the
+> port/drones view). How they relate and how a run feeds both:
+> [`../docs/observability.md`](../docs/observability.md).
+
 Live operational dashboard for ROBOPORT runs. Shows the JD-Crew
 pipeline executing in real time: agents dispatching through wave
 stages, typed data contracts flowing station-to-station, latency
