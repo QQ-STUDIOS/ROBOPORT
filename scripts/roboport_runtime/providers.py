@@ -14,6 +14,14 @@ from abc import ABC, abstractmethod
 from typing import Any, Protocol
 
 
+class TransientProviderError(Exception):
+    """A *retryable* provider failure — HTTP 5xx, timeout, or connection error.
+
+    The executor's Layer-1 (call-level) policy retries these a bounded number of
+    times before failing loudly; anything else is treated as fatal immediately.
+    """
+
+
 class Message(Protocol):
     role: str
     content: str
@@ -102,8 +110,17 @@ class OllamaProvider(Provider):
         if force_json:
             payload["format"] = "json"
 
-        r = self._requests.post(f"{self.host}/api/chat", json=payload, timeout=900)
-        r.raise_for_status()
+        exc = self._requests.exceptions
+        try:
+            r = self._requests.post(f"{self.host}/api/chat", json=payload, timeout=900)
+            r.raise_for_status()
+        except exc.HTTPError as e:
+            status = getattr(e.response, "status_code", None)
+            if status and status >= 500:        # server-side → retryable
+                raise TransientProviderError(f"ollama HTTP {status}") from e
+            raise                                 # 4xx → fatal
+        except (exc.Timeout, exc.ConnectionError) as e:
+            raise TransientProviderError(f"ollama transport: {e}") from e
         body = r.json()
         msg = body.get("message") or {}
         return {
