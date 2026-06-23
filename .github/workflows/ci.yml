@@ -57,6 +57,41 @@ jobs:
       - name: Compile Python scripts
         run: python -m compileall -q scripts
 
+  tests:
+    name: Tests & regression gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run test suite
+        run: python -m pytest tests/ -q
+
+      - name: diff_runs regression-gate smoke
+        run: |
+          # a clean comparison passes the gate
+          python scripts/diff_runs.py \
+            --baseline tests/fixtures/runs/base \
+            --candidate tests/fixtures/runs/base \
+            --fail-on regression --quiet
+          # a known regression MUST fail the gate (here, nonzero is the success path)
+          if python scripts/diff_runs.py \
+            --baseline tests/fixtures/runs/base \
+            --candidate tests/fixtures/runs/cand_schema \
+            --fail-on regression --quiet; then
+            echo "ERROR: diff_runs did not gate on a known regression"; exit 1
+          fi
+          echo "diff_runs gate verified"
+
   security-audit:
     name: Supply-chain audit (pip-audit)
     runs-on: ubuntu-latest
