@@ -1,5 +1,9 @@
 # ROBOPORT — control surface
 
+> One of ROBOPORT's two operator surfaces (the port/drones view). Its sibling is
+> the **Ops Console** ([`../dashboard/`](../dashboard/README.md), the wave DAG).
+> How they relate and how a run feeds both: [`../docs/observability.md`](../docs/observability.md).
+
 The operator-facing layer for ROBOPORT: an animated agent dashboard plus an
 **agentless** feed source. It renders the runtime as a port full of drones —
 agents dock, dispatch to stations, work, and return — without the runtime ever
