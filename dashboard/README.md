@@ -15,6 +15,19 @@ Orchestrator ──► run_log.jsonl ──► bridge.py (SSE) ──► feed_ad
 > wired (`feed_adapter.js` is loaded in `<head>`, and the backend line selects
 > live-vs-mock from the URL), so no edits are needed to run it.
 
+## One command (Docker)
+
+```bash
+cp dashboard/.env.example dashboard/.env      # add your ANTHROPIC_API_KEY
+docker compose -f dashboard/docker-compose.yml up --build
+# open http://localhost:4242/?api=http://localhost:4242
+```
+
+With a key the container runs a real `jd_crew` run (provider=anthropic) and
+serves its replay; **without** a key it serves the bundled sample run — either
+way the console + SSE bridge come up on `:4242`. The key is read from
+`dashboard/.env` (gitignored) — never bake it into an image.
+
 ## Try it now (zero setup)
 
 A self-contained sample run (`sample_run.jsonl` — a jd_crew run with a

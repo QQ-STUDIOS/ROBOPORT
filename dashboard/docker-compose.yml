@@ -1,0 +1,29 @@
+# One command — live Ops Console:
+#
+#   1) put your key in dashboard/.env   (cp dashboard/.env.example dashboard/.env)
+#   2) docker compose -f dashboard/docker-compose.yml up --build
+#   3) open http://localhost:4242/?api=http://localhost:4242
+#
+# With a key it runs a real jd_crew run and serves its replay; without one it
+# serves the bundled sample run (still a full demo). The bridge serves the
+# console itself, so that single URL is all you need.
+services:
+  ops-console:
+    build:
+      context: ..                       # repo root (needs scripts/, agents/, …)
+      dockerfile: dashboard/Dockerfile
+    image: roboport-ops-console
+    env_file:
+      - path: .env                      # ANTHROPIC_API_KEY=… (gitignored)
+        required: false
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ROBOPORT_PROVIDER: anthropic
+      ROBOPORT_RUNS: "1"                # live runs per eval; raise for more crew runs
+    ports:
+      - "4242:4242"
+    volumes:
+      - roboport-runs:/data/runs
+
+volumes:
+  roboport-runs:
