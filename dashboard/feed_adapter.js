@@ -273,6 +273,63 @@
     return s ? s.hue : "#8a9da8";
   }
 
+  // ── diff_runs.py output → console envelopes (regression overlay) ───────
+  // Mirrors bridge.py diff_to_envelopes: a flagged agent becomes a station-
+  // targeted alert (red = regression, amber = warning), plus a signal log.
+  const DIFF_KIND  = { regression: "critical", warning: "warning", inconclusive: "warning", info: "warning" };
+  const DIFF_COLOR = { pass: "#4fd672", warning: "#f2b134", regression: "#ff5a52", inconclusive: "#8a9da8", info: "#4fd672" };
+
+  function translateDiff(diff) {
+    const out = [];
+    const ts = new Date().toISOString();
+    const log = html => out.push(envelope("log.appended", { html, ts }));
+    const stationIds = new Set(STATIONS.map(s => s.station_id));
+    const sign = n => (n >= 0 ? "+" : "") + n;
+
+    out.push(envelope("snapshot", makeSnapshot(diff.candidate || "diff")));
+    const verdict = diff.verdict || "pass";
+    log(`<b style="color:${DIFF_COLOR[verdict] || "#8a9da8"}">RUN DIFF · ${verdict.toUpperCase()}</b>`);
+    log(`<span style="color:#8a9da8">baseline</span> ${diff.baseline || "?"}`);
+    log(`<span style="color:#8a9da8">candidate</span> ${diff.candidate || "?"}`);
+    const s = diff.summary || {};
+    if (Object.keys(s).length) {
+      log(`changed: ${(s.changed_agents || []).join(", ") || "(none)"} · ` +
+          `blocker fails: ${s.new_blocker_failures || 0} · schema regs: ${s.schema_regressions || 0} · ` +
+          `Δllm ${sign(s.cost_delta_llm_calls || 0)} · Δtool ${sign(s.cost_delta_tool_calls || 0)}`);
+    }
+    (diff.agent_diffs || []).forEach(d => {
+      const sid = d.agent || "?";
+      const sev = d.severity || "info";
+      const signals = d.signals || [];
+      let body = signals.map(x => x.message || "").join("; ") || sev;
+      if (d.contract) body = `[${d.contract}] ${body}`;
+      if (d.recommended_next_action) body += ` — next: ${d.recommended_next_action}`;
+      const target = stationIds.has(sid) ? { type: "station", id: sid } : { type: "port" };
+      if (["regression", "warning", "inconclusive"].includes(sev)) {
+        out.push(envelope("alert.raised", {
+          alert_id: "al_diff_" + Math.random().toString(36).slice(2, 7),
+          kind: DIFF_KIND[sev] || "warning",
+          title: `${sid} · ${sev}`, body, target, raised_at: ts, ttl_s: 600,
+        }));
+        if (stationIds.has(sid)) {
+          out.push(envelope("station.updated", {
+            station_id: sid, name: sid, state: sev === "regression" ? "drain" : "busy",
+            worker_agent_id: null, queue_depth: 0, drain: sev === "regression", rev: 1,
+          }));
+        }
+      }
+      const col = DIFF_COLOR[sev] || "#8a9da8";
+      signals.forEach(sig => log(`<b style="color:${col}">${sig.kind || "?"}</b> · ` +
+                                 `<b style="color:${stHue(sid)}">${sid}</b> · ${sig.message || ""}`));
+    });
+    if (!(diff.agent_diffs || []).length) log(`<span style="color:#4fd672">no differences detected</span>`);
+    return out;
+  }
+
+  function isDiffDoc(obj) {
+    return obj && typeof obj === "object" && "verdict" in obj && "agent_diffs" in obj;
+  }
+
   // ── Mutable run state ─────────────────────────────────────────────────
   function makeState() {
     const agentN = {};
@@ -341,6 +398,18 @@
     reader.readAsText(file);
   }
 
+  // ── Diff-drop adapter (a diff_runs JSON, no server needed) ────────────
+  function createDiffDropBackend(file, onEnvelope) {
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      let diff;
+      try { diff = JSON.parse(e.target.result); } catch { return; }
+      if (!isDiffDoc(diff)) return;
+      translateDiff(diff).forEach(onEnvelope);
+    };
+    reader.readAsText(file);
+  }
+
   // ── SSE live adapter ──────────────────────────────────────────────────
   function createSSEBackend(apiUrl, onEnvelope) {
     const state = makeState();
@@ -396,8 +465,11 @@
     document.addEventListener("dragover", e => e.preventDefault());
     document.addEventListener("drop", function (e) {
       e.preventDefault();
-      const file = Array.from(e.dataTransfer.files).find(f => f.name.endsWith(".jsonl") || f.name.endsWith(".log"));
-      if (file) createFileDropBackend(file, push, opts.speed || 4);
+      const files = Array.from(e.dataTransfer.files);
+      const runFile = files.find(f => f.name.endsWith(".jsonl") || f.name.endsWith(".log"));
+      const diffFile = files.find(f => f.name.endsWith(".json"));
+      if (runFile) createFileDropBackend(runFile, push, opts.speed || 4);   // a run_log → live replay
+      else if (diffFile) createDiffDropBackend(diffFile, push);             // a diff_runs JSON → regression overlay
     });
 
     return {
@@ -413,6 +485,7 @@
 
   global.ROBOPORT_ADAPTER = createLiveBackend;
   global.ROBOPORT_translate = translate;
+  global.ROBOPORT_translateDiff = translateDiff;
   global.ROBOPORT_parseJSONL = parseJSONL;
   global.ROBOPORT_makeSnapshot = makeSnapshot;
 

@@ -118,6 +118,28 @@ The console switches from mock backend to the live SSE feed automatically.
 
 ---
 
+## Regression overlay (cross-run diff)
+
+Beyond watching one run, the console can render a **cross-run regression diff**
+from [`scripts/diff_runs.py`](../scripts/diff_runs.py) — *which agent/contract
+regressed?* — using the same station/alert vocabulary: a flagged agent lights its
+station with an alert ring (**red** = regression, **amber** = warning) and every
+signal lands in the log.
+
+```bash
+# bridge computes the diff and serves it as an overlay
+python dashboard/bridge.py --baseline runs/<base> --candidate runs/<cand>
+# ...or render a precomputed diff JSON
+python scripts/diff_runs.py --baseline runs/<base> --candidate runs/<cand> --out diff.json
+python dashboard/bridge.py --diff diff.json
+```
+
+No server? Drag a `diff_against_baseline.json` (the `--out` of `diff_runs.py`)
+straight onto the canvas — the adapter detects a diff document and overlays it
+offline, just like a `run.log`.
+
+---
+
 ## File layout
 
 ```

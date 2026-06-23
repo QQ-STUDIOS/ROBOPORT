@@ -235,10 +235,19 @@ optional artifacts → `inconclusive`, not pass; offline (no live provider); reu
 Still open for Phase 1.x: stable-field annotations; config-fingerprint
 comparability; per-step latency once `benchmark.py` logs `duration_ms`.
 
-## Phase 2: Make the dashboard load-bearing
+## Phase 2: Make the dashboard load-bearing — **v1 shipped**
 
 **Goal:** move the Ops Console from live-demo visualization to a regression
 investigation surface.
+
+> **Status:** v1 landed — `bridge.py --baseline/--candidate` (or `--diff FILE`)
+> renders a `diff_runs` comparison as a regression overlay, and the console accepts
+> a dropped `diff_against_baseline.json` offline. Rather than invent new `diff.*`
+> event types, the diff maps onto the *existing* envelope vocabulary: a flagged
+> agent raises a station-targeted alert (red = regression, amber = warning) — the
+> same ring `step.failed` uses — plus a per-signal log. `tests/test_bridge_diff.py`
+> covers the translation. Still open: a dedicated Regression *panel* with
+> per-station click-through to artifact paths (needs console HTML work).
 
 1. Extend `dashboard/bridge.py` with a comparison mode (`--baseline`/`--candidate`).
 2. Add diff event types to the feed:
