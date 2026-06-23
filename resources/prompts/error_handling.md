@@ -108,10 +108,11 @@ The single most common failure mode: a tool returns `200 OK` with a payload that
 
 ## Enforcement (not just doctrine)
 
-Layer 1 is enforced in the runtime, not only described here:
+Layers 1–2 are enforced in the runtime, not only described here:
 
-- **Transient retry** — providers raise `TransientProviderError` on HTTP 5xx / timeout / connection failure (`scripts/roboport_runtime/providers.py`); the Executor retries it `MAX_PROVIDER_RETRIES` times, then fails loudly with `layer="provider_5xx"`.
-- **Schema repair** — a schema-invalid `output` triggers one repair pass before it's recorded as a failed criterion (`repaired=true` on the step result).
-- **Quiet-200 guard** — an empty `list[...]` output is recorded as a failed criterion, because empty arrays mean the search broke, not "zero results".
+- **Transient retry** (L1) — providers raise `TransientProviderError` on HTTP 5xx / timeout / connection failure (`scripts/roboport_runtime/providers.py`); the Executor retries it `MAX_PROVIDER_RETRIES` times, then fails loudly with `layer="provider_5xx"`.
+- **Schema repair** (L1) — a schema-invalid `output` triggers one repair pass before it's recorded as a failed criterion (`repaired=true` on the step result).
+- **Quiet-200 guard** (L1) — an empty `list[...]` output is recorded as a failed criterion, because empty arrays mean the search broke, not "zero results".
+- **Budget abort** (L2) — a per-agent call budget (`budgets.per_agent` in `config/agent_config.yaml`, or an `agent_overrides[*].budget`) aborts the step loudly with `layer="budget_exceeded"` once LLM/tool calls exceed the cap.
 
 These are proven offline by a deterministic fault harness (`tests/fault_provider.py`, `tests/test_fault_injection.py`) that the CI Tests job runs — so a layer that stops firing fails the build. See `docs/ROADMAP.md` Phase 3.
