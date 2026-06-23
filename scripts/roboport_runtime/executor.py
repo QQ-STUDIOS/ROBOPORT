@@ -1,6 +1,7 @@
 """Executor: run a single plan step against the owner agent with tool use."""
 from __future__ import annotations
 
+import fnmatch
 import functools
 import json
 import re
@@ -13,6 +14,21 @@ from .tools import dispatch, load_agent_tool_map, schemas_for
 MAX_TOOL_ROUNDS = 6
 MAX_PROVIDER_RETRIES = 2   # Layer 1: bounded retries on transient (5xx) failures
 DEFAULT_BUDGET = {"max_llm_calls": 8, "max_tool_calls": 20}
+
+# Layer 3: categorically unsafe actions — irreversible, outward-facing, or
+# money/code-execution. A requested action matching one of these is escalated
+# to the operator and never executed, regardless of any agent whitelist. These
+# are fnmatch patterns (case-insensitive); override via `policy.unsafe_actions`
+# in config/agent_config.yaml. The default set deliberately matches none of the
+# repo's read-only tools, so today's crews are unaffected.
+DEFAULT_UNSAFE_ACTIONS = [
+    "delete_*", "drop_*", "purge_*", "remove_*", "rm_*", "destroy_*",  # destructive
+    "write_*", "put_*", "post_*", "patch_*", "update_*", "upsert_*",   # mutating writes
+    "send_*", "email_*", "sms_*", "message_*", "notify_*",            # outward comms
+    "pay_*", "payment_*", "charge_*", "transfer_*", "wire_*", "refund_*",  # money
+    "exec_*", "execute_*", "eval_*", "shell*", "run_command*", "spawn_*",  # code exec
+    "deploy_*", "merge_*", "push_*", "publish_*", "release_*",        # ship/deploy
+]
 
 
 @functools.lru_cache(maxsize=1)
@@ -36,6 +52,21 @@ def _budget_for(owner: str, config: dict) -> dict:
         "max_tool_calls": int(over.get("max_tool_calls",
                               base.get("max_tool_calls", DEFAULT_BUDGET["max_tool_calls"]))),
     }
+
+
+def _unsafe_actions(config: dict) -> list[str]:
+    """Layer 3: the unsafe-action denylist — the config's `policy.unsafe_actions`
+    if set (an explicit empty list disables the policy), else a safe default."""
+    actions = (config.get("policy") or {}).get("unsafe_actions")
+    if actions is None:
+        return list(DEFAULT_UNSAFE_ACTIONS)
+    return [str(a).lower() for a in actions]
+
+
+def _is_unsafe(name: str, patterns: list[str]) -> bool:
+    """True if a tool/action name matches the unsafe denylist (case-insensitive)."""
+    n = (name or "").lower()
+    return any(fnmatch.fnmatch(n, p) for p in patterns)
 
 
 def _chat_retry(p, **kw) -> tuple[dict, int]:
@@ -134,7 +165,9 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
     model_hint = agent_meta.get("model_hint", "any")
     output_type = step.get("output_type", "object")
     output_schema = _resolve_output_schema(output_type)
-    budget = _budget_for(owner, _agent_config())
+    config = _agent_config()
+    budget = _budget_for(owner, config)
+    unsafe_actions = _unsafe_actions(config)
 
     user_prompt = (
         f"STEP\nid: {step['id']}\nwave: {step.get('wave', 0)}\n"
@@ -216,6 +249,18 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
                 ],
             })
             for tc in tcs:
+                # Layer 3: an unsafe/irreversible action is escalated to the
+                # operator and never executed — deny overrides any whitelist,
+                # and we return BEFORE dispatch so there is no side effect.
+                if _is_unsafe(tc["name"], unsafe_actions):
+                    return _failed(
+                        step,
+                        f"unsafe action {tc['name']!r} blocked and escalated: this "
+                        f"action is irreversible or outward-facing and requires human "
+                        f"authorization before it can run. No tool was executed.",
+                        llm_calls=llm_calls, tool_calls=tool_calls_total,
+                        layer="unsafe_action", retries=retries_total,
+                        escalated_action=tc["name"])
                 if tc["name"] not in allowed_tools:
                     result: Any = {"error": f"tool {tc['name']!r} not allowed for agent {owner!r}"}
                 else:
@@ -330,7 +375,8 @@ def _ok(step: dict, owner: str, output: dict, llm_calls: int) -> dict[str, Any]:
 
 
 def _failed(step: dict, msg: str, *, llm_calls: int = 0, tool_calls: int = 0,
-            layer: str | None = None, retries: int = 0) -> dict[str, Any]:
+            layer: str | None = None, retries: int = 0,
+            escalated_action: str | None = None) -> dict[str, Any]:
     return {
         "step_id": step["id"],
         "status": "failed",
@@ -341,6 +387,7 @@ def _failed(step: dict, msg: str, *, llm_calls: int = 0, tool_calls: int = 0,
         "retries": retries,
         "repaired": False,
         "layer": layer,
+        "escalated_action": escalated_action,
         "transcript_path": None,
         "error": msg,
     }

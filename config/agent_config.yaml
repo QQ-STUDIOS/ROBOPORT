@@ -110,6 +110,54 @@ budgets:
     max_tool_calls: 15
 
 # -----------------------------------------------------------------------------
+# Safety policy (Layer 3 of the error stack). `unsafe_actions` is a denylist of
+# categorically unsafe actions — irreversible, outward-facing, or money/code
+# execution. When an agent requests a tool whose name matches one of these
+# fnmatch patterns (case-insensitive), the runtime escalates to the operator and
+# refuses to execute it — deny overrides any per-agent tool whitelist below, and
+# no tool side effect occurs. Omit this block to use the built-in default set
+# (scripts/roboport_runtime/executor.py: DEFAULT_UNSAFE_ACTIONS); set it to an
+# explicit empty list to disable the policy. The defaults match none of the
+# read-only tools below, so current crews are unaffected.
+# -----------------------------------------------------------------------------
+policy:
+  unsafe_actions:
+    - "delete_*"      # destructive
+    - "drop_*"
+    - "purge_*"
+    - "remove_*"
+    - "rm_*"
+    - "destroy_*"
+    - "write_*"       # mutating writes
+    - "put_*"
+    - "post_*"
+    - "patch_*"
+    - "update_*"
+    - "upsert_*"
+    - "send_*"        # outward communications
+    - "email_*"
+    - "sms_*"
+    - "message_*"
+    - "notify_*"
+    - "pay_*"         # money movement
+    - "payment_*"
+    - "charge_*"
+    - "transfer_*"
+    - "wire_*"
+    - "refund_*"
+    - "exec_*"        # code execution
+    - "execute_*"
+    - "eval_*"
+    - "shell*"
+    - "run_command*"
+    - "spawn_*"
+    - "deploy_*"      # ship / deploy
+    - "merge_*"
+    - "push_*"
+    - "publish_*"
+    - "release_*"
+
+# -----------------------------------------------------------------------------
 # Tool registry. Names here must match what agent specs reference. The runner
 # refuses to dispatch a tool not whitelisted for the current agent.
 # -----------------------------------------------------------------------------
