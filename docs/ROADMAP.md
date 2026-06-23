@@ -270,10 +270,26 @@ investigation surface.
 4. File-drop support for `diff_against_baseline.json` (works without the bridge).
 5. A "Regression" panel: changed agents, signals, recommended next action.
 
-## Phase 3: Make the error stack provable
+## Phase 3: Make the error stack provable — **v1 shipped**
 
 **Goal:** turn the three-layer error stack from documented doctrine into enforced
 behavior.
+
+> **Status:** v1 landed. The runtime now has a retryable-error type on the Provider
+> seam (`TransientProviderError`), and the executor enforces **Layer 1**: bounded
+> retries on transient (5xx) failures, a one-shot **schema-repair** pass before a
+> schema mismatch is recorded, and a **quiet-200 guard** (an empty search result
+> fails loudly instead of passing on). A deterministic `FaultProvider`
+> (`tests/fault_provider.py`) injects faults with no model, and
+> `tests/test_fault_injection.py` proves each behavior offline — gated by the CI
+> Tests job, so a layer that stops firing fails the build. Provider failures now
+> carry a `layer` and steps report `retries`/`repaired`.
+>
+> Still open: **Layer 2** budget-abort as a first-class eval and **Layer 3**
+> unsafe-action escalation; wiring the `FaultProvider` into a `--live`
+> `evals/fault_injection.json` benchmark set; and extracting the richer
+> `Response{cost,latency,...}` shape (the Phase-4 routing foundation) onto the same
+> seam.
 
 Fault-injection evals:
 
@@ -381,7 +397,7 @@ exit-code contract:
 - ~~Add `duration_ms` + config fingerprint to `step_done` in `benchmark.py`.~~ **Done (Phase 1.x).**
 
 ### P1
-- Add `evals/fault_injection.json` + a fake provider / `Provider` protocol seam.
+- ~~A fake provider / `Provider`-seam fault harness + Layer-1 proof.~~ **Done (Phase 3 v1).** A live `evals/fault_injection.json` benchmark set is still open.
 - Dashboard diff event support + `diff_against_baseline.json` file-drop.
 - Provider/model/cost/latency fields on run events.
 - ~~Stable-field (`x-roboport`) annotations in `output.schema.json`.~~ **Done (Phase 1.x).**

@@ -103,3 +103,15 @@ The single most common failure mode: a tool returns `200 OK` with a payload that
 - A scraper returns the page title as the job description
 
 **Defense:** add a `degraded` check after every tool call: spot-check that the values are non-empty, in plausible ranges, and not equal to known placeholders. The Critic does this systematically; the Executor does a fast version of it inline.
+
+---
+
+## Enforcement (not just doctrine)
+
+Layer 1 is enforced in the runtime, not only described here:
+
+- **Transient retry** — providers raise `TransientProviderError` on HTTP 5xx / timeout / connection failure (`scripts/roboport_runtime/providers.py`); the Executor retries it `MAX_PROVIDER_RETRIES` times, then fails loudly with `layer="provider_5xx"`.
+- **Schema repair** — a schema-invalid `output` triggers one repair pass before it's recorded as a failed criterion (`repaired=true` on the step result).
+- **Quiet-200 guard** — an empty `list[...]` output is recorded as a failed criterion, because empty arrays mean the search broke, not "zero results".
+
+These are proven offline by a deterministic fault harness (`tests/fault_provider.py`, `tests/test_fault_injection.py`) that the CI Tests job runs — so a layer that stops firing fails the build. See `docs/ROADMAP.md` Phase 3.

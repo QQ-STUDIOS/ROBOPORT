@@ -7,9 +7,43 @@ import re
 from typing import Any
 
 from .client import REPO, _parse_json, load_agent_spec, provider
+from .providers import TransientProviderError
 from .tools import dispatch, load_agent_tool_map, schemas_for
 
 MAX_TOOL_ROUNDS = 6
+MAX_PROVIDER_RETRIES = 2   # Layer 1: bounded retries on transient (5xx) failures
+
+
+def _chat_retry(p, **kw) -> tuple[dict, int]:
+    """Call the provider, retrying bounded times on TransientProviderError.
+    Returns (response, retries_used); re-raises after the budget is exhausted."""
+    retries = 0
+    while True:
+        try:
+            return p.chat_with_tools(**kw), retries
+        except TransientProviderError:
+            if retries >= MAX_PROVIDER_RETRIES:
+                raise
+            retries += 1
+
+
+def _repair_schema(p, system: str, history: list, bad_content: str,
+                   issues: list[str], output_type: str, model_hint: str):
+    """Layer 1: one repair pass — re-prompt with the validation errors and ask
+    for corrected JSON. Returns the reparsed result dict, or None if it didn't."""
+    repair_messages = history + [
+        {"role": "assistant", "content": bad_content},
+        {"role": "user", "content":
+            f"Your previous JSON's `output` failed `{output_type}` schema validation:\n- "
+            + "\n- ".join(issues)
+            + "\nReturn the corrected final JSON ONLY, in the same top-level format."},
+    ]
+    try:
+        out, _ = _chat_retry(p, system=system, messages=repair_messages,
+                             tools=None, force_json=True, model_hint=model_hint)
+        return _parse_json(out["content"])
+    except (TransientProviderError, json.JSONDecodeError, Exception):  # noqa: BLE001
+        return None
 
 
 @functools.lru_cache(maxsize=1)
@@ -110,20 +144,30 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_prompt}]
     llm_calls = 0
     tool_calls_total = 0
+    retries_total = 0
 
     for round_idx in range(MAX_TOOL_ROUNDS):
         is_final_round = round_idx == MAX_TOOL_ROUNDS - 1
         try:
-            out = p.chat_with_tools(
+            out, r = _chat_retry(
+                p,
                 system=system_spec,
                 messages=messages,
                 tools=tool_schemas if tool_schemas else None,
                 force_json=is_final_round or not tool_schemas,
                 model_hint=model_hint,
             )
+            retries_total += r
+        except TransientProviderError as e:
+            # Layer 1 exhausted — fail loudly with the call-level layer named.
+            return _failed(step, f"{p.name} transient error after {MAX_PROVIDER_RETRIES} "
+                           f"retries (round {round_idx}): {e}",
+                           llm_calls=llm_calls, tool_calls=tool_calls_total,
+                           layer="provider_5xx", retries=retries_total + MAX_PROVIDER_RETRIES)
         except Exception as e:  # noqa: BLE001
             return _failed(step, f"{p.name} request failed (round {round_idx}): {e!r}",
-                           llm_calls=llm_calls, tool_calls=tool_calls_total)
+                           llm_calls=llm_calls, tool_calls=tool_calls_total,
+                           layer="provider_error", retries=retries_total)
 
         llm_calls += 1
         content = out["content"]
@@ -175,19 +219,40 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
             return _failed(step, f"could not parse final JSON: {content[:300]!r}",
                            llm_calls=llm_calls, tool_calls=tool_calls_total)
 
-        # Post-hoc validation against the typed output schema. Failures are
-        # surfaced as warnings, not hard errors, so a small model that mostly
-        # gets the shape right doesn't fail the whole step on a missing
-        # nice-to-have field.
-        criteria_results = result.get("criteria_results", []) or []
+        # Layer 1 (repair): validate against the typed output schema, and on
+        # failure attempt ONE repair pass before surfacing it as a failed
+        # criterion. A small model that mostly gets the shape right gets a
+        # second chance; a persistent mismatch is recorded, not silently passed.
+        criteria_results = list(result.get("criteria_results", []) or [])
+        repaired = False
         if output_schema is not None:
             issues = _validate_against(output_schema, result.get("output", {}))
             if issues:
-                criteria_results = list(criteria_results) + [{
-                    "criterion": f"output conforms to `{output_type}` schema",
-                    "passed": False,
-                    "evidence": "; ".join(issues),
-                }]
+                fixed = _repair_schema(p, system_spec, messages, content,
+                                       issues, output_type, model_hint)
+                if fixed is not None:
+                    llm_calls += 1
+                    result = fixed
+                    repaired = True
+                    criteria_results = list(result.get("criteria_results", []) or [])
+                    issues = _validate_against(output_schema, result.get("output", {}))
+                if issues:
+                    criteria_results.append({
+                        "criterion": f"output conforms to `{output_type}` schema",
+                        "passed": False,
+                        "evidence": "; ".join(issues),
+                    })
+
+        # Quiet-200 guard: an empty array out of a search-shaped step means the
+        # search broke, not "zero results". Fail loudly rather than pass it on.
+        out_val = result.get("output", {})
+        if (output_type or "").startswith("list[") and isinstance(out_val, list) and not out_val:
+            criteria_results.append({
+                "criterion": "non-empty results (quiet-200 guard)",
+                "passed": False,
+                "evidence": "output is an empty list; empty arrays mean the search "
+                            "broke, not zero results",
+            })
 
         return {
             "step_id": step["id"],
@@ -196,12 +261,15 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
             "criteria_results": criteria_results,
             "tool_calls": tool_calls_total,
             "llm_calls": llm_calls,
+            "retries": retries_total,
+            "repaired": repaired,
             "transcript_path": None,
             "error": result.get("error"),
         }
 
     return _failed(step, f"exhausted {MAX_TOOL_ROUNDS} tool rounds without a final answer",
-                   llm_calls=llm_calls, tool_calls=tool_calls_total)
+                   llm_calls=llm_calls, tool_calls=tool_calls_total,
+                   layer="budget_exceeded", retries=retries_total)
 
 
 def _ok(step: dict, owner: str, output: dict, llm_calls: int) -> dict[str, Any]:
@@ -216,13 +284,15 @@ def _ok(step: dict, owner: str, output: dict, llm_calls: int) -> dict[str, Any]:
         ],
         "tool_calls": 0,
         "llm_calls": llm_calls,
+        "retries": 0,
+        "repaired": False,
         "transcript_path": None,
         "error": None,
     }
 
 
-def _failed(step: dict, msg: str, *, llm_calls: int = 0,
-            tool_calls: int = 0) -> dict[str, Any]:
+def _failed(step: dict, msg: str, *, llm_calls: int = 0, tool_calls: int = 0,
+            layer: str | None = None, retries: int = 0) -> dict[str, Any]:
     return {
         "step_id": step["id"],
         "status": "failed",
@@ -230,6 +300,9 @@ def _failed(step: dict, msg: str, *, llm_calls: int = 0,
         "criteria_results": [],
         "tool_calls": tool_calls,
         "llm_calls": llm_calls,
+        "retries": retries,
+        "repaired": False,
+        "layer": layer,
         "transcript_path": None,
         "error": msg,
     }
