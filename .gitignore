@@ -49,6 +49,8 @@ dist/
 
 # Logs
 *.log
+# ...except committed test fixtures (run.log is a diff_runs input, not real output).
+!tests/fixtures/**/run.log
 
 # Secrets / credentials
 *.pem

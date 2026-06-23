@@ -1,0 +1,3 @@
+{"event":"plan_emitted","ts":"t"}
+{"event":"step_done","step_id":"scout","status":"ok","criteria_results":[{"criterion":"jobs found","passed":true}],"tool_calls":4,"llm_calls":1,"error":null}
+{"event":"step_done","step_id":"synth","status":"ok","criteria_results":[{"criterion":"report merged","passed":true}],"tool_calls":0,"llm_calls":3,"error":null}
