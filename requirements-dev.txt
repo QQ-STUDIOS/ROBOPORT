@@ -11,7 +11,7 @@ types-requests
 types-jsonschema
 
 # Test runner
-pytest>=8.0
+pytest>=9.0.3
 pytest-cov>=7.1.0
 
 # Supply-chain audit (also run in CI)
