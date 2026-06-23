@@ -270,13 +270,14 @@ investigation surface.
 4. File-drop support for `diff_against_baseline.json` (works without the bridge).
 5. A "Regression" panel: changed agents, signals, recommended next action.
 
-## Phase 3: Make the error stack provable — **v1 shipped**
+## Phase 3: Make the error stack provable — **all three layers shipped**
 
 **Goal:** turn the three-layer error stack from documented doctrine into enforced
 behavior.
 
-> **Status:** v1 + Layer 2 landed. The runtime has a retryable-error type on the
-> Provider seam (`TransientProviderError`), and the executor enforces:
+> **Status:** complete — Layers 1, 2, and 3 are enforced and proven offline. The
+> runtime has a retryable-error type on the Provider seam (`TransientProviderError`),
+> and the executor enforces:
 > - **Layer 1** — bounded retries on transient (5xx) failures, a one-shot
 >   **schema-repair** pass before a schema mismatch is recorded, and a
 >   **quiet-200 guard** (an empty search result fails loudly instead of passing on).
@@ -284,14 +285,20 @@ behavior.
 >   `agent_config.yaml`, or an agent override) aborts loudly with
 >   `layer="budget_exceeded"` when LLM/tool calls exceed the cap; the repair pass is
 >   itself budget-gated.
+> - **Layer 3** — an **unsafe-action escalation**: a requested action matching the
+>   `policy.unsafe_actions` denylist (irreversible / outward-facing / money / code
+>   execution) aborts the step with `layer="unsafe_action"` and `escalated_action=<tool>`
+>   *before* dispatch, so there is **no tool side effect**. Deny overrides any per-agent
+>   whitelist; a benign tool merely outside the whitelist stays recoverable.
 >
 > A deterministic `FaultProvider` (`tests/fault_provider.py`) injects faults with no
-> model, and `tests/test_fault_injection.py` proves each behavior offline (incl. both
-> budget caps) — gated by the CI Tests job, so a layer that stops firing fails the
-> build. Provider/budget failures carry a `layer`; steps report `retries`/`repaired`.
+> model, and `tests/test_fault_injection.py` proves each behavior offline — including
+> both budget caps and the Layer-3 escalation, which asserts `dispatch` is never invoked
+> — gated by the CI Tests job, so a layer that stops firing fails the build.
+> Provider/budget/unsafe failures carry a `layer`; steps report `retries`/`repaired`.
 >
-> Still open: **Layer 3** unsafe-action escalation; wiring the `FaultProvider` into a
-> `--live` `evals/fault_injection.json` benchmark set; and extracting the richer
+> Still open (carried into Phase 4 prep): wiring the `FaultProvider` into a `--live`
+> `evals/fault_injection.json` benchmark set, and extracting the richer
 > `Response{cost,latency,...}` shape (the Phase-4 routing foundation) onto the seam.
 
 Fault-injection evals:

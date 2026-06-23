@@ -125,14 +125,20 @@ Every one of these has a Markdown spec under `agents/domain/crew_builder/`, an e
 Non-negotiable. Every failure goes through these three layers in order, with explicit handoffs:
 
 ```
-LAYER 3 — User-facing       (Orchestrator escalation; clear msg to caller)
+LAYER 3 — User-facing       (unsafe action → escalate, no side effect)
    ▲
-LAYER 2 — Step-level        (retry/alternate/skip-with-warning)
+LAYER 2 — Step-level        (per-agent budget abort; retry/alternate/skip)
    ▲
 LAYER 1 — Call-level        (provider 5xx → retry; schema-invalid → repair pass)
 ```
 
-Full taxonomy: [`resources/prompts/error_handling.md`](resources/prompts/error_handling.md).
+All three layers are **enforced in the runtime and proven offline** by a
+deterministic fault harness the CI Tests job runs — a layer that stops firing
+fails the build. L1 retries transient 5xx, repairs schema-invalid output, and
+guards the quiet-200 empty result; L2 aborts on a per-agent call budget; L3
+escalates a requested unsafe/irreversible action (`policy.unsafe_actions`)
+without ever dispatching it. Full taxonomy and enforcement notes:
+[`resources/prompts/error_handling.md`](resources/prompts/error_handling.md).
 
 ---
 

@@ -119,5 +119,54 @@ def test_tool_budget_exceeded_aborts(monkeypatch):
     assert "tool calls" in result["error"]
 
 
+# --- Layer 3: unsafe-action escalation ----------------------------------------
+
+UNSAFE_CALL = [{"id": "u0", "name": "delete_account", "arguments": {"id": 7}}]
+
+
+def test_unsafe_action_escalates_without_side_effect(monkeypatch):
+    """Layer 3: a requested unsafe action escalates loudly and is NEVER dispatched."""
+    dispatched: list[str] = []
+    monkeypatch.setattr(executor, "dispatch",
+                        lambda name, args: dispatched.append(name))
+    result, fp = _run(monkeypatch, [{"tool_calls": UNSAFE_CALL}, {"content": VALID}])
+    assert result["status"] == "failed"
+    assert result["layer"] == "unsafe_action"
+    assert result["escalated_action"] == "delete_account"
+    assert "escalat" in result["error"].lower()
+    assert dispatched == []          # no tool side effect
+    assert fp.calls == 1             # aborted on the unsafe request, did not continue
+
+
+def test_unsafe_policy_overrides_whitelist(monkeypatch):
+    """Deny overrides allow: an unsafe action escalates even if it's whitelisted."""
+    dispatched: list[str] = []
+    monkeypatch.setattr(executor, "dispatch",
+                        lambda name, args: dispatched.append(name))
+    monkeypatch.setattr(executor, "_agent_tools_for", lambda *_: ["delete_account"])
+    result, _ = _run(monkeypatch, [{"tool_calls": UNSAFE_CALL}])
+    assert result["layer"] == "unsafe_action"
+    assert dispatched == []
+
+
+def test_safe_whitelist_miss_is_recoverable_not_escalated(monkeypatch):
+    """A benign (non-unsafe) tool outside the whitelist feeds an error back so the
+    model can self-correct — it does NOT escalate as an unsafe action."""
+    safe_call = [{"id": "s0", "name": "lookup_comp_band", "arguments": {}}]
+    result, fp = _run(monkeypatch, [{"tool_calls": safe_call}, {"content": VALID}])
+    assert result["status"] == "ok"
+    assert result.get("layer") != "unsafe_action"
+    assert fp.calls == 2  # looped past the not-allowed tool to the final answer
+
+
+def test_unsafe_policy_disabled_by_empty_list(monkeypatch):
+    """An explicit empty `policy.unsafe_actions` disables escalation (opt-out)."""
+    cfg = {"policy": {"unsafe_actions": []}}
+    result, _ = _run(monkeypatch, [{"tool_calls": UNSAFE_CALL}, {"content": VALID}],
+                     config=cfg)
+    assert result.get("layer") != "unsafe_action"
+    assert result["status"] == "ok"
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

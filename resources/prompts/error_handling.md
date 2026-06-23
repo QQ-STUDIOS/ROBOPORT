@@ -108,11 +108,12 @@ The single most common failure mode: a tool returns `200 OK` with a payload that
 
 ## Enforcement (not just doctrine)
 
-Layers 1–2 are enforced in the runtime, not only described here:
+All three layers are enforced in the runtime, not only described here:
 
 - **Transient retry** (L1) — providers raise `TransientProviderError` on HTTP 5xx / timeout / connection failure (`scripts/roboport_runtime/providers.py`); the Executor retries it `MAX_PROVIDER_RETRIES` times, then fails loudly with `layer="provider_5xx"`.
 - **Schema repair** (L1) — a schema-invalid `output` triggers one repair pass before it's recorded as a failed criterion (`repaired=true` on the step result).
 - **Quiet-200 guard** (L1) — an empty `list[...]` output is recorded as a failed criterion, because empty arrays mean the search broke, not "zero results".
 - **Budget abort** (L2) — a per-agent call budget (`budgets.per_agent` in `config/agent_config.yaml`, or an `agent_overrides[*].budget`) aborts the step loudly with `layer="budget_exceeded"` once LLM/tool calls exceed the cap.
+- **Unsafe-action escalation** (L3) — a requested action matching the `policy.unsafe_actions` denylist (irreversible, outward-facing, or money/code execution) is escalated to the operator and **never executed**: the Executor aborts the step with `layer="unsafe_action"` and `escalated_action=<tool>` *before* dispatch, so there is no tool side effect. Deny overrides any per-agent whitelist; a benign tool merely outside the whitelist stays recoverable (the error is fed back so the model can self-correct). This is Pattern E (hard abort) for the `unsafe` failure type.
 
-These are proven offline by a deterministic fault harness (`tests/fault_provider.py`, `tests/test_fault_injection.py`) that the CI Tests job runs — so a layer that stops firing fails the build. See `docs/ROADMAP.md` Phase 3.
+These are proven offline by a deterministic fault harness (`tests/fault_provider.py`, `tests/test_fault_injection.py`) that the CI Tests job runs — so a layer that stops firing fails the build. The Layer-3 test asserts the unsafe call is escalated *and* that `dispatch` was never invoked (no side effect). See `docs/ROADMAP.md` Phase 3.
