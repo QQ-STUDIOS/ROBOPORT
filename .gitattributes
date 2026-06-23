@@ -48,6 +48,14 @@
 *.pt            binary
 *.pth           binary
 
+# GitHub Linguist — keep the repo's language stats on the Python orchestration
+# core. The operator surfaces ship self-contained web bundles (HTML/CSS/JS);
+# they're product UI, not the framework's source, so exclude them from stats.
+control_surface/web/**   linguist-vendored
+dashboard/**/*.html      linguist-vendored
+dashboard/**/*.css       linguist-vendored
+dashboard/**/*.js        linguist-vendored
+
 # Lockfiles — text but suppress noisy diffs in PRs
 poetry.lock         text -diff
 uv.lock             text -diff

@@ -1,6 +1,6 @@
 # ROBOPORT
 
-An agent orchestration framework with typed contracts, deterministic-when-possible execution, and a non-negotiable error stack.
+An agent orchestration framework with typed contracts, deterministic-when-possible execution, and a non-negotiable error stack — built to stay debuggable past the demo, with two live operator surfaces for watching a run.
 
 The flagship example shipped with the repo is **JD-Crew** — the eight-agent sequential job-description analyzer pictured in the Crew Builder UI: `scout → (technical, compliance) → strategist → synth (+ optional resume_tailor, cover_letter_writer, salary_estimator)`.
 
@@ -77,7 +77,7 @@ resources/
   examples/           canonical example outputs
   datasets/           input prompts for benchmarking
 workflows/            executable specs: how a crew runs end-to-end
-evals/evals.json      live eval set (4 evals, all with blockers)
+evals/evals.json      live eval set (6 evals, 5 with blockers)
 scripts/              validate, benchmark, aggregate
 runs/                 produced artifacts; one dir per run
 docs/                 architecture, design principles, onboarding, observability
