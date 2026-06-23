@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Protocol
+
+from .pricing import cost_for
 
 
 class TransientProviderError(Exception):
@@ -50,6 +53,10 @@ class Provider(ABC):
         """Returns dict with keys:
           - "tool_calls": list of {"id", "name", "arguments": dict} (may be empty)
           - "content":    assistant text (string, may be empty)
+          - "usage":      optional telemetry dict (Phase 4) —
+                          {"provider", "model", "prompt_tokens", "completion_tokens",
+                           "cost_usd" (float|None), "latency_ms"}. Callers must
+                          tolerate its absence (the fault harness omits it).
         """
         ...
 
@@ -97,8 +104,9 @@ class OllamaProvider(Provider):
         model_hint: str,
     ) -> dict[str, Any]:
         full_messages = [{"role": "system", "content": system}, *messages]
+        model = self.model_for(model_hint)
         payload: dict[str, Any] = {
-            "model": self.model_for(model_hint),
+            "model": model,
             "messages": full_messages,
             "stream": False,
             "keep_alive": "30m",
@@ -111,6 +119,7 @@ class OllamaProvider(Provider):
             payload["format"] = "json"
 
         exc = self._requests.exceptions
+        t0 = time.perf_counter()
         try:
             r = self._requests.post(f"{self.host}/api/chat", json=payload, timeout=900)
             r.raise_for_status()
@@ -121,8 +130,11 @@ class OllamaProvider(Provider):
             raise                                 # 4xx → fatal
         except (exc.Timeout, exc.ConnectionError) as e:
             raise TransientProviderError(f"ollama transport: {e}") from e
+        latency_ms = int((time.perf_counter() - t0) * 1000)
         body = r.json()
         msg = body.get("message") or {}
+        prompt_tokens = int(body.get("prompt_eval_count") or 0)
+        completion_tokens = int(body.get("eval_count") or 0)
         return {
             "content": msg.get("content", "") or "",
             "tool_calls": [
@@ -133,6 +145,14 @@ class OllamaProvider(Provider):
                 }
                 for i, tc in enumerate(msg.get("tool_calls") or [])
             ],
+            "usage": {
+                "provider": self.name,
+                "model": model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "cost_usd": cost_for(self.name, model, prompt_tokens, completion_tokens),
+                "latency_ms": latency_ms,
+            },
         }
 
 
@@ -175,8 +195,9 @@ class AnthropicProvider(Provider):
         anth_messages = self._convert_messages(messages)
         anth_tools = self._convert_tools(tools or [])
 
+        model = self.model_for(model_hint)
         kwargs: dict[str, Any] = {
-            "model": self.model_for(model_hint),
+            "model": model,
             "max_tokens": 8000,
             "system": [{
                 "type": "text",
@@ -188,7 +209,9 @@ class AnthropicProvider(Provider):
         if anth_tools and not force_json:
             kwargs["tools"] = anth_tools
 
+        t0 = time.perf_counter()
         resp = self.client.messages.create(**kwargs)
+        latency_ms = int((time.perf_counter() - t0) * 1000)
 
         tool_calls: list[dict] = []
         text_parts: list[str] = []
@@ -202,7 +225,21 @@ class AnthropicProvider(Provider):
             elif block.type == "text":
                 text_parts.append(block.text)
 
-        return {"content": "".join(text_parts), "tool_calls": tool_calls}
+        usage = getattr(resp, "usage", None)
+        prompt_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        completion_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+        return {
+            "content": "".join(text_parts),
+            "tool_calls": tool_calls,
+            "usage": {
+                "provider": self.name,
+                "model": model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "cost_usd": cost_for(self.name, model, prompt_tokens, completion_tokens),
+                "latency_ms": latency_ms,
+            },
+        }
 
     @staticmethod
     def _convert_tools(openai_tools: list[dict]) -> list[dict]:

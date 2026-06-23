@@ -60,6 +60,58 @@ def step_fingerprint(owner: str, registry: dict, config: dict) -> str:
     return hashlib.sha256(blob.encode()).hexdigest()[:12]
 
 
+def routing_summary(steps: list[dict]) -> dict:
+    """Phase 4: roll per-step routing telemetry into a per-agent summary.
+
+    `cost_usd` is the sum of known per-step costs, or None when any contributing
+    step's cost was unknown — so a partially-priced run never reports a fake total.
+    """
+    by_agent: dict[str, dict] = {}
+    for s in steps:
+        a = s.get("agent") or "?"
+        agg = by_agent.setdefault(a, {
+            "agent": a, "steps": 0, "llm_calls": 0, "tool_calls": 0,
+            "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": 0,
+            "cost_usd": 0.0, "cost_unknown": False,
+            "providers": set(), "models": set()})
+        agg["steps"] += 1
+        for k in ("llm_calls", "tool_calls", "prompt_tokens", "completion_tokens", "latency_ms"):
+            agg[k] += int(s.get(k) or 0)
+        cost = s.get("cost_usd")
+        if cost is None:
+            agg["cost_unknown"] = True
+        else:
+            agg["cost_usd"] += float(cost)
+        if s.get("provider"):
+            agg["providers"].add(s["provider"])
+        if s.get("model"):
+            agg["models"].add(s["model"])
+
+    rows, tot, tot_cost, tot_cost_unknown = [], {
+        "steps": 0, "llm_calls": 0, "tool_calls": 0,
+        "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": 0}, 0.0, False
+    for a in sorted(by_agent):
+        agg = by_agent[a]
+        rows.append({
+            "agent": a, "steps": agg["steps"],
+            "llm_calls": agg["llm_calls"], "tool_calls": agg["tool_calls"],
+            "prompt_tokens": agg["prompt_tokens"],
+            "completion_tokens": agg["completion_tokens"],
+            "latency_ms": agg["latency_ms"],
+            "cost_usd": None if agg["cost_unknown"] else round(agg["cost_usd"], 6),
+            "providers": sorted(agg["providers"]),
+            "models": sorted(agg["models"]),
+        })
+        for k in tot:
+            tot[k] += agg[k]
+        if agg["cost_unknown"]:
+            tot_cost_unknown = True
+        else:
+            tot_cost += agg["cost_usd"]
+    return {"by_agent": rows,
+            "totals": {**tot, "cost_usd": None if tot_cost_unknown else round(tot_cost, 6)}}
+
+
 def load_agent_config() -> dict:
     """Best-effort load of config/agent_config.yaml (empty dict if unavailable)."""
     path = REPO / "config" / "agent_config.yaml"
@@ -171,6 +223,7 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
 
     accumulated: dict = {}
     durations_ms: list[int] = []
+    step_telemetry: list[dict] = []
     llm_total = tool_total = 0
     for step in plan["steps"]:
         sid = step["id"]
@@ -200,12 +253,30 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
             "llm_calls": result.get("llm_calls", 0),
             "duration_ms": dur_ms,
             "config_fp": step_fingerprint(owner, registry, config or {}),
+            # Phase 4 routing telemetry (None/0 under the stub runtime).
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+            "prompt_tokens": result.get("prompt_tokens", 0),
+            "completion_tokens": result.get("completion_tokens", 0),
+            "cost_usd": result.get("cost_usd"),
+            "latency_ms": result.get("latency_ms", 0),
             "error": result.get("error"),
         })
         ok = result["status"] == "ok"
         llm_total += result.get("llm_calls", 0)
         tool_total += result.get("tool_calls", 0)
         durations_ms.append(dur_ms)
+        step_telemetry.append({
+            "agent": owner, "status": result["status"],
+            "llm_calls": result.get("llm_calls", 0),
+            "tool_calls": result.get("tool_calls", 0),
+            "prompt_tokens": result.get("prompt_tokens", 0),
+            "completion_tokens": result.get("completion_tokens", 0),
+            "cost_usd": result.get("cost_usd"),
+            "latency_ms": result.get("latency_ms", 0),
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+        })
         if feed is not None:
             if ok:
                 feed.task_progress(task_id, agent_id, 1.0, eta_s=0.0)
@@ -219,7 +290,11 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
             if ok:
                 run_log.step_complete(sid, owner, duration_ms=dur_ms,
                                       llm_calls=result.get("llm_calls", 0),
-                                      tool_calls=result.get("tool_calls", 0))
+                                      tool_calls=result.get("tool_calls", 0),
+                                      provider=result.get("provider"),
+                                      model=result.get("model"),
+                                      cost_usd=result.get("cost_usd"),
+                                      latency_ms=result.get("latency_ms"))
             else:
                 run_log.step_failed(sid, owner, result.get("error"), layer="criterion_failed")
         if not ok:
@@ -229,7 +304,7 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
                 run_log.run_complete(_run_summary(durations_ms, llm_total, tool_total, _t_run, _time))
             (run_dir / "final_output.json").write_text(json.dumps(
                 {"status": "failed", "error": result.get("error")}, indent=2))
-            return {"status": "failed", "step_failed": sid}
+            return {"status": "failed", "step_failed": sid, "steps": step_telemetry}
         accumulated[sid] = result["output"]
 
     if feed is not None:
@@ -238,7 +313,7 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
         run_log.run_complete(_run_summary(durations_ms, llm_total, tool_total, _t_run, _time))
     final = list(accumulated.values())[-1] if accumulated else {}
     (run_dir / "final_output.json").write_text(json.dumps(final, indent=2))
-    return {"status": "ok"}
+    return {"status": "ok", "steps": step_telemetry}
 
 
 def _run_summary(durations_ms, llm_total, tool_total, t_run_start, _time) -> dict:
@@ -327,6 +402,7 @@ def main() -> int:
         "runs_per_eval": args.runs,
         "evals": [],
     }
+    all_steps: list[dict] = []  # Phase 4: per-agent routing rollup across all runs
 
     for ev in evals:
         ev_dir = out_dir / f"eval_{ev['id']}"
@@ -360,7 +436,10 @@ def main() -> int:
                 "pass_rate": grading["pass_rate"] if grading else None,
                 "blocker_failed": grading["blocker_failed"] if grading else None,
             })
+            all_steps.extend(outcome.get("steps", []))
         summary["evals"].append(ev_summary)
+
+    summary["routing"] = routing_summary(all_steps)
 
     summary["finished_at"] = datetime.now(timezone.utc).isoformat()
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
