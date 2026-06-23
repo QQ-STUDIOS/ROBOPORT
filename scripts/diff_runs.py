@@ -136,8 +136,8 @@ def _parse_run_log(p: Path) -> dict[str, dict]:
             "tool_calls": rec.get("tool_calls", 0),
             "llm_calls": rec.get("llm_calls", 0),
             "error": rec.get("error"),
-            # forward-compatible: present only once benchmark.py logs per-step latency
             "duration_ms": rec.get("duration_ms"),
+            "config_fp": rec.get("config_fp"),
         }
     return out
 
@@ -257,6 +257,24 @@ def diff_runs(baseline: Run, candidate: Run) -> dict:
                     signals.append({"kind": f"{kind}_increase", "severity": "warning",
                                     "message": f"{kind} {b.get(key, 0)} -> {c.get(key, 0)} (+{delta})",
                                     "baseline": b.get(key, 0), "candidate": c.get(key, 0)})
+
+            # latency: a material per-step slowdown is a soft signal (>25% and >250ms)
+            bd, cd = b.get("duration_ms"), c.get("duration_ms")
+            if bd is not None and cd is not None:
+                dd = cd - bd
+                if dd > 250 and dd > 0.25 * max(bd, 1):
+                    signals.append({"kind": "latency_increase", "severity": "warning",
+                                    "message": f"duration {bd} -> {cd} ms (+{dd})",
+                                    "baseline": bd, "candidate": cd})
+
+            # config drift: a different fingerprint (model/route/spec) is context, not
+            # a regression — surfaced as info so cross-config comparisons stay valid.
+            bf, cf = b.get("config_fp"), c.get("config_fp")
+            if bf and cf and bf != cf:
+                signals.append({"kind": "config_changed", "severity": "info",
+                                "message": f"config fingerprint {bf} -> {cf} "
+                                           f"(model/route/spec changed)",
+                                "baseline": bf, "candidate": cf})
 
         if signals:
             severity = _sev_max(*(s["severity"] for s in signals))

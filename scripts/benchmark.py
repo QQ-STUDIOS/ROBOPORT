@@ -29,6 +29,7 @@ Output layout:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -37,6 +38,38 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+def step_fingerprint(owner: str, registry: dict, config: dict) -> str:
+    """A short, stable hash of everything that decides how a step runs — its
+    registry entry, resolved model_hint, and provider/model. diff_runs.py uses it
+    as the comparability check: same fingerprint => the two runs are comparable;
+    a different one is surfaced as config drift (e.g. a routing change)."""
+    reg = (registry.get("agents") or {}).get(owner) or {}
+    override = (config.get("agent_overrides") or {}).get(owner) or {}
+    hint = override.get("model_hint", reg.get("model_hint"))
+    model = (config.get("models") or {}).get(hint) or {}
+    payload = {
+        "agent": owner,
+        "model_hint": hint,
+        "registry": {k: reg.get(k) for k in ("path", "role", "deterministic", "model_hint")},
+        "model": {k: model.get(k) for k in ("provider", "model")},
+        "override": override or None,
+    }
+    blob = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:12]
+
+
+def load_agent_config() -> dict:
+    """Best-effort load of config/agent_config.yaml (empty dict if unavailable)."""
+    path = REPO / "config" / "agent_config.yaml"
+    if not path.exists():
+        return {}
+    try:
+        import yaml  # lazy; pyyaml is a runtime dep
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 — fingerprint degrades gracefully without config
+        return {}
 
 
 # --- Pluggable runtime stubs --------------------------------------------------
@@ -105,7 +138,8 @@ def jsonl_append(path: Path, obj: dict) -> None:
         f.write(json.dumps(obj, default=str) + "\n")
 
 
-def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=None) -> dict:
+def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=None,
+            config: dict | None = None) -> dict:
     """Execute a single (eval × run) pair. Returns a small summary.
 
     If `feed` (a roboport_runtime.feed_log.FeedLog) is provided, the run also
@@ -164,6 +198,8 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
             "criteria_results": result.get("criteria_results", []),
             "tool_calls": result.get("tool_calls", 0),
             "llm_calls": result.get("llm_calls", 0),
+            "duration_ms": dur_ms,
+            "config_fp": step_fingerprint(owner, registry, config or {}),
             "error": result.get("error"),
         })
         ok = result["status"] == "ok"
@@ -272,6 +308,7 @@ def main() -> int:
         print(f"registry not found: {registry_path}", file=sys.stderr)
         return 2
     registry = json.loads(registry_path.read_text())
+    config = load_agent_config()
 
     eval_set = json.loads(Path(args.eval_set).read_text())
     evals = [e for e in eval_set["evals"] if eval_set.get("target") == args.target or args.target == "*"]
@@ -307,7 +344,7 @@ def main() -> int:
                 rl_id = f"{label}_{ev['id']}_run{n}"
                 run_log = RunLog(Path(args.run_log) / rl_id, run_id=rl_id)
             try:
-                outcome = run_one(ev, run_dir, registry, feed=feed, run_log=run_log)
+                outcome = run_one(ev, run_dir, registry, feed=feed, run_log=run_log, config=config)
             finally:
                 if feed is not None:
                     feed.close()
