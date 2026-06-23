@@ -1,0 +1,22 @@
+{"event":"run.start","run_id":"sample_jd_crew","crew":"jd_crew","ts":"2026-06-23T10:00:00Z"}
+{"event":"plan.created","run_id":"sample_jd_crew","plan":{"waves":[["job_scout"],["technical_analyst","compliance_risk"],["application_strategist"],["synthesizer"]],"steps":["scout","technical","compliance","strategy","synth"]},"ts":"2026-06-23T10:00:00Z"}
+{"event":"step.start","step_id":"scout","agent":"job_scout","wave":0,"ts":"2026-06-23T10:00:01Z"}
+{"event":"tool.call","step_id":"scout","tool":"search_linkedin","ts":"2026-06-23T10:00:01Z"}
+{"event":"tool.call","step_id":"scout","tool":"search_indeed","ts":"2026-06-23T10:00:02Z"}
+{"event":"tool.call","step_id":"scout","tool":"dedupe_jobs","ts":"2026-06-23T10:00:03Z"}
+{"event":"step.complete","step_id":"scout","agent":"job_scout","duration_ms":3421,"llm_calls":1,"tool_calls":5,"ts":"2026-06-23T10:00:04Z"}
+{"event":"step.start","step_id":"technical","agent":"technical_analyst","wave":1,"ts":"2026-06-23T10:00:04Z"}
+{"event":"step.start","step_id":"compliance","agent":"compliance_risk","wave":1,"ts":"2026-06-23T10:00:04Z"}
+{"event":"tool.call","step_id":"technical","tool":"fetch_jd_full","ts":"2026-06-23T10:00:05Z"}
+{"event":"tool.call","step_id":"compliance","tool":"fetch_jd_full","ts":"2026-06-23T10:00:05Z"}
+{"event":"step.complete","step_id":"technical","agent":"technical_analyst","duration_ms":6102,"llm_calls":1,"tool_calls":3,"ts":"2026-06-23T10:00:10Z"}
+{"event":"step.failed","step_id":"compliance","agent":"compliance_risk","error":"criterion: all findings have evidence","layer":"criterion_failed","ts":"2026-06-23T10:00:11Z"}
+{"event":"retry","step_id":"compliance","attempt":1,"reason":"criterion_failed","ts":"2026-06-23T10:00:11Z"}
+{"event":"critic.review","step_id":"compliance","verdict":"fix","suggested_repair":"re-run with evidence requirement explicit in prompt","ts":"2026-06-23T10:00:11Z"}
+{"event":"step.start","step_id":"compliance","agent":"compliance_risk","wave":1,"ts":"2026-06-23T10:00:12Z"}
+{"event":"step.complete","step_id":"compliance","agent":"compliance_risk","duration_ms":4850,"llm_calls":1,"tool_calls":2,"ts":"2026-06-23T10:00:16Z"}
+{"event":"step.start","step_id":"strategy","agent":"application_strategist","wave":2,"ts":"2026-06-23T10:00:16Z"}
+{"event":"step.complete","step_id":"strategy","agent":"application_strategist","duration_ms":5210,"llm_calls":1,"tool_calls":2,"ts":"2026-06-23T10:00:21Z"}
+{"event":"step.start","step_id":"synth","agent":"synthesizer","wave":3,"ts":"2026-06-23T10:00:21Z"}
+{"event":"step.complete","step_id":"synth","agent":"synthesizer","duration_ms":180,"llm_calls":0,"tool_calls":0,"ts":"2026-06-23T10:00:21Z"}
+{"event":"run.complete","run_summary":{"steps":5,"llm_calls":4,"tool_calls":12,"wall_ms":21600,"p95_ms":6102},"ts":"2026-06-23T10:00:22Z"}

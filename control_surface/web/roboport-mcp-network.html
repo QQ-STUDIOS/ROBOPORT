@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ROBOPORT — MCP network (fake feed)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --floor:#0e1418;--floor2:#0b1015;--panel:#141c22;--panel2:#10171c;
+    --line:#223038;--line2:#2c3c46;--steel:#8a9da8;--steel-dim:#5f717c;--bright:#e8f1f5;
+    --dispatch:#36c6e0;--work:#f2b134;--return:#4fd672;--dock:#6c8cff;--alert:#ff5a52;
+    --r1:5px;--r2:8px;--r3:12px;--s2:8px;--s3:12px;--s4:16px;--s5:22px;
+    --t-fast:120ms;--t-base:200ms;--ease:cubic-bezier(.4,0,.2,1);--shadow:0 8px 28px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--floor2);color:var(--steel);font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:13px;-webkit-font-smoothing:antialiased;overflow:hidden}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  .app{height:100dvh;display:grid;grid-template-columns:1fr 332px;grid-template-rows:auto 1fr auto;grid-template-areas:"hud hud" "stage side" "dock dock";gap:1px;background:var(--line)}
+
+  .hud{grid-area:hud;background:var(--panel2);display:flex;align-items:center;gap:var(--s4);padding:10px var(--s4);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .brand h1{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:18px;letter-spacing:3px;color:var(--bright);margin:0;white-space:nowrap}
+  .feedbadge{display:inline-flex;align-items:center;gap:6px;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--work);border:1px solid rgba(242,177,52,.3);border-radius:20px;padding:3px 9px;white-space:nowrap}
+  .feedbadge .d{width:6px;height:6px;border-radius:50%;background:var(--work);box-shadow:0 0 7px var(--work);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .crumbs{display:flex;align-items:center;gap:8px;font-size:11px;min-width:0}
+  .crumbs button{appearance:none;background:none;border:none;font-family:inherit;font-size:11px;letter-spacing:.5px;color:var(--steel-dim);cursor:pointer;padding:3px 7px;border-radius:var(--r1);display:inline-flex;align-items:center;gap:6px;transition:color var(--t-fast),background var(--t-fast)}
+  .crumbs button:hover{color:var(--bright);background:var(--panel)}
+  .crumbs button.here{color:var(--bright);cursor:default}
+  .crumbs button.here:hover{background:none}
+  .crumbs .sep{color:var(--line2)}
+  .crumbs .zc{width:8px;height:8px;border-radius:2px;box-shadow:0 0 7px currentColor}
+  .stats{display:flex;gap:var(--s5);margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+  .stat{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1}
+  .stat .v{font-size:17px;font-weight:700;color:var(--bright)}
+  .stat .v.warn{color:var(--work)}.stat .v.bad{color:var(--alert)}
+  .stat .k{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+
+  .stage{grid-area:stage;position:relative;background:var(--floor);overflow:hidden}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .legend{position:absolute;left:12px;top:12px;z-index:3;display:flex;gap:13px;flex-wrap:wrap;max-width:62%;background:rgba(10,15,19,.66);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:var(--r2);padding:7px 11px;pointer-events:none}
+  .legend .it{display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.5px;color:var(--steel)}
+  .legend .sw{width:9px;height:9px;border-radius:2px;box-shadow:0 0 7px currentColor}
+
+  .toasts{position:absolute;top:12px;right:12px;z-index:6;display:flex;flex-direction:column;gap:8px;width:250px}
+  .toast{display:flex;gap:9px;align-items:flex-start;background:rgba(16,23,28,.94);border:1px solid var(--line2);border-left:3px solid var(--work);border-radius:var(--r2);padding:9px 11px;cursor:pointer;box-shadow:var(--shadow);animation:slidein var(--t-base) var(--ease)}
+  .toast.bad{border-left-color:var(--alert)}.toast.info{border-left-color:var(--dispatch)}
+  .toast .th{color:var(--bright);font-size:11px;font-weight:500}
+  .toast .tb{color:var(--steel-dim);font-size:10px;margin-top:2px}
+  .toast .tg{font-size:9px;color:var(--steel-dim);white-space:nowrap;margin-left:auto}
+  @keyframes slidein{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+
+  .tip{position:absolute;z-index:7;pointer-events:none;background:rgba(10,15,19,.95);border:1px solid var(--line2);border-radius:var(--r1);padding:5px 8px;font-size:10px;color:var(--bright);white-space:nowrap;transform:translate(-50%,-130%);opacity:0;transition:opacity var(--t-fast)}
+  .tip.on{opacity:1}.tip .s{color:var(--steel-dim)}
+
+  .floatpanel{position:absolute;z-index:4;transition:bottom var(--t-base) var(--ease)}
+  .wire{left:12px;bottom:12px;width:248px;background:rgba(11,16,21,.92);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;box-shadow:var(--shadow)}
+  .stage.zoned .wire{bottom:54px}
+  .wire-h{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
+  .wire-h .d{width:6px;height:6px;border-radius:50%;background:var(--work);box-shadow:0 0 6px var(--work);animation:pulse 1.4s infinite}
+  .wire-h .t{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel)}
+  .wire-h .c{margin-left:auto;font-size:9px;color:var(--steel-dim)}
+  .wire-b{font-size:10px;line-height:1.5;padding:6px 10px;max-height:128px;overflow:hidden;transition:max-height var(--t-base) var(--ease)}
+  .wire.min .wire-b{max-height:0;padding-top:0;padding-bottom:0}
+  .wire.min .wire-h{border-bottom:none}
+  .wl{display:flex;gap:7px;white-space:nowrap}
+  .wl .sq{color:var(--steel-dim)}.wl .ty{color:var(--steel)}
+
+  .qstrip{position:absolute;z-index:4;left:12px;right:12px;bottom:12px;height:34px;display:none;align-items:center;gap:8px;background:rgba(11,16,21,.9);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:var(--r2);padding:0 11px;overflow:hidden}
+  .stage.zoned .qstrip{display:flex}
+  .qstrip .ql{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim);flex:none}
+  .qstrip .qchips{display:flex;gap:6px;overflow:hidden;flex:1;-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent)}
+  .qchip{display:inline-flex;align-items:center;gap:6px;flex:none;font-size:10px;color:var(--bright);background:var(--panel);border:1px solid var(--line2);border-radius:20px;padding:3px 9px;cursor:pointer}
+  .qchip .qd{width:7px;height:7px;border-radius:2px;box-shadow:0 0 6px currentColor}
+  .qstrip .qmt{font-size:10px;color:var(--steel-dim);margin:auto}
+
+  .inspector{right:12px;bottom:12px;width:266px;background:rgba(15,22,28,.95);backdrop-filter:blur(10px);border:1px solid var(--line2);border-radius:var(--r3);box-shadow:var(--shadow);overflow:hidden;transform:translateY(12px);opacity:0;pointer-events:none;transition:opacity var(--t-base),transform var(--t-base),bottom var(--t-base)}
+  .stage.zoned .inspector{bottom:54px}
+  .inspector.on{transform:none;opacity:1;pointer-events:auto}
+  .insp-head{display:flex;align-items:center;gap:9px;padding:11px var(--s3);border-bottom:1px solid var(--line)}
+  .insp-head .ring{width:10px;height:10px;border-radius:50%;box-shadow:0 0 9px currentColor;flex:none}
+  .insp-head .ttl{min-width:0}
+  .insp-head .ttl .n{color:var(--bright);font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .insp-head .ttl .ty{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .insp-head .x{margin-left:auto;background:none;border:none;color:var(--steel-dim);cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:4px}
+  .insp-head .x:hover{color:var(--bright);background:var(--panel)}
+  .insp-body{padding:var(--s3)}
+  .insp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px var(--s3);margin-bottom:var(--s3)}
+  .insp-grid .f .k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--steel-dim)}
+  .insp-grid .f .v{color:var(--bright);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar{height:5px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%;border-radius:4px;transition:width var(--t-base)}
+  .barlbl{display:flex;justify-content:space-between;font-size:9px;color:var(--steel-dim);text-transform:uppercase;letter-spacing:1px;margin-top:8px}
+  .insp-actions{display:flex;flex-wrap:wrap;gap:6px;padding:10px var(--s3) var(--s3)}
+  .cmd{appearance:none;flex:1 1 auto;min-width:70px;border:1px solid var(--line2);background:var(--panel);color:var(--bright);font-family:inherit;font-size:10px;letter-spacing:.8px;text-transform:uppercase;padding:7px 8px;border-radius:var(--r1);cursor:pointer;transition:border-color var(--t-fast),background var(--t-fast),color var(--t-fast)}
+  .cmd:hover{border-color:var(--steel-dim)}.cmd:active{transform:translateY(1px)}
+  .cmd:focus-visible{outline:2px solid var(--dispatch);outline-offset:2px}
+  .cmd.go{border-color:rgba(54,198,224,.45);color:var(--dispatch)}
+  .cmd.warn{border-color:rgba(242,177,52,.45);color:var(--work)}
+  .cmd.danger{border-color:rgba(255,90,82,.4);color:var(--alert)}
+  .cmd.on{background:rgba(108,140,255,.16);border-color:var(--dock);color:var(--dock)}
+  .cmd[disabled]{opacity:.38;cursor:not-allowed}
+
+  .side{grid-area:side;background:var(--panel2);display:flex;flex-direction:column;min-height:0}
+  .pane{display:flex;flex-direction:column;min-height:0}
+  .pane.top{flex:1 1 58%;border-bottom:1px solid var(--line)}
+  .pane.bot{flex:1 1 42%}
+  .pane h2{margin:0;padding:10px var(--s4) 8px;font-family:"Space Grotesk",sans-serif;font-weight:500;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--steel);display:flex;align-items:center;gap:8px}
+  .pane h2 .count{margin-left:auto;color:var(--steel-dim)}
+  .scroll{overflow-y:auto;padding:0 var(--s2) 10px;min-height:0}
+  .scroll::-webkit-scrollbar{width:8px}.scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+  .row{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:8px;border-radius:var(--r2);margin:2px 0;cursor:pointer;border:1px solid transparent;transition:background var(--t-fast),border-color var(--t-fast)}
+  .row:hover{background:var(--panel)}.row:focus-visible{outline:2px solid var(--dispatch);outline-offset:1px}
+  .row.sel{background:var(--panel);border-color:var(--line2)}
+  .row .pip{width:9px;height:9px;border-radius:50%;box-shadow:0 0 8px currentColor;align-self:start;margin-top:3px}
+  .row .who{min-width:0}
+  .row .name{color:var(--bright);font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .meta{font-size:9px;color:var(--steel-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  .row .met{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:52px}
+  .row .met .big{font-size:11px;color:var(--steel)}
+  .row .met .mini{width:50px;height:3px;border-radius:3px;background:var(--line);overflow:hidden}
+  .row .met .mini i{display:block;height:100%;border-radius:3px;transition:width var(--t-base)}
+  .row .gauge{position:relative;width:30px;height:30px;flex:none}
+  .logline{display:flex;gap:8px;padding:3px 6px;font-size:11px;line-height:1.45}
+  .logline .t{color:var(--steel-dim);flex:none}.logline .m{color:var(--steel)}.logline .m b{font-weight:500}
+
+  .dock{grid-area:dock;background:var(--panel2);border-top:1px solid var(--line);display:flex;align-items:center;gap:var(--s3);padding:9px var(--s4);flex-wrap:wrap}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--bright);font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;padding:8px 14px;border-radius:var(--r1);cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:border-color var(--t-fast)}
+  .btn:hover{border-color:var(--steel-dim)}.btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:2px solid var(--dispatch);outline-offset:2px}
+  .btn.primary{border-color:rgba(242,177,52,.4);color:var(--work)}
+  .btn .ic{width:9px;height:9px;border-radius:2px;background:currentColor;box-shadow:0 0 7px currentColor}
+  .injector{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r1);padding:4px 4px 4px 11px}
+  .injector label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .injector select{appearance:none;background:var(--panel2);border:1px solid var(--line);color:var(--bright);font-family:inherit;font-size:11px;padding:5px 24px 5px 9px;border-radius:var(--r1);cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--steel-dim) 50%),linear-gradient(135deg,var(--steel-dim) 50%,transparent 50%);background-position:calc(100% - 13px) 50%,calc(100% - 8px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+  .injector .run{border:none;background:var(--work);color:#1a1304;font-weight:700;padding:6px 11px;border-radius:var(--r1);font-family:inherit;font-size:10px;letter-spacing:1px;text-transform:uppercase;cursor:pointer}
+  .speed{display:flex;align-items:center;gap:9px;margin-left:auto}
+  .speed label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--steel-dim)}
+  .speed output{color:var(--bright);min-width:34px;text-align:right;font-weight:500}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:120px;height:4px;border-radius:4px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--work);box-shadow:0 0 8px var(--work);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:var(--work);box-shadow:0 0 8px var(--work);cursor:pointer}
+  .hint{font-size:9px;color:var(--steel-dim);letter-spacing:.5px;width:100%;padding-top:2px}
+  .hint b{color:var(--steel);font-weight:400}
+
+  @media (max-width:880px){
+    .app{grid-template-columns:1fr;grid-template-rows:auto minmax(44dvh,1fr) auto auto;grid-template-areas:"hud" "stage" "side" "dock"}
+    .side{flex-direction:row;max-height:30dvh}.pane.top{flex:1 1 50%;border-bottom:none;border-right:1px solid var(--line)}.pane.bot{flex:1 1 50%}
+    .wire{display:none}.inspector{right:8px;left:8px;width:auto}.speed{margin-left:0}.hint,.legend{display:none}.qstrip{right:8px;left:8px}
+  }
+  @media (prefers-reduced-motion:reduce){.feedbadge .d,.wire-h .d{animation:none}.toast{animation:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="hud">
+    <div class="brand"><h1>ROBOPORT</h1>
+      <span class="feedbadge"><span class="d"></span><span id="feed-label">feed · mcp network</span></span></div>
+    <nav class="crumbs" id="crumbs" aria-label="Scope"></nav>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <main class="stage" id="stage">
+    <canvas id="c" aria-hidden="true"></canvas>
+    <div class="legend" id="legend" aria-hidden="true"></div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div class="tip" id="tip"></div>
+    <div class="floatpanel wire" id="wire">
+      <div class="wire-h" id="wire-h"><span class="d"></span><span class="t" id="wire-t">wire · /api/feed?scope=network</span><span class="c" id="wire-c">seq 0</span></div>
+      <div class="wire-b" id="wire-b"></div>
+    </div>
+    <div class="qstrip" id="qstrip"><span class="ql">queue</span><div class="qchips" id="qchips"></div></div>
+    <aside class="floatpanel inspector" id="inspector" role="region" aria-label="Inspector">
+      <div class="insp-head"><span class="ring" id="i-ring"></span><div class="ttl"><div class="n" id="i-name">—</div><div class="ty" id="i-type">—</div></div><button class="x" id="i-close" aria-label="Clear">✕</button></div>
+      <div class="insp-body" id="i-body"></div>
+      <div class="insp-actions" id="i-actions"></div>
+    </aside>
+  </main>
+
+  <aside class="side">
+    <section class="pane top"><h2 id="side-h1">MCP zones <span class="count" id="side-count">0</span></h2><div class="scroll" id="side-list" role="listbox" aria-label="List" tabindex="0"></div></section>
+    <section class="pane bot"><h2 id="side-h2">Feed events</h2><div class="scroll" id="log" aria-live="off"></div></section>
+  </aside>
+
+  <footer class="dock">
+    <button class="btn primary" id="btn-play"><span class="ic"></span><span id="play-label">Pause</span></button>
+    <div class="injector"><label for="inj-zone" id="inj-label">enqueue task</label><select id="inj-zone" aria-label="Target MCP zone"></select><button class="run" id="btn-inject">Send</button></div>
+    <div class="speed"><label for="speed">Speed</label><input type="range" id="speed" min="0.25" max="3" step="0.25" value="1" /><output id="speed-out">1.0×</output></div>
+    <div class="hint" id="hint"><b>Network view</b> — MCP servers as zones, routes carry cross-zone handoffs · <b>click a zone</b> to drill into its live surface · task progress streams from logtail · <b>Space</b> pause · <b>Esc</b> back/clear</div>
+  </footer>
+</div>
+<div class="sr-only" id="sr" aria-live="polite"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   PART A — FAKE MCP CONTROL PLANE  (stands in for collector.py+logtail.py)
+   Owns all truth: zones (MCP servers), agents (containers), stations
+   (MCP tools), tasks, routes. Simulates EVERY zone continuously; the feed
+   only DELIVERS what the current scope subscribes to — exactly how a real
+   backend keeps bandwidth flat as zones multiply. Emits the §4 envelopes.
+   ===================================================================== */
+function createControlPlane(){
+  const ZONES=[
+    {zone_id:"mcp-snowflake", name:"snowflake",  color:"#4fd672", policy:"hipaa", tools:["query","schema","ingest"]},
+    {zone_id:"mcp-filesystem",name:"filesystem", color:"#36c6e0", policy:"local", tools:["read","write","search"]},
+    {zone_id:"mcp-github",    name:"github",     color:"#f2b134", policy:"local", tools:["get_pr","review","merge"]},
+    {zone_id:"mcp-search",    name:"web-search", color:"#6c8cff", policy:"local", tools:["search","fetch","rank"]},
+  ];
+  const ROUTES=[
+    {a:"mcp-filesystem",b:"mcp-snowflake",data_only:true},   // into HIPAA: data payloads only, no agent transfer
+    {a:"mcp-search",    b:"mcp-filesystem"},
+    {a:"mcp-github",    b:"mcp-filesystem"},
+    {a:"mcp-search",    b:"mcp-github"},
+  ];
+  const IMG={ "mcp-snowflake":"mcp/snowflake-worker:2.1","mcp-filesystem":"mcp/fs-agent:1.4",
+              "mcp-github":"mcp/gh-agent:3.0","mcp-search":"mcp/search-agent:1.1" };
+
+  let seq=0, subs=[], scope="network", born=performance.now();
+  let idA=0, idT=0, alertN=0, spawnT=2.4, chaosT=8, rollT=0, metricT=0;
+  const agents=new Map(), stations=new Map(), tasks=new Map();
+  const zoneState=new Map();      // zone_id -> rollup
+  const routeLoad=new Map();      // "a|b" -> recent handoff intensity
+  const now=()=>new Date().toISOString();
+  const zmeta=z=>ZONES.find(x=>x.zone_id===z);
+  const zColor=z=>(zmeta(z)||{}).color||"#8a9da8";
+
+  function setScope(s){scope=s;}
+  function relevant(type,zoneId){
+    if(type==="snapshot"||type==="metrics.tick"||type==="alert.raised"||type==="log.appended")return true;
+    if(scope==="network")return type==="zone.updated"||type==="route.updated"||type==="task.handoff";
+    if(scope.startsWith("zone:")){const z=scope.slice(5);return zoneId===z;}
+    return false;
+  }
+  function emit(type,data,zoneId){if(!relevant(type,zoneId))return;seq++;const env={v:1,seq,ts:now(),type,data};for(const s of subs)s(env);}
+  const subscribe=cb=>{subs.push(cb);return()=>{subs=subs.filter(x=>x!==cb);};};
+  const log=h=>{seq++;const env={v:1,seq,ts:now(),type:"log.appended",data:{html:h,ts:now()}};for(const s of subs)s(env);};
+  function alert(kind,title,body,target,zoneId){emit("alert.raised",{alert_id:"al_"+(++alertN),kind,title,body,target,raised_at:now(),ttl_s:6},zoneId);}
+
+  // ---- station (MCP tool) ----
+  function sid(z,tool){return z+":"+tool;}
+  ZONES.forEach(z=>z.tools.forEach((tool,i)=>stations.set(sid(z.zone_id,tool),
+    {station_id:sid(z.zone_id,tool),zone_id:z.zone_id,name:tool,order:i,hue:z.color,
+     state:"idle",worker_agent_id:null,queue_depth:0,rev:0})));
+
+  // ---- agent (container homed to a zone) ----
+  function mkAgent(z,running=true){
+    idA++;const id=(idA).toString(16).padStart(2,"0")+Math.random().toString(16).slice(2,8);
+    const a={agent_id:id,name:zmeta(z).name.slice(0,2)+"-agent-"+String(idA).padStart(2,"0"),
+      zone_id:z,home_zone_id:z,station_id:null,state:running?"docked":"created",
+      energy:100,cpu_pct:running?6+Math.random()*8:0,mem_pct:14+Math.random()*22,
+      task_id:null,task_progress:0,eta_s:null,completed_total:0,status:running?"running":"created",
+      image:IMG[z],color:zColor(z),error:null,rev:0,_busyT:0};
+    agents.set(id,a);return a;}
+  ZONES.forEach(z=>{const n=z.zone_id==="mcp-snowflake"?4:z.zone_id==="mcp-search"?3:3;for(let i=0;i<n;i++)mkAgent(z.zone_id);});
+
+  function aDto(a){return{agent_id:a.agent_id,name:a.name,zone_id:a.zone_id,home_zone_id:a.home_zone_id,
+    station_id:a.station_id,state:a.state,energy:+a.energy.toFixed(1),cpu_pct:+a.cpu_pct.toFixed(1),
+    mem_pct:+a.mem_pct.toFixed(1),task_id:a.task_id,task_progress:+a.task_progress.toFixed(3),eta_s:a.eta_s,
+    completed_total:a.completed_total,status:a.status,image:a.image,color:a.color,error:a.error,rev:a.rev};}
+  const pushA=(a,t="agent.updated")=>{a.rev++;emit(t,aDto(a),a.zone_id);};
+  const pushS=s=>{s.rev++;emit("station.updated",{...s},s.zone_id);};
+
+  // ---- tasks ----
+  const TASKKIND=["query","read","get_pr","search","ingest","review","fetch","write","rank","schema"];
+  function mkTask(zone,pipeline){
+    idT++;const id="t_"+idT.toString(36)+Math.random().toString(36).slice(2,5);
+    const t={task_id:id,zone_id:zone,tool:null,state:"queued",progress:0,agent_id:null,
+      pipeline:pipeline||null,hop:0,kind:TASKKIND[(Math.random()*TASKKIND.length)|0]};
+    if(pipeline){t.zone_id=pipeline[0].zone;t.tool=pipeline[0].tool;}
+    tasks.set(id,t);emit("task.enqueued",{task_id:id,zone_id:t.zone_id,tool:t.tool,kind:t.kind,state:"queued"},t.zone_id);
+    return t;}
+  function queuedOf(z){return [...tasks.values()].filter(t=>t.zone_id===z&&t.state==="queued");}
+  function randTool(z){const tl=zmeta(z).tools;return tl[(Math.random()*tl.length)|0];}
+
+  function assign(){
+    for(const z of ZONES){
+      const free=[...agents.values()].filter(a=>a.zone_id===z.zone_id&&a.status==="running"&&a.state==="docked"&&!a.task_id);
+      const q=queuedOf(z.zone_id);
+      while(free.length&&q.length){
+        const a=free.shift(),t=q.shift();
+        const tool=t.tool||randTool(z.zone_id);
+        t.tool=tool;t.state="working";t.agent_id=a.agent_id;
+        a.task_id=t.task_id;a.station_id=sid(z.zone_id,tool);a.state="dispatched";a.task_progress=0;
+        a.eta_s=Math.round(6+Math.random()*16);a._dur=a.eta_s*(0.5+Math.random()*0.4);a._busyT=0;
+        pushA(a);emit("task.assigned",{task_id:t.task_id,agent_id:a.agent_id,zone_id:z.zone_id,tool,state:"working"},z.zone_id);
+        const st=stations.get(a.station_id);if(st){st.worker_agent_id=a.agent_id;st.state="busy";pushS(st);}
+      }
+    }
+  }
+
+  function tickAgent(a,dt){
+    if(a.status!=="running"){return;}
+    // cpu reflects work
+    const targetCpu=a.task_id?(48+Math.random()*40):(5+Math.random()*8);
+    a.cpu_pct+=(targetCpu-a.cpu_pct)*Math.min(1,dt*1.3);
+    a.mem_pct=Math.max(6,Math.min(100,a.mem_pct+(Math.random()-0.45)*3*dt+(a.task_id?1.2*dt:-0.6*dt)));
+    a.energy=Math.max(0,100-a.cpu_pct);
+    if(a.state==="dispatched"){a._busyT+=dt;if(a._busyT>0.6){a.state="working";pushA(a);}return;}
+    if(a.state==="working"&&a.task_id){
+      a._busyT+=dt;a.task_progress=Math.min(1,a._busyT/(a._dur||8));
+      a.eta_s=Math.max(0,Math.round((a._dur-a._busyT)));
+      // logtail-style progress stream (~3 Hz)
+      if(!a._lp||a._busyT-a._lp>0.33){a._lp=a._busyT;emit("task.progress",{task_id:a.task_id,progress:+a.task_progress.toFixed(3),eta_s:a.eta_s,agent_id:a.agent_id},a.zone_id);pushA(a);}
+      if(a.task_progress>=1)complete(a);
+    }
+  }
+  function complete(a){
+    const t=tasks.get(a.task_id);const st=a.station_id&&stations.get(a.station_id);
+    if(st){st.worker_agent_id=null;st.state="idle";pushS(st);}
+    if(t&&t.pipeline&&t.hop<t.pipeline.length-1){
+      // hand off to the next zone in the pipeline
+      t.hop++;const nx=t.pipeline[t.hop];const from=t.zone_id;
+      emit("task.completed",{task_id:t.task_id,agent_id:a.agent_id,status:"ok",hop:t.hop-1},from);
+      emit("task.handoff",{task_id:t.task_id,from_zone:from,to_zone:nx.zone,tool:nx.tool},from);
+      bumpRoute(from,nx.zone);
+      t.zone_id=nx.zone;t.tool=nx.tool;t.state="queued";t.agent_id=null;
+      emit("task.enqueued",{task_id:t.task_id,zone_id:nx.zone,tool:nx.tool,kind:t.kind,state:"queued"},nx.zone);
+      log(`<b style="color:${zColor(from)}">${t.task_id}</b> handoff → <b style="color:${zColor(nx.zone)}">${zmeta(nx.zone).name}</b>`);
+    }else if(t){
+      emit("task.completed",{task_id:t.task_id,agent_id:a.agent_id,status:"ok"},a.zone_id);
+      tasks.delete(t.task_id);
+    }
+    a.task_id=null;a.station_id=null;a.task_progress=0;a.eta_s=null;a.completed_total++;a.state="returning";a._busyT=0;a._rt=0;
+    pushA(a);
+  }
+  function bumpRoute(a,b){const k=[a,b].sort().join("|");routeLoad.set(k,(routeLoad.get(k)||0)+1.4);}
+
+  function rollup(){
+    for(const z of ZONES){
+      const mem=[...agents.values()].filter(a=>a.zone_id===z.zone_id);
+      const active=mem.filter(a=>a.state!=="docked"&&a.status==="running").length;
+      const busy=mem.filter(a=>a.task_id).length;
+      const q=queuedOf(z.zone_id).length;
+      const util=mem.length?busy/mem.length:0;
+      let health="ok";const low=mem.some(a=>a.status!=="running");
+      if(q>6||low)health="critical";else if(util>0.8||q>3)health="warn";
+      const prev=zoneState.get(z.zone_id);
+      const tpm=prev?prev.tasks_per_min:18;
+      const st={zone_id:z.zone_id,name:z.name,color:z.color,policy:z.policy,
+        agents_total:mem.length,agents_active:active,agents_busy:busy,queued:q,
+        tasks_per_min:Math.max(0,Math.round(tpm*0.85+(busy*6+Math.random()*4))),
+        utilization:+util.toFixed(2),health,rev:(prev?prev.rev+1:0)};
+      zoneState.set(z.zone_id,st);emit("zone.updated",st,z.zone_id);
+    }
+    for(const r of ROUTES){const k=[r.a,r.b].sort().join("|");const load=routeLoad.get(k)||0;
+      emit("route.updated",{a:r.a,b:r.b,data_only:!!r.data_only,load:+load.toFixed(2)},null);}
+  }
+
+  function tick(dt){
+    if(dt<=0)return;
+    for(const a of agents.values())tickAgent(a,dt);
+    // returning agents settle to docked
+    for(const a of agents.values()){if(a.state==="returning"){a._rt=(a._rt||0)+dt;if(a._rt>0.5){a.state="docked";pushA(a);}}}
+    assign();
+    // task generation
+    spawnT-=dt;
+    if(spawnT<=0){spawnT=1.1+Math.random()*1.6;
+      if(Math.random()<0.32){ // multi-hop pipeline -> handoff
+        const a=ZONES[(Math.random()*ZONES.length)|0],b=ZONES[(Math.random()*ZONES.length)|0];
+        if(a!==b)mkTask(null,[{zone:a.zone_id,tool:randTool(a.zone_id)},{zone:b.zone_id,tool:randTool(b.zone_id)}]);
+      }else{const z=ZONES[(Math.random()*ZONES.length)|0];mkTask(z.zone_id);}
+    }
+    // decay route load
+    for(const k of routeLoad.keys()){const v=routeLoad.get(k)-dt*0.7;if(v<=0)routeLoad.delete(k);else routeLoad.set(k,v);}
+    // occasional container fault
+    chaosT-=dt;
+    if(chaosT<=0){chaosT=11+Math.random()*10;
+      const run=[...agents.values()].filter(a=>a.status==="running");
+      if(run.length>9&&Math.random()<0.5){const a=run[(Math.random()*run.length)|0];
+        a.status="exited";a.error="OOMKilled";a.state="docked";
+        if(a.task_id){const t=tasks.get(a.task_id);if(t){t.state="queued";t.agent_id=null;}a.task_id=null;a.station_id=null;}
+        pushA(a);alert("critical",a.name+" OOMKilled","Container exceeded memory; task requeued.",{type:"agent",id:a.agent_id},a.zone_id);
+        log(`<b style="color:#ff5a52">${a.name}</b> OOMKilled · requeued`);a._restartIn=2+Math.random()*2;}
+    }
+    for(const a of agents.values()){if(a.status==="exited"&&a._restartIn!=null){a._restartIn-=dt;if(a._restartIn<=0){a._restartIn=null;a.status="running";a.error=null;a.cpu_pct=6;a.state="docked";pushA(a);log(`<b style="color:#4fd672">${a.name}</b> restarted`);}}}
+
+    rollT-=dt;if(rollT<=0){rollT=1.0;rollup();}
+    metricT-=dt;if(metricT<=0){metricT=1.0;emit("metrics.tick",metrics(),null);}
+  }
+
+  function metrics(){
+    const all=[...agents.values()];const run=all.filter(a=>a.status==="running");
+    const busy=all.filter(a=>a.task_id).length;
+    const inflight=[...tasks.values()].filter(t=>t.pipeline&&t.hop>0).length;
+    const tpm=ZONES.reduce((s,z)=>s+((zoneState.get(z.zone_id)||{}).tasks_per_min||0),0);
+    let busiest=ZONES[0].name,bv=-1;for(const z of ZONES){const u=(zoneState.get(z.zone_id)||{}).utilization||0;if(u>bv){bv=u;busiest=z.name;}}
+    return{zones:ZONES.length,total_agents:all.length,running:run.length,active_agents:busy,
+      tasks_per_min:tpm,inflight,busiest,queued:[...tasks.values()].filter(t=>t.state==="queued").length,
+      uptime_s:Math.floor((performance.now()-born)/1000),ts:now()};}
+
+  // ---- scope-shaped snapshot ----
+  function snapshot(){
+    if(scope.startsWith("zone:")){
+      const z=scope.slice(5);
+      return{scope:"zone",zone:{...zmeta(z),...(zoneState.get(z)||{})},
+        agents:[...agents.values()].filter(a=>a.zone_id===z).map(aDto),
+        stations:[...stations.values()].filter(s=>s.zone_id===z),
+        tasks:[...tasks.values()].filter(t=>t.zone_id===z&&t.state==="queued").map(t=>({task_id:t.task_id,tool:t.tool,kind:t.kind,zone_id:z})),
+        metrics:metrics()};
+    }
+    return{scope:"network",zones:ZONES.map(z=>({...z,...(zoneState.get(z.zone_id)||{agents_total:0,agents_active:0,agents_busy:0,queued:0,tasks_per_min:0,utilization:0,health:"ok"})})),
+      routes:ROUTES.map(r=>({a:r.a,b:r.b,data_only:!!r.data_only,load:routeLoad.get([r.a,r.b].sort().join("|"))||0})),
+      metrics:metrics()};
+  }
+  function getSnapshot(){seq++;const env={v:1,seq,ts:now(),type:"snapshot",data:snapshot()};for(const s of subs)s(env);}
+
+  function handleCommand(cmd){
+    const ok=()=>({command_id:cmd.command_id,status:"accepted"});const rej=r=>({command_id:cmd.command_id,status:"rejected",reason:r});
+    const tg=cmd.target||{};const a=agents.get(tg.id);
+    try{switch(cmd.type){
+      case "agent.hold":case "agent.recall":if(!a)return rej("unknown agent");if(a.status!=="running")return rej("not running");a.status="paused";a.state="docked";if(a.task_id){const t=tasks.get(a.task_id);if(t){t.state="queued";t.agent_id=null;}a.task_id=null;a.station_id=null;}pushA(a);log(`<b style="color:#6c8cff">${a.name}</b> held`);return ok();
+      case "agent.resume":if(!a)return rej("unknown agent");if(a.status!=="paused")return rej("not held");a.status="running";pushA(a);log(`<b style="color:#4fd672">${a.name}</b> resumed`);return ok();
+      case "agent.retire":if(!a)return rej("unknown agent");a.status="exited";a.error="Stopped";a.state="docked";if(a.task_id){const t=tasks.get(a.task_id);if(t){t.state="queued";t.agent_id=null;}a.task_id=null;}a._restartIn=2.5;pushA(a);log(`<b style="color:#ff5a52">${a.name}</b> stopped`);return ok();
+      case "agent.restart":if(!a)return rej("unknown agent");a.status="running";a.error=null;a.cpu_pct=6;a.state="docked";a._restartIn=null;a.completed_total++;pushA(a);log(`<b style="color:#4fd672">${a.name}</b> restarted`);return ok();
+      case "task.enqueue":{const z=(cmd.args||{}).zone;if(!zmeta(z))return rej("unknown zone");mkTask(z);log(`<b style="color:${zColor(z)}">task</b> enqueued → ${zmeta(z).name}`);return ok();}
+      case "zone.hold_all":{[...agents.values()].filter(x=>x.zone_id===tg.id&&x.status==="running").forEach(x=>{x.status="paused";x.state="docked";pushA(x);});return ok();}
+      case "zone.resume_all":{[...agents.values()].filter(x=>x.zone_id===tg.id&&x.status==="paused").forEach(x=>{x.status="running";pushA(x);});return ok();}
+      default:return rej("unsupported "+cmd.type);
+    }}catch(e){return rej(e.message);}
+  }
+
+  // boot rollup so network reads full immediately
+  rollup();
+  log(`<b style="color:#4fd672">control plane online</b> · ${ZONES.length} MCP zones · ${agents.size} agents`);
+
+  return {subscribe,setScope,getSnapshot,handleCommand,tick,ZONES,get seq(){return seq;}};
+}
+
+/* =====================================================================
+   PART B — FEED CLIENT  (the swappable seam)
+   Live: swap body for WebSocket ws://host/api/feed?scope=… + POST /commands.
+   setScope re-subscribes the socket; PART C never changes.
+   ===================================================================== */
+function createFeed(backend){
+  let lastSeq=0,onEnvelope=()=>{},scope="network";
+  function route(env){if(env.type!=="snapshot"&&lastSeq&&env.seq!==lastSeq+1){backend.getSnapshot();return;}lastSeq=env.seq;onEnvelope(env);}
+  backend.subscribe(route);
+  return {connect(){backend.getSnapshot();},onEnvelope(cb){onEnvelope=cb;},tick(dt){backend.tick(dt);},
+    setScope(s){scope=s;backend.setScope(s);backend.getSnapshot();},get scope(){return scope;},
+    command(type,target,args={}){return backend.handleCommand({command_id:"c_"+Math.random().toString(36).slice(2),type,target,args,issued_by:"operator",ts:new Date().toISOString()});},
+    zones(){return backend.ZONES;},get seq(){return lastSeq;}};
+}
+
+/* ----------------------------------------------------------------------
+   THE SWAP — flip LIVE to talk to the real server.py instead of the mock.
+   Same interface as createFeed(), so PART C below never changes:
+     • connect()  -> open WS  ws(s)://host/api/feed?scope=<scope>
+     • setScope() -> re-open the socket on the new scope; the server replies
+                     with a scope-shaped snapshot (network rollups vs zone firehose)
+     • command()  -> POST /api/commands (ack only; state returns via the feed)
+   server.py stamps a per-CONNECTION seq, so each scope stream stays contiguous
+   even though the global plane drops the envelopes this scope didn't subscribe to.
+   ---------------------------------------------------------------------- */
+const LIVE = false;                              // ← flip to true for the real backend
+const FEED_BASE = "http://localhost:8000";       // ← server.py origin
+function createLiveFeed(base){
+  const wsBase=base.replace(/^http/,"ws");
+  let ws=null,lastSeq=0,onEnvelope=()=>{},scope="network",zonesCache=[];
+  function handle(ev){let env;try{env=JSON.parse(ev.data);}catch(e){return;}
+    if(env.type==="snapshot"){lastSeq=env.seq;const d=env.data;if(d&&d.scope==="network"&&Array.isArray(d.zones))zonesCache=d.zones;onEnvelope(env);return;}
+    if(lastSeq&&env.seq!==lastSeq+1){open();return;}                 // gap -> resync via fresh snapshot
+    lastSeq=env.seq;
+    if(env.type==="zone.updated"&&env.data){const i=zonesCache.findIndex(z=>z.zone_id===env.data.zone_id);if(i>=0)zonesCache[i]={...zonesCache[i],...env.data};}
+    onEnvelope(env);}
+  function open(){if(ws){ws.onclose=null;try{ws.close();}catch(e){}}lastSeq=0;
+    ws=new WebSocket(wsBase+"/api/feed?scope="+encodeURIComponent(scope));ws.onmessage=handle;
+    ws.onclose=()=>{ws=null;setTimeout(open,1200);};}               // unexpected drop -> reconnect
+  return {connect(){open();},onEnvelope(cb){onEnvelope=cb;},tick(){/* server is the clock */},
+    setScope(s){scope=s;open();},get scope(){return scope;},
+    command(type,target,args={}){return fetch(base+"/api/commands",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({command_id:"c_"+Math.random().toString(36).slice(2),type,target,args,issued_by:"operator",ts:new Date().toISOString()})}).then(r=>r.json()).catch(e=>({status:"rejected",reason:String(e)}));},
+    zones(){return zonesCache;},get seq(){return lastSeq;}};
+}
+
+/* =====================================================================
+   PART C — CLIENT  (pure consumer: project envelopes -> render two scopes)
+   ===================================================================== */
+(function(){
+  const reduceMotion=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const canvas=document.getElementById("c"),ctx=canvas.getContext("2d");
+  const T={floor:"#0e1418",steel:"#8a9da8",steelDim:"#5f717c",bright:"#e8f1f5",dispatch:"#36c6e0",work:"#f2b134",return:"#4fd672",dock:"#6c8cff",alert:"#ff5a52"};
+  const HEALTH={ok:T.return,warn:T.work,critical:T.alert};
+  let DPR=Math.min(window.devicePixelRatio||1,2),W=0,H=0,cx=0,cy=0;
+  const M={scope:"network",zones:[],routes:[],agents:new Map(),stations:new Map(),tasks:[],zone:null,metrics:{}};
+  const sparks=[],tokens=[],logE=[],toasts=[];let wireLines=[];
+  let selected=null,hovered=null,running=true,simSpeed=1,alertCount=0;
+  let logDirty=true,wireDirty=true,sideDirty=true,qDirty=true;
+  const mouse={x:-999,y:-999};let backend,feed;
+
+  function layout(){const r=canvas.getBoundingClientRect();W=r.width;H=r.height;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);ctx.setTransform(DPR,0,0,DPR,0,0);cx=W/2;cy=H/2;}
+
+  /* ---------- positions ---------- */
+  function zoneNodePos(zid){const i=Math.max(0,M.zones.findIndex(z=>z.zone_id===zid));const n=Math.max(1,M.zones.length);const R=Math.min(W,H)*0.30;const ang=-Math.PI/2+(i/n)*Math.PI*2;return{x:cx+Math.cos(ang)*R,y:cy+Math.sin(ang)*R};}
+  function stationPos(s){const list=[...M.stations.values()].filter(x=>x.zone_id===s.zone_id).sort((a,b)=>a.order-b.order);const k=list.findIndex(x=>x.station_id===s.station_id);const n=Math.max(1,list.length);const R=Math.min(W,H)*0.34;const ang=-Math.PI/2+(k/n)*Math.PI*2;return{x:cx+Math.cos(ang)*R,y:cy+Math.sin(ang)*R};}
+  function agentTarget(a){
+    if(a.station_id&&(a.state==="working"||a.state==="dispatched")){const s=M.stations.get(a.station_id);if(s){const p=stationPos(s);const peers=[...M.agents.values()].filter(x=>x.station_id===a.station_id);const k=Math.max(0,peers.findIndex(x=>x.agent_id===a.agent_id));const off=(k-(peers.length-1)/2)*16;return{x:p.x+off,y:p.y+20};}}
+    // docked / returning -> hub apron
+    const idle=[...M.agents.values()].filter(x=>!x.task_id);const k=Math.max(0,idle.findIndex(x=>x.agent_id===a.agent_id));const n=Math.max(1,idle.length);const ang=k/n*Math.PI*2;const R=58;return{x:cx+Math.cos(ang)*R,y:cy+Math.sin(ang)*R};
+  }
+
+  /* ---------- ingestion ---------- */
+  function hydrate(d){
+    M.scope=d.scope;selected=null;hovered=null;closeInsp();
+    if(d.scope==="network"){M.zones=d.zones||[];M.routes=d.routes||[];M.agents.clear();M.stations.clear();M.tasks=[];M.zone=null;document.getElementById("stage").classList.remove("zoned");}
+    else{M.zone=d.zone;M.zones=[];M.routes=[];M.agents.clear();M.stations.clear();(d.stations||[]).forEach(s=>M.stations.set(s.station_id,s));(d.agents||[]).forEach(addA);M.tasks=d.tasks||[];document.getElementById("stage").classList.add("zoned");}
+    M.metrics=d.metrics;sideDirty=qDirty=true;syncChrome();
+  }
+  function addA(dto){const s={...dto,x:cx,y:cy,bob:Math.random()*6.28,spin:Math.random()*6.28,trail:[]};const p=agentTarget(s);s.x=p.x;s.y=p.y;M.agents.set(dto.agent_id,s);return s;}
+  function applyA(dto){let a=M.agents.get(dto.agent_id);if(!a){if(M.scope==="zone"&&dto.zone_id===M.zone.zone_id)addA(dto);return;}if(dto._patch){for(const k of["station_id","task_id","task_progress","eta_s","state"])if(dto[k]!==undefined)a[k]=dto[k];return;}if(dto.rev<a.rev&&!dto._patch)return;for(const k in dto)a[k]=dto[k];}
+  function applyZone(z){const i=M.zones.findIndex(x=>x.zone_id===z.zone_id);if(i>=0)M.zones[i]={...M.zones[i],...z};sideDirty=true;}
+  function applyRoute(r){const i=M.routes.findIndex(x=>x.a===r.a&&x.b===r.b);if(i>=0)M.routes[i]=r;else M.routes.push(r);}
+  function route(env){
+    pushWire(env);
+    switch(env.type){
+      case "snapshot":hydrate(env.data);break;
+      case "zone.updated":applyZone(env.data);break;
+      case "route.updated":applyRoute(env.data);break;
+      case "agent.added":case "agent.updated":applyA(env.data);if(M.scope==="zone")sideDirty=true;break;
+      case "agent.removed":M.agents.delete(env.data.agent_id);if(selected===env.data.agent_id)closeInsp();break;
+      case "station.updated":M.stations.set(env.data.station_id,{...M.stations.get(env.data.station_id),...env.data});break;
+      case "task.enqueued":if(M.scope==="zone"&&env.data.zone_id===M.zone.zone_id){M.tasks.push(env.data);qDirty=true;}break;
+      case "task.assigned":case "task.completed":if(M.scope==="zone"){M.tasks=M.tasks.filter(t=>t.task_id!==env.data.task_id);qDirty=true;}break;
+      case "task.handoff":spawnToken(env.data);break;
+      case "metrics.tick":M.metrics=env.data;break;
+      case "alert.raised":pushToast(env.data);break;
+      case "log.appended":logE.unshift({t:hhmm(env.data.ts),html:env.data.html});if(logE.length>60)logE.pop();logDirty=true;break;
+    }
+  }
+  const hhmm=iso=>{const d=new Date(iso);return String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");};
+
+  /* ---------- color ---------- */
+  function aColor(a){if(a.status==="exited")return T.steelDim;if(a.status==="paused")return T.dock;if(a.state==="dispatched")return T.dispatch;if(a.state==="returning")return T.return;if(a.task_id)return T.work;return T.return;}
+
+  /* ---------- tokens (handoff) ---------- */
+  function spawnToken(d){if(M.scope!=="network")return;const A=zoneNodePos(d.from_zone),B=zoneNodePos(d.to_zone);tokens.push({ax:A.x,ay:A.y,bx:B.x,by:B.y,t:0,color:M.zones.find(z=>z.zone_id===d.to_zone)?.color||T.dispatch});}
+
+  /* ---------- animation ---------- */
+  function animate(sdt){
+    for(const a of M.agents.values()){a.bob+=sdt*2;a.spin+=sdt*(a.task_id?14:5);const p=agentTarget(a);const lerp=a.state==="dispatched"?3:a.state==="returning"?3.5:4.5;a.x+=(p.x-a.x)*Math.min(1,sdt*lerp);a.y+=(p.y-a.y)*Math.min(1,sdt*lerp);const moving=Math.hypot(p.x-a.x,p.y-a.y)>2;if(moving){a.trail.push({x:a.x,y:a.y});if(a.trail.length>12)a.trail.shift();}else if(a.trail.length)a.trail.shift();
+      if(a.task_id&&a.state==="working"&&Math.random()<sdt*8){const c=aColor(a);sparks.push({x:a.x+(Math.random()-.5)*16,y:a.y+(Math.random()-.5)*16,vx:(Math.random()-.5)*22,vy:-14-Math.random()*22,life:1,hue:c});}}
+    for(let i=sparks.length-1;i>=0;i--){const s=sparks[i];s.x+=s.vx*sdt;s.y+=s.vy*sdt;s.vy+=70*sdt;s.life-=sdt*1.6;if(s.life<=0)sparks.splice(i,1);}
+    for(let i=tokens.length-1;i>=0;i--){const t=tokens[i];t.t+=sdt*0.55;if(t.t>=1)tokens.splice(i,1);}
+  }
+
+  /* ---------- shared draw helpers ---------- */
+  function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+  function gear(x,y,col,sc){const t=performance.now()*0.001;ctx.save();ctx.translate(x,y);ctx.rotate(reduceMotion?0:t);for(let i=0;i<2;i++){const r=(20-i*7)*sc;ctx.beginPath();for(let k=0;k<6;k++){const a=k*Math.PI/3+(i?t*.5:-t*.4),px=Math.cos(a)*r,py=Math.sin(a)*r;k?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();ctx.fillStyle="#13202e";ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=.7;ctx.lineWidth=1.4;ctx.stroke();ctx.globalAlpha=1;}ctx.fillStyle=col;ctx.shadowColor=col;ctx.shadowBlur=14;ctx.beginPath();ctx.arc(0,0,4.5*sc,0,6.283);ctx.fill();ctx.restore();ctx.shadowBlur=0;}
+  function selRing(x,y,r,col){const t=performance.now()*0.002;ctx.save();ctx.translate(x,y);ctx.rotate(reduceMotion?0:t);ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.setLineDash([4,5]);ctx.beginPath();ctx.arc(0,0,r,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+  function grid(){ctx.fillStyle=T.floor;ctx.fillRect(0,0,W,H);ctx.strokeStyle="rgba(22,32,40,.3)";ctx.lineWidth=1;const g=42;ctx.beginPath();for(let x=cx%g;x<W;x+=g){ctx.moveTo(x,0);ctx.lineTo(x,H);}for(let y=cy%g;y<H;y+=g){ctx.moveTo(0,y);ctx.lineTo(W,y);}ctx.stroke();const gr=ctx.createRadialGradient(cx,cy,80,cx,cy,Math.max(W,H)*0.8);gr.addColorStop(0,"rgba(0,0,0,0)");gr.addColorStop(1,"rgba(0,0,0,0.5)");ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);}
+  const dim=()=>selected?0.4:1;
+
+  /* ---------- NETWORK render ---------- */
+  function drawNetwork(){
+    // routes
+    for(const r of M.routes){const A=zoneNodePos(r.a),B=zoneNodePos(r.b);const intensity=Math.min(1,r.load/3);
+      ctx.save();ctx.strokeStyle=r.data_only?"#6c8cff":"#36c6e0";ctx.globalAlpha=0.18+intensity*0.5;ctx.lineWidth=1+intensity*2.2;
+      if(r.data_only){ctx.setLineDash([2,6]);}else{ctx.setLineDash([6,10]);ctx.lineDashOffset=-(performance.now()*0.03)%16;}
+      ctx.beginPath();ctx.moveTo(A.x,A.y);ctx.lineTo(B.x,B.y);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+      if(r.data_only){const mx=(A.x+B.x)/2,my=(A.y+B.y)/2;ctx.fillStyle="rgba(11,16,21,.9)";ctx.beginPath();ctx.arc(mx,my,8,0,6.283);ctx.fill();ctx.strokeStyle="#6c8cff";ctx.lineWidth=1.2;ctx.stroke();ctx.strokeStyle="#6c8cff";ctx.lineWidth=1.4;ctx.beginPath();ctx.arc(mx,my-1.5,2.6,Math.PI,0);ctx.moveTo(mx-3,my-1.5);ctx.lineTo(mx-3,my+3);ctx.lineTo(mx+3,my+3);ctx.lineTo(mx+3,my-1.5);ctx.stroke();}}
+    // handoff tokens
+    for(const t of tokens){const e=t.t,x=t.ax+(t.bx-t.ax)*e,y=t.ay+(t.by-t.ay)*e;ctx.save();ctx.globalAlpha=Math.sin(e*Math.PI);ctx.fillStyle=t.color;ctx.shadowColor=t.color;ctx.shadowBlur=12;rr(ctx,x-4,y-4,8,8,2);ctx.fill();ctx.restore();}
+    // zone nodes
+    for(const z of M.zones){drawZoneNode(z);}
+  }
+  function drawZoneNode(z){
+    const p=zoneNodePos(z.zone_id),sel=selected===z.zone_id,hov=hovered==="zone:"+z.zone_id;
+    const total=z.agents_total||0,active=z.agents_active||0,util=z.utilization||0,hc=HEALTH[z.health]||T.return;
+    const cov=34+Math.min(28,total*4);
+    ctx.globalAlpha=sel||hov?1:dim();
+    // coverage ring
+    ctx.strokeStyle=z.color;ctx.globalAlpha=(sel||hov?1:dim())*0.16;ctx.lineWidth=1;ctx.setLineDash([4,8]);ctx.beginPath();ctx.arc(p.x,p.y,cov,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=sel||hov?1:dim();
+    // utilization gauge arc (health colored)
+    ctx.strokeStyle="rgba(255,255,255,.08)";ctx.lineWidth=3.5;ctx.beginPath();ctx.arc(p.x,p.y,26,0,6.283);ctx.stroke();
+    ctx.strokeStyle=hc;ctx.shadowColor=hc;ctx.shadowBlur=8;ctx.lineWidth=3.5;ctx.lineCap="round";ctx.beginPath();ctx.arc(p.x,p.y,26,-Math.PI/2,-Math.PI/2+Math.max(0.02,util)*6.283);ctx.stroke();ctx.shadowBlur=0;ctx.lineCap="butt";
+    // orbiting active agents
+    const t=performance.now()*0.0006;for(let i=0;i<active;i++){const a=t*2+i/Math.max(1,active)*6.283;const ox=p.x+Math.cos(a)*40,oy=p.y+Math.sin(a)*40;ctx.fillStyle=z.color;ctx.shadowColor=z.color;ctx.shadowBlur=6;ctx.beginPath();ctx.arc(ox,oy,2.4,0,6.283);ctx.fill();}ctx.shadowBlur=0;
+    gear(p.x,p.y,z.color,1);
+    // labels
+    ctx.textAlign="center";ctx.font="600 13px 'Space Grotesk',sans-serif";ctx.fillStyle=T.bright;ctx.textBaseline="top";ctx.fillText(z.name,p.x,p.y+cov+8);
+    ctx.font="500 9px 'JetBrains Mono',monospace";ctx.fillStyle=z.color;ctx.fillText((z.policy==="hipaa"?"HIPAA · ":"")+total+" agents · "+(z.tasks_per_min||0)+"/min",p.x,p.y+cov+26);
+    // queue badge
+    if(z.queued>0){const bx=p.x+24,by=p.y-24;ctx.fillStyle=z.queued>4?T.alert:T.work;ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=8;ctx.beginPath();ctx.arc(bx,by,9,0,6.283);ctx.fill();ctx.shadowBlur=0;ctx.fillStyle="#0b1015";ctx.font="700 10px 'JetBrains Mono',monospace";ctx.textBaseline="middle";ctx.fillText(z.queued,bx,by+0.5);ctx.textBaseline="alphabetic";}
+    if(sel||hov)selRing(p.x,p.y,cov+5,z.color);
+    ctx.globalAlpha=1;
+  }
+
+  /* ---------- ZONE render ---------- */
+  function drawZone(){
+    const zc=M.zone.color;
+    // hub
+    ctx.save();ctx.globalAlpha=.5;const g=ctx.createRadialGradient(cx,cy,4,cx,cy,60);g.addColorStop(0,"rgba(108,140,255,.32)");g.addColorStop(1,"rgba(108,140,255,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,60,0,6.283);ctx.fill();ctx.restore();
+    ctx.strokeStyle="rgba(108,140,255,.25)";ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(cx,cy,40,0,6.283);ctx.stroke();
+    gear(cx,cy,T.dock,1.05);
+    ctx.font="500 9px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="bottom";ctx.fillStyle="rgba(232,241,245,.6)";ctx.fillText(M.zone.name+" · orchestrator",cx,cy-48);
+    // station spokes + nodes
+    for(const s of M.stations.values()){const p=stationPos(s);ctx.strokeStyle=s.hue;ctx.globalAlpha=.1;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(p.x,p.y);ctx.stroke();ctx.globalAlpha=1;drawStation(s,p);}
+    // sparks + agents
+    drawSparks();
+    [...M.agents.values()].sort((a,b)=>a.y-b.y).forEach(drawAgent);
+  }
+  function drawStation(s,p){
+    const sel=selected===s.station_id,hov=hovered==="stn:"+s.station_id;
+    ctx.globalAlpha=sel||hov?1:dim();
+    ctx.save();ctx.translate(p.x,p.y);
+    ctx.shadowColor=s.hue;ctx.shadowBlur=s.state==="busy"?13:5;ctx.fillStyle="#121b21";ctx.beginPath();for(let k=0;k<6;k++){const a=k*Math.PI/3-Math.PI/2,px=Math.cos(a)*12,py=Math.sin(a)*12;k?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=s.hue;ctx.lineWidth=1.5;ctx.stroke();
+    ctx.fillStyle=s.hue;ctx.beginPath();ctx.arc(0,0,3,0,6.283);ctx.fill();ctx.restore();
+    ctx.font="500 10px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="bottom";ctx.fillStyle=s.state==="busy"?T.bright:T.steel;ctx.fillText(s.name,p.x,p.y-16);
+    if(s.queue_depth>0){ctx.fillStyle=T.work;ctx.beginPath();ctx.arc(p.x+13,p.y-11,7,0,6.283);ctx.fill();ctx.fillStyle="#0b1015";ctx.font="700 9px 'JetBrains Mono',monospace";ctx.textBaseline="middle";ctx.fillText(s.queue_depth,p.x+13,p.y-10.5);ctx.textBaseline="alphabetic";}
+    if(sel||hov)selRing(p.x,p.y,18,s.hue);
+    ctx.globalAlpha=1;
+  }
+  function drawAgent(a){
+    const col=aColor(a),sel=selected===a.agent_id,hov=hovered===a.agent_id;
+    const bob=reduceMotion?0:Math.sin(a.bob)*1.6,x=a.x,y=a.y+bob;
+    ctx.globalAlpha=sel||hov?1:dim();
+    if(a.trail.length>1&&!reduceMotion){ctx.lineWidth=2;ctx.lineCap="round";for(let i=1;i<a.trail.length;i++){ctx.strokeStyle=col;ctx.globalAlpha=(sel||hov?1:dim())*(i/a.trail.length)*0.5;ctx.beginPath();ctx.moveTo(a.trail[i-1].x,a.trail[i-1].y);ctx.lineTo(a.trail[i].x,a.trail[i].y);ctx.stroke();}ctx.globalAlpha=sel||hov?1:dim();}
+    ctx.save();ctx.translate(x,y);
+    if(a.status==="paused"){ctx.strokeStyle=T.dock;ctx.lineWidth=1.5;ctx.globalAlpha=ctx.globalAlpha*0.6;ctx.beginPath();ctx.arc(0,0,12,0,6.283);ctx.stroke();ctx.globalAlpha=sel||hov?1:dim();}
+    ctx.shadowColor=col;ctx.shadowBlur=hov||sel?15:(a.status==="exited"?3:11);ctx.fillStyle="#0f1820";rr(ctx,-7,-7,14,14,2.5);ctx.fill();ctx.shadowBlur=0;ctx.lineWidth=1.5;ctx.strokeStyle=col;ctx.stroke();
+    ctx.strokeStyle=col;ctx.globalAlpha=ctx.globalAlpha*0.5;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(-7,0);ctx.lineTo(7,0);ctx.moveTo(0,-7);ctx.lineTo(0,7);ctx.stroke();ctx.globalAlpha=sel||hov?1:dim();
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(0,0,2,0,6.283);ctx.fill();ctx.restore();
+    // task progress ring
+    if(a.task_id&&a.task_progress>0){ctx.save();ctx.translate(x,y);ctx.strokeStyle="rgba(255,255,255,.1)";ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(0,0,17,0,6.283);ctx.stroke();ctx.strokeStyle=col;ctx.lineCap="round";ctx.beginPath();ctx.arc(0,0,17,-Math.PI/2,-Math.PI/2+a.task_progress*6.283);ctx.stroke();ctx.lineCap="butt";ctx.restore();}
+    if(sel)selRing(x,y,a.task_id?22:18,col);
+    // label
+    const lbl=a.name+(a.task_id?"  "+Math.round(a.task_progress*100)+"%":a.status==="paused"?"  ⏸":a.status==="exited"?"  ✕":"");
+    ctx.font="500 9px 'JetBrains Mono',monospace";const tw=ctx.measureText(lbl).width+12,tx=x-tw/2,ty=y-(a.task_id?28:23);ctx.fillStyle="rgba(10,15,19,0.8)";rr(ctx,tx,ty,tw,15,4);ctx.fill();ctx.globalAlpha=(sel||hov?1:dim())*0.5;ctx.strokeStyle=col;ctx.lineWidth=1;rr(ctx,tx,ty,tw,15,4);ctx.stroke();ctx.globalAlpha=sel||hov?1:dim();ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillStyle="rgba(232,241,245,.85)";ctx.fillText(lbl,tx+6,ty+7.5);
+    ctx.globalAlpha=1;ctx.textBaseline="alphabetic";
+  }
+  function drawSparks(){for(const s of sparks){ctx.globalAlpha=Math.max(0,s.life)*(selected?dim():1);ctx.fillStyle=s.hue;ctx.shadowColor=s.hue;ctx.shadowBlur=6;ctx.beginPath();ctx.arc(s.x,s.y,1.5,0,6.283);ctx.fill();}ctx.globalAlpha=1;ctx.shadowBlur=0;}
+
+  function render(){grid();if(M.scope==="network")drawNetwork();else if(M.zone)drawZone();}
+
+  /* ---------- DOM ---------- */
+  const el=id=>document.getElementById(id);
+  const D={stats:el("stats"),crumbs:el("crumbs"),legend:el("legend"),sideH1:el("side-h1"),sideH2:el("side-h2"),sideCount:el("side-count"),sideList:el("side-list"),log:el("log"),toasts:el("toasts"),tip:el("tip"),sr:el("sr"),wireB:el("wire-b"),wireC:el("wire-c"),wireT:el("wire-t"),feedLabel:el("feed-label"),qchips:el("qchips"),injZone:el("inj-zone"),injLabel:el("inj-label"),hint:el("hint"),insp:el("inspector"),iRing:el("i-ring"),iName:el("i-name"),iType:el("i-type"),iBody:el("i-body"),iActions:el("i-actions")};
+  const ecolor=p=>p>85?T.alert:p>45?T.work:T.return;
+
+  const LEGEND_NET=[["var(--return)","healthy"],["var(--work)","warn / busy"],["var(--alert)","critical"],["var(--dock)","data-only route ⊘"]];
+  const LEGEND_ZONE=[["var(--return)","idle / done"],["var(--work)","working"],["var(--dispatch)","dispatched"],["var(--dock)","held"],["var(--steel-dim)","exited"]];
+  function syncChrome(){
+    const net=M.scope==="network";
+    D.feedLabel.textContent="feed · "+(net?"scope=network":"scope=zone:"+M.zone.zone_id);
+    D.wireT.textContent="wire · /api/feed?"+(net?"scope=network":"scope=zone:"+M.zone.name);
+    D.legend.innerHTML=(net?LEGEND_NET:LEGEND_ZONE).map(([c,l])=>`<span class="it"><span class="sw" style="color:${c}"></span>${l}</span>`).join("");
+    D.sideH1.textContent=net?"MCP zones":M.zone.name+" · agents";
+    D.sideH2.textContent="Feed events";
+    D.injLabel.textContent=net?"enqueue task":"enqueue → "+M.zone.name;
+    D.hint.innerHTML=net?'<b>Network view</b> — MCP servers as zones, routes carry cross-zone handoffs · <b>click a zone</b> to drill into its live surface · task progress streams from logtail · <b>Space</b> pause'
+      :'<b>'+M.zone.name+'</b> zone — agents pick tasks, fly to the MCP tool, work (ring = task progress), return · <b>click</b> agent/tool to inspect &amp; command · <b>Esc</b> back';
+    // crumbs
+    D.crumbs.innerHTML = net
+      ? `<button class="here">network</button>`
+      : `<button data-go="network">network</button><span class="sep">/</span><button class="here"><span class="zc" style="color:${M.zone.color}"></span>${M.zone.name}</button>`;
+    // injector options
+    if(net){D.injZone.innerHTML=feed.zones().map(z=>`<option value="${z.zone_id}">${z.name}</option>`).join("");}
+    else{D.injZone.innerHTML=`<option value="${M.zone.zone_id}">${M.zone.name}</option>`;}
+    sideDirty=true;
+  }
+
+  function refresh(){
+    const m=M.metrics||{};
+    const statDefs=M.scope==="network"
+      ? [["zones",m.zones],["agents",m.total_agents],["tasks·min",m.tasks_per_min],["in-flight",m.inflight],["alerts",alertCount]]
+      : [["running",m.running],["agents",M.agents.size],["working",m.active_agents],["tasks·min",m.tasks_per_min],["alerts",alertCount]];
+    D.stats.innerHTML=statDefs.map(([k,v],i)=>{const bad=k==="alerts"&&alertCount>0;return `<div class="stat"><span class="v${bad?" bad":""}">${v??0}</span><span class="k">${k}</span></div>`;}).join("");
+    if(sideDirty){renderSide();sideDirty=false;}
+    if(logDirty){D.log.innerHTML=logE.map(e=>`<div class="logline"><span class="t">${e.t}</span><span class="m">${e.html}</span></div>`).join("");logDirty=false;}
+    if(qDirty&&M.scope==="zone"){renderQueue();qDirty=false;}
+    if(selected)renderInsp();
+  }
+  function renderSide(){
+    if(M.scope==="network"){
+      D.sideCount.textContent=M.zones.length;
+      D.sideList.innerHTML=M.zones.map(z=>{const hc=HEALTH[z.health]||T.return;const u=Math.round((z.utilization||0)*100);return `<div class="row" role="option" tabindex="0" data-zone="${z.zone_id}"><span class="pip" style="color:${z.color}"></span><div class="who"><div class="name">${z.name}${z.policy==="hipaa"?' <span style="color:#4fd672;font-size:9px">HIPAA</span>':''}</div><div class="meta">${z.agents_total||0} agents · ${z.queued||0} queued · ${z.tasks_per_min||0}/min</div></div><div class="met"><div class="big" style="color:${hc}">${u}%</div><div class="mini"><i style="width:${u}%;background:${hc}"></i></div></div></div>`;}).join("");
+    }else{
+      const list=[...M.agents.values()];D.sideCount.textContent=list.length;
+      D.sideList.innerHTML=list.map(a=>{const col=aColor(a);const sc=selected===a.agent_id?" sel":"";const sub=a.task_id?(a.station_id?a.station_id.split(":")[1]:"working")+" · "+Math.round(a.task_progress*100)+"%":a.status==="exited"?a.error||"exited":a.status==="paused"?"held":"idle";return `<div class="row${sc}" role="option" tabindex="0" data-agent="${a.agent_id}"><span class="pip" style="color:${col}"></span><div class="who"><div class="name">${a.name}</div><div class="meta">${sub}</div></div><div class="met"><div class="big" style="color:${col}">${Math.round(a.cpu_pct)}%</div><div class="mini"><i style="width:${a.task_id?a.task_progress*100:0}%;background:${col}"></i></div></div></div>`;}).join("");
+    }
+  }
+  function renderQueue(){
+    const q=M.tasks||[];el("qstrip").querySelector(".ql").textContent="queue · "+q.length;
+    if(!q.length){D.qchips.innerHTML='<span class="qmt">no tasks queued — idle</span>';return;}
+    D.qchips.innerHTML=q.slice(0,18).map(t=>{const s=M.stations.get(M.zone.zone_id+":"+t.tool);const c=s?s.hue:M.zone.color;return `<span class="qchip" data-tool="${t.tool}"><span class="qd" style="color:${c}"></span>${t.tool}</span>`;}).join("");
+  }
+
+  function renderInsp(){
+    if(M.scope==="network"){const z=M.zones.find(x=>x.zone_id===selected);if(!z){closeInsp();return;}const hc=HEALTH[z.health]||T.return;
+      D.insp.classList.add("on");D.iRing.style.color=z.color;D.iRing.style.background=z.color;D.iName.textContent=z.name;D.iType.textContent="MCP zone · "+(z.policy==="hipaa"?"HIPAA tenant":"local");
+      D.iBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">health</div><div class="v" style="color:${hc}">${z.health}</div></div><div class="f"><div class="k">agents</div><div class="v">${z.agents_active||0}/${z.agents_total||0} active</div></div><div class="f"><div class="k">queued</div><div class="v">${z.queued||0}</div></div><div class="f"><div class="k">throughput</div><div class="v">${z.tasks_per_min||0}/min</div></div></div><div class="barlbl"><span>utilization</span><span>${Math.round((z.utilization||0)*100)}%</span></div><div class="bar"><i style="width:${(z.utilization||0)*100}%;background:${hc};box-shadow:0 0 6px ${hc}"></i></div>`;
+      D.iActions.innerHTML=`<button class="cmd go" data-cmd="drill">Drill in</button><button class="cmd warn" data-cmd="zone.hold_all">Hold all</button><button class="cmd" data-cmd="zone.resume_all">Resume</button>`;
+      return;}
+    // zone scope: agent or station
+    if(selected&&selected.startsWith&&selected.startsWith("stn:")){const s=M.stations.get(selected.slice(4));if(!s){closeInsp();return;}
+      D.insp.classList.add("on");D.iRing.style.color=s.hue;D.iRing.style.background=s.hue;D.iName.textContent=s.name;D.iType.textContent="MCP tool · "+M.zone.name;
+      const w=s.worker_agent_id&&M.agents.get(s.worker_agent_id);
+      D.iBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">state</div><div class="v" style="color:${s.state==="busy"?T.work:T.steel}">${s.state}</div></div><div class="f"><div class="k">worker</div><div class="v">${w?w.name:"—"}</div></div></div>`;
+      D.iActions.innerHTML=`<button class="cmd go" data-cmd="task.enqueue">Queue task</button>`;return;}
+    const a=M.agents.get(selected);if(!a){closeInsp();return;}const col=aColor(a);
+    D.insp.classList.add("on");D.iRing.style.color=col;D.iRing.style.background=col;D.iName.textContent=a.name;D.iType.textContent=a.image;
+    D.iBody.innerHTML=`<div class="insp-grid"><div class="f"><div class="k">state</div><div class="v" style="color:${col}">${a.status==="running"?a.state:a.status}</div></div><div class="f"><div class="k">task</div><div class="v">${a.task_id||"—"}</div></div><div class="f"><div class="k">tool</div><div class="v">${a.station_id?a.station_id.split(":")[1]:"—"}</div></div><div class="f"><div class="k">done</div><div class="v">${a.completed_total}</div></div></div>${a.task_id?`<div class="barlbl"><span>task progress${a.eta_s!=null?" · eta "+a.eta_s+"s":""}</span><span>${Math.round(a.task_progress*100)}%</span></div><div class="bar"><i style="width:${a.task_progress*100}%;background:${col};box-shadow:0 0 6px ${col}"></i></div>`:""}<div class="barlbl"><span>cpu</span><span>${Math.round(a.cpu_pct)}%</span></div><div class="bar"><i style="width:${a.cpu_pct}%;background:${ecolor(a.cpu_pct)}"></i></div>${a.error?`<div class="barlbl" style="color:var(--alert)"><span>error</span><span>${a.error}</span></div>`:""}`;
+    const paused=a.status==="paused",exited=a.status==="exited";
+    D.iActions.innerHTML=`<button class="cmd ${paused?"on":"warn"}" data-cmd="${paused?"agent.resume":"agent.hold"}" ${exited?"disabled":""}>${paused?"Resume":"Hold"}</button><button class="cmd go" data-cmd="agent.restart">Restart</button><button class="cmd danger" data-cmd="agent.retire" ${exited?"disabled":""}>Stop</button>`;
+  }
+  function closeInsp(){D.insp.classList.remove("on");}
+
+  function pushToast(al){alertCount++;toasts.push({...al,born:performance.now()});if(toasts.length>4)toasts.shift();renderToasts();setTimeout(()=>{const i=toasts.findIndex(t=>t.alert_id===al.alert_id);if(i>=0){toasts.splice(i,1);renderToasts();}},(al.ttl_s||6)*1000);}
+  function renderToasts(){const k={info:"info",warning:"warn",critical:"bad"};D.toasts.innerHTML=toasts.map(t=>`<div class="toast ${k[t.kind]||"info"}" data-tid="${t.alert_id}"><div><div class="th">${t.title}</div><div class="tb">${t.body}</div></div><div class="tg">${Math.round((performance.now()-t.born)/1000)}s</div></div>`).join("");}
+  const WCAT={snapshot:"#4fd672",log:"#4fd672",agent:"#36c6e0",station:"#6c8cff",task:"#f2b134",zone:"#4fd672",route:"#6c8cff",metrics:"#5f717c",alert:"#ff5a52"};
+  function pushWire(env){wireLines.unshift({seq:env.seq,type:env.type,c:WCAT[env.type.split(".")[0]]||"#8a9da8"});if(wireLines.length>7)wireLines.pop();wireDirty=true;}
+  function renderWire(){D.wireC.textContent="seq "+feed.seq;if(!wireDirty)return;D.wireB.innerHTML=wireLines.map(w=>`<div class="wl"><span class="sq">${w.seq}</span><span class="ty" style="color:${w.c}">${w.type}</span></div>`).join("");wireDirty=false;}
+
+  /* ---------- selection / drill ---------- */
+  function selectZone(zid){selected=zid;renderInsp();D.insp.classList.add("on");}
+  function drill(zid){feed.setScope("zone:"+zid);}
+  function toNetwork(){feed.setScope("network");}
+  function sel(id){selected=id;renderInsp();D.insp.classList.add("on");sideDirty=true;}
+
+  /* ---------- pointer ---------- */
+  function hitNetwork(px,py){for(const z of M.zones){const p=zoneNodePos(z.zone_id);if(Math.hypot(p.x-px,p.y-py)<36+Math.min(28,(z.agents_total||0)*4))return "zone:"+z.zone_id;}return null;}
+  function hitZone(px,py){let best=null,bd=15;for(const a of M.agents.values()){const d=Math.hypot(a.x-px,a.y-py);if(d<bd){bd=d;best=a.agent_id;}}if(best)return best;for(const s of M.stations.values()){const p=stationPos(s);if(Math.hypot(p.x-px,p.y-py)<15)return "stn:"+s.station_id;}return null;}
+  function toC(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
+  canvas.addEventListener("mousemove",e=>{const p=toC(e);mouse.x=p.x;mouse.y=p.y;hovered=M.scope==="network"?hitNetwork(p.x,p.y):hitZone(p.x,p.y);canvas.style.cursor=hovered?"pointer":"default";
+    let label=null;
+    if(hovered){if(M.scope==="network"){const z=M.zones.find(z=>"zone:"+z.zone_id===hovered);if(z)label=`${z.name} <span class="s">· ${z.health} · drill in</span>`;}
+      else if(hovered.startsWith&&hovered.startsWith("stn:")){const s=M.stations.get(hovered.slice(4));if(s)label=`${s.name} <span class="s">· MCP tool</span>`;}
+      else{const a=M.agents.get(hovered);if(a)label=`${a.name} <span class="s">· ${a.task_id?Math.round(a.task_progress*100)+"%":a.status}</span>`;}}
+    if(label){D.tip.innerHTML=label;const rb=canvas.getBoundingClientRect();D.tip.style.left=(e.clientX-rb.left)+"px";D.tip.style.top=(p.y)+"px";D.tip.classList.add("on");}else D.tip.classList.remove("on");});
+  canvas.addEventListener("mouseleave",()=>{hovered=null;D.tip.classList.remove("on");canvas.style.cursor="default";});
+  canvas.addEventListener("click",e=>{const p=toC(e);if(M.scope==="network"){const h=hitNetwork(p.x,p.y);if(h)selectZone(h.slice(5));else closeInsp(),selected=null;}else{const h=hitZone(p.x,p.y);if(h)sel(h);else{selected=null;closeInsp();sideDirty=true;}}});
+  canvas.addEventListener("dblclick",e=>{if(M.scope!=="network")return;const p=toC(e),h=hitNetwork(p.x,p.y);if(h)drill(h.slice(5));});
+
+  D.sideList.addEventListener("click",e=>{const z=e.target.closest("[data-zone]"),a=e.target.closest("[data-agent]");if(z)selectZone(z.dataset.zone);else if(a)sel(a.dataset.agent);});
+  D.sideList.addEventListener("dblclick",e=>{const z=e.target.closest("[data-zone]");if(z)drill(z.dataset.zone);});
+  D.sideList.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){const z=e.target.closest("[data-zone]"),a=e.target.closest("[data-agent]");if(z){e.preventDefault();M.scope;e.shiftKey?null:selectZone(z.dataset.zone);}if(a){e.preventDefault();sel(a.dataset.agent);}}});
+  D.toasts.addEventListener("click",e=>{const t=e.target.closest("[data-tid]");if(!t)return;const f=toasts.find(x=>x.alert_id===t.dataset.tid);if(f&&f.target){if(M.scope==="zone"&&M.agents.get(f.target.id))sel(f.target.id);}});
+  D.iActions.addEventListener("click",e=>{const b=e.target.closest("[data-cmd]");if(!b||b.disabled)return;const c=b.dataset.cmd;
+    if(c==="drill"){drill(selected);return;}
+    if(c==="zone.hold_all"||c==="zone.resume_all"){feed.command(c,{type:"zone",id:selected});return;}
+    if(c==="task.enqueue"){feed.command("task.enqueue",{type:"zone"},{zone:M.zone.zone_id});return;}
+    if(selected&&!String(selected).startsWith("stn:"))feed.command(c,{type:"agent",id:selected});});
+  el("i-close").addEventListener("click",()=>{selected=null;closeInsp();sideDirty=true;});
+  D.crumbs.addEventListener("click",e=>{const b=e.target.closest("[data-go]");if(b&&b.dataset.go==="network")toNetwork();});
+  D.qchips.addEventListener("click",e=>{const c=e.target.closest("[data-tool]");if(c){const s=M.stations.get(M.zone.zone_id+":"+c.dataset.tool);if(s)sel("stn:"+s.station_id);}});
+
+  window.addEventListener("keydown",e=>{if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT")return;
+    if(e.code==="Space"){e.preventDefault();el("btn-play").click();}
+    if(e.key==="Escape"){if(M.scope==="zone")toNetwork();else{selected=null;closeInsp();}}});
+
+  /* ---------- dock ---------- */
+  el("btn-play").addEventListener("click",()=>{running=!running;el("play-label").textContent=running?"Pause":"Resume";});
+  el("btn-inject").addEventListener("click",()=>{const z=M.scope==="zone"?M.zone.zone_id:D.injZone.value;if(z)feed.command("task.enqueue",{type:"zone"},{zone:z});});
+  const sp=el("speed"),spo=el("speed-out");sp.addEventListener("input",()=>{simSpeed=parseFloat(sp.value);spo.textContent=simSpeed.toFixed(2).replace(/0$/,"")+"×";});
+  const wireEl=el("wire");el("wire-h").addEventListener("click",()=>wireEl.classList.toggle("min"));
+  if(window.matchMedia("(max-width:880px)").matches)wireEl.classList.add("min");
+
+  /* ---------- boot ---------- */
+  new ResizeObserver(()=>{DPR=Math.min(window.devicePixelRatio||1,2);layout();}).observe(canvas);
+  backend=LIVE?null:createControlPlane();feed=LIVE?createLiveFeed(FEED_BASE):createFeed(backend);window.__feed=feed;
+  layout();feed.onEnvelope(route);feed.connect();
+  let last=performance.now(),lastPanel=0;
+  function frame(now){let dt=(now-last)/1000;last=now;if(dt>0.05)dt=0.05;const sdt=running?dt*simSpeed:0;feed.tick(sdt);animate(sdt);render();renderWire();if(toasts.length)renderToasts();if(now-lastPanel>140){refresh();lastPanel=now;}requestAnimationFrame(frame);}
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
