@@ -151,6 +151,17 @@ python scripts/benchmark.py --target jd_crew --live --feed-log /tmp/feed.jsonl -
 Full walkthrough — both surfaces, the emitters, Docker, and which view when — in
 [`docs/observability.md`](docs/observability.md).
 
+To compare two runs instead of watching one — *which agent/contract/criterion
+regressed?* — diff their run directories:
+
+```bash
+python scripts/diff_runs.py --baseline runs/<base> --candidate runs/<cand> --markdown diff.md
+```
+
+It attributes drift to a specific agent boundary (criteria, blockers, schema, cost)
+and exits nonzero on a regression, so CI can gate on it. Where this is heading:
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 ---
 
 ## Adding an agent
@@ -190,6 +201,7 @@ Manual version (full detail in [`docs/agent_design_principles.md`](docs/agent_de
 | [`docs/architecture.md`](docs/architecture.md) | Second — how the pieces fit. |
 | [`docs/agent_design_principles.md`](docs/agent_design_principles.md) | Third — the opinions, before you add an agent. |
 | [`docs/observability.md`](docs/observability.md) | Watching a run — the two operator surfaces and how they're fed. |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Where this is going — operability, cross-run regression tracking. |
 | [`workflows/jd_crew_flow.md`](workflows/jd_crew_flow.md) | The flagship crew, end-to-end. |
 | [`resources/prompts/reasoning_patterns.md`](resources/prompts/reasoning_patterns.md) | Reference for prompt design. |
 | [`resources/prompts/error_handling.md`](resources/prompts/error_handling.md) | Reference for failure modes. |
