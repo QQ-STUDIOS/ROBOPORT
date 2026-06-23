@@ -135,5 +135,46 @@ def test_config_drift_is_info_not_regression(tmp_path):
                for d in env["agent_diffs"] for s in d["signals"])
 
 
+def _write_fr_run(d, final_output):
+    """A run whose final typed output is a FinalReport."""
+    d.mkdir(parents=True, exist_ok=True)
+    plan = {"goal": "g", "steps": [{"id": "synth", "owner": "synthesizer", "wave": 0,
+                                    "output_type": "FinalReport", "success_criteria": ["ok"]}]}
+    (d / "plan.json").write_text(json.dumps(plan))
+    sd = {"event": "step_done", "step_id": "synth", "status": "ok",
+          "criteria_results": [{"criterion": "ok", "passed": True}],
+          "tool_calls": 0, "llm_calls": 1}
+    (d / "run.log").write_text(json.dumps(sd) + "\n")
+    (d / "final_output.json").write_text(json.dumps(final_output))
+
+
+def _final_report(total_jobs, generated_at="2026-06-23T00:00:00Z", verdicts=None):
+    return {"generated_at": generated_at,
+            "summary": {"total_jobs": total_jobs, "verdicts": verdicts or {"apply": 2, "skip": 1}},
+            "ranked_matches": []}
+
+
+def test_stable_field_change_is_warning(tmp_path):
+    base = tmp_path / "b"; cand = tmp_path / "c"
+    _write_fr_run(base, _final_report(3))
+    _write_fr_run(cand, _final_report(1))   # summary.total_jobs is x-roboport stable
+    env = diff_runs.diff_runs(diff_runs.Run(base), diff_runs.Run(cand))
+    assert env["verdict"] == "warning"
+    sig = [s for d in env["agent_diffs"] for s in d["signals"]
+           if s["kind"] == "stable_field_changed"]
+    assert sig and "summary.total_jobs" in sig[0]["message"]
+    assert any(d["agent"] == "synthesizer" for d in env["agent_diffs"])
+
+
+def test_volatile_field_change_not_flagged(tmp_path):
+    base = tmp_path / "b"; cand = tmp_path / "c"
+    _write_fr_run(base, _final_report(3, generated_at="2026-06-23T00:00:00Z"))
+    _write_fr_run(cand, _final_report(3, generated_at="2026-06-23T09:99:99Z"))
+    env = diff_runs.diff_runs(diff_runs.Run(base), diff_runs.Run(cand))
+    assert env["verdict"] == "pass"  # generated_at is not stable-annotated
+    assert not any(s["kind"] == "stable_field_changed"
+                   for d in env["agent_diffs"] for s in d["signals"])
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
