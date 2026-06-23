@@ -7,6 +7,7 @@ behavior in the script (the last one repeats):
     {"transient": True}      -> raise TransientProviderError (retryable 5xx)
     {"fatal": True}          -> raise RuntimeError (non-retryable)
     {"content": "<json>"}    -> return that assistant content, no tool calls
+    {"content": ..., "usage": {...}} -> also surface a Phase-4 telemetry block
 """
 from __future__ import annotations
 
@@ -31,7 +32,10 @@ class FaultProvider(Provider):
             raise TransientProviderError("injected transient 5xx")
         if beh.get("fatal"):
             raise RuntimeError("injected fatal error")
-        return {"content": beh.get("content", ""), "tool_calls": beh.get("tool_calls", [])}
+        out = {"content": beh.get("content", ""), "tool_calls": beh.get("tool_calls", [])}
+        if "usage" in beh:
+            out["usage"] = beh["usage"]
+        return out
 
     def health_check(self) -> None:  # pragma: no cover - unused in tests
         pass

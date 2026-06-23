@@ -13,7 +13,7 @@ Event schema (consumed by dashboard/bridge.py and feed_adapter.js):
     {"event":"run.start","run_id":..,"crew":"jd_crew","ts":..}
     {"event":"plan.created","run_id":..,"plan":{"waves":[[..]],"steps":[..]},"ts":..}
     {"event":"step.start","step_id":..,"agent":"job_scout","wave":0,"ts":..}
-    {"event":"step.complete","step_id":..,"agent":..,"duration_ms":3421,"llm_calls":1,"tool_calls":5,"ts":..}
+    {"event":"step.complete","step_id":..,"agent":..,"duration_ms":3421,"llm_calls":1,"tool_calls":5,"provider":"ollama","model":"qwen3:14b","cost_usd":0.0,"latency_ms":3380,"ts":..}
     {"event":"step.failed","step_id":..,"agent":..,"error":..,"layer":"criterion_failed","ts":..}
     {"event":"run.complete","run_summary":{"steps":5,"llm_calls":4,"tool_calls":12,"wall_ms":..,"p95_ms":..},"ts":..}
 
@@ -77,9 +77,20 @@ class RunLog:
         self._write("tool.call", step_id=step_id, tool=tool)
 
     def step_complete(self, step_id: str, agent: str, duration_ms: int,
-                      llm_calls: int = 0, tool_calls: int = 0) -> None:
+                      llm_calls: int = 0, tool_calls: int = 0,
+                      provider: Optional[str] = None, model: Optional[str] = None,
+                      cost_usd: Optional[float] = None,
+                      latency_ms: Optional[int] = None) -> None:
+        # Phase 4: optional routing telemetry — only emitted when present, so the
+        # event stays backward-compatible with the stub runtime and the dashboard.
+        extra: dict[str, Any] = {}
+        for key, val in (("provider", provider), ("model", model),
+                         ("cost_usd", cost_usd), ("latency_ms", latency_ms)):
+            if val is not None:
+                extra[key] = val
         self._write("step.complete", step_id=step_id, agent=agent,
-                    duration_ms=duration_ms, llm_calls=llm_calls, tool_calls=tool_calls)
+                    duration_ms=duration_ms, llm_calls=llm_calls, tool_calls=tool_calls,
+                    **extra)
 
     def step_failed(self, step_id: str, agent: str, error: Optional[str],
                     layer: str = "criterion_failed") -> None:

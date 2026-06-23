@@ -297,9 +297,9 @@ behavior.
 > — gated by the CI Tests job, so a layer that stops firing fails the build.
 > Provider/budget/unsafe failures carry a `layer`; steps report `retries`/`repaired`.
 >
-> Still open (carried into Phase 4 prep): wiring the `FaultProvider` into a `--live`
-> `evals/fault_injection.json` benchmark set, and extracting the richer
-> `Response{cost,latency,...}` shape (the Phase-4 routing foundation) onto the seam.
+> The richer `Response{cost,latency,...}` shape (the Phase-4 routing foundation) has
+> since landed on the seam — see Phase 4. Still open: wiring the `FaultProvider` into a
+> `--live` `evals/fault_injection.json` benchmark set.
 
 Fault-injection evals:
 
@@ -328,14 +328,33 @@ cost/latency fields). Pull a thin protocol forward into Phase 1/0 enabling work;
 CI must run without paid or local model dependencies, and must fail if any fault
 eval loses a blocker.
 
-## Phase 4: Observability-aware routing
+## Phase 4: Observability-aware routing — **v1 shipped (telemetry foundation)**
 
 **Goal:** make provider/model routing operationally visible and eventually
 self-tuning.
 
+> **Status:** v1 landed — the **telemetry foundation** (tasks 1–2). The Provider seam
+> now returns a `Response`-style `usage` block on every call —
+> `{provider, model, prompt_tokens, completion_tokens, cost_usd, latency_ms}` — for
+> both `OllamaProvider` (token counts from the `/api/chat` response; local cost 0.0)
+> and `AnthropicProvider` (`resp.usage` + a per-model price table). The executor
+> **accumulates** it across a step's calls (the schema-repair pass included) onto the
+> step result, `benchmark.py` writes it on every `step_done` and rolls it into a
+> **per-agent `routing` summary in `summary.json`**, and `run.log` `step.complete`
+> carries it for the dashboard. Cost is honest: `cost_for(...)` returns **None** for an
+> unknown model (never a fabricated number), and any unknown-cost step makes the
+> rollup's `cost_usd` None rather than a partial total. Prices override via
+> `config/pricing.yaml` or `ROBOPORT_PRICING`. Proven offline by `tests/test_pricing.py`
+> and `tests/test_telemetry.py` (executor accumulation + the `routing_summary` rollup),
+> gated by the CI Tests job.
+>
+> Still open (v1.x / v2): task 3 (teach `aggregate.py` to report cost/latency per
+> *passing* run and blocker pass-rate by provider/model) and task 4 (the routing
+> policy file + a routing provider that acts on the telemetry).
+
 1. Expand run-log events with provider, model, model_hint, prompt/completion
-   tokens, `cost_usd` (when available), `latency_ms`, `retry_count`.
-2. Add a per-agent routing summary to `summary.json`.
+   tokens, `cost_usd` (when available), `latency_ms`, `retry_count`. ✅
+2. Add a per-agent routing summary to `summary.json`. ✅
 3. Teach `aggregate.py` to report cost/latency per *passing* run and blocker pass
    rate by provider/model, and to flag cost/latency regressions by agent.
 4. Add an optional routing policy file:
@@ -409,7 +428,7 @@ exit-code contract:
 ### P1
 - ~~A fake provider / `Provider`-seam fault harness + Layer-1 proof.~~ **Done (Phase 3 v1).** A live `evals/fault_injection.json` benchmark set is still open.
 - Dashboard diff event support + `diff_against_baseline.json` file-drop.
-- Provider/model/cost/latency fields on run events.
+- ~~Provider/model/cost/latency fields on run events.~~ **Done (Phase 4 v1).**
 - ~~Stable-field (`x-roboport`) annotations in `output.schema.json`.~~ **Done (Phase 1.x).**
 
 ### P2

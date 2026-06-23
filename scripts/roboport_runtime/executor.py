@@ -82,10 +82,46 @@ def _chat_retry(p, **kw) -> tuple[dict, int]:
             retries += 1
 
 
+def _new_telemetry() -> dict:
+    """Phase 4: per-step routing telemetry, accumulated across the step's calls."""
+    return {"provider": None, "model": None, "prompt_tokens": 0,
+            "completion_tokens": 0, "cost_usd": 0.0, "latency_ms": 0,
+            "cost_unknown": False}
+
+
+def _accumulate(tele: dict, usage: dict | None) -> None:
+    """Fold one call's `usage` block into the step telemetry. Cost is summed only
+    while every call's cost is known; an unknown cost makes the step total None."""
+    if not usage:
+        return
+    tele["provider"] = usage.get("provider") or tele["provider"]
+    tele["model"] = usage.get("model") or tele["model"]
+    tele["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
+    tele["completion_tokens"] += int(usage.get("completion_tokens") or 0)
+    tele["latency_ms"] += int(usage.get("latency_ms") or 0)
+    cost = usage.get("cost_usd")
+    if cost is None:
+        tele["cost_unknown"] = True
+    else:
+        tele["cost_usd"] += float(cost)
+
+
+def _telemetry_fields(tele: dict) -> dict:
+    """The telemetry subset added to a step result."""
+    return {
+        "provider": tele["provider"],
+        "model": tele["model"],
+        "prompt_tokens": tele["prompt_tokens"],
+        "completion_tokens": tele["completion_tokens"],
+        "cost_usd": None if tele["cost_unknown"] else round(tele["cost_usd"], 6),
+        "latency_ms": tele["latency_ms"],
+    }
+
+
 def _repair_schema(p, system: str, history: list, bad_content: str,
                    issues: list[str], output_type: str, model_hint: str):
     """Layer 1: one repair pass — re-prompt with the validation errors and ask
-    for corrected JSON. Returns the reparsed result dict, or None if it didn't."""
+    for corrected JSON. Returns (reparsed result dict | None, usage | None)."""
     repair_messages = history + [
         {"role": "assistant", "content": bad_content},
         {"role": "user", "content":
@@ -96,9 +132,9 @@ def _repair_schema(p, system: str, history: list, bad_content: str,
     try:
         out, _ = _chat_retry(p, system=system, messages=repair_messages,
                              tools=None, force_json=True, model_hint=model_hint)
-        return _parse_json(out["content"])
+        return _parse_json(out["content"]), out.get("usage")
     except (TransientProviderError, json.JSONDecodeError, Exception):  # noqa: BLE001
-        return None
+        return None, None
 
 
 @functools.lru_cache(maxsize=1)
@@ -203,6 +239,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
     llm_calls = 0
     tool_calls_total = 0
     retries_total = 0
+    tele = _new_telemetry()
 
     for round_idx in range(MAX_TOOL_ROUNDS):
         is_final_round = round_idx == MAX_TOOL_ROUNDS - 1
@@ -222,6 +259,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
                 model_hint=model_hint,
             )
             retries_total += r
+            _accumulate(tele, out.get("usage"))
         except TransientProviderError as e:
             # Layer 1 exhausted — fail loudly with the call-level layer named.
             return _failed(step, f"{p.name} transient error after {MAX_PROVIDER_RETRIES} "
@@ -310,11 +348,13 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
             issues = _validate_against(output_schema, result.get("output", {}))
             if issues:
                 # one repair pass — but only if the budget still allows a call
-                fixed = (_repair_schema(p, system_spec, messages, content,
-                                        issues, output_type, model_hint)
-                         if llm_calls < budget["max_llm_calls"] else None)
+                fixed, repair_usage = (
+                    _repair_schema(p, system_spec, messages, content,
+                                   issues, output_type, model_hint)
+                    if llm_calls < budget["max_llm_calls"] else (None, None))
                 if fixed is not None:
                     llm_calls += 1
+                    _accumulate(tele, repair_usage)
                     result = fixed
                     repaired = True
                     criteria_results = list(result.get("criteria_results", []) or [])
@@ -346,6 +386,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
             "llm_calls": llm_calls,
             "retries": retries_total,
             "repaired": repaired,
+            **_telemetry_fields(tele),
             "transcript_path": None,
             "error": result.get("error"),
         }
@@ -369,6 +410,7 @@ def _ok(step: dict, owner: str, output: dict, llm_calls: int) -> dict[str, Any]:
         "llm_calls": llm_calls,
         "retries": 0,
         "repaired": False,
+        **_telemetry_fields(_new_telemetry()),
         "transcript_path": None,
         "error": None,
     }
