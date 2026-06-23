@@ -171,8 +171,9 @@ and exits nonzero on a regression, so CI can gate on it. Where this is heading:
 Every live call also carries **routing telemetry** — provider, model, prompt/completion
 tokens, `cost_usd` (priced per model; `None` when unknown rather than guessed), and
 `latency_ms` — accumulated per step, written to `run.log`, and rolled up into a per-agent
-`routing` summary in each benchmark's `summary.json`. That's the foundation for
-cost/latency-aware routing (Phase 4).
+`routing` summary in each benchmark's `summary.json`. `aggregate.py` reports cost/latency
+per *passing* run and by provider/model, and `--compare` flags per-agent cost/latency
+regressions. That's the foundation for cost/latency-aware routing (Phase 4).
 
 ---
 
