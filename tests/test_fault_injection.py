@@ -36,11 +36,16 @@ INVALID = json.dumps({
 })
 
 
-def _run(monkeypatch, script, *, output_type="FinalReport"):
+TOOL_CALL = [{"id": "c0", "name": "x", "arguments": {}}]
+
+
+def _run(monkeypatch, script, *, output_type="FinalReport", config=None):
     fp = FaultProvider(script)
     monkeypatch.setattr(executor, "provider", lambda: fp)
     monkeypatch.setattr(executor, "load_agent_spec", lambda *_: "spec")
     monkeypatch.setattr(executor, "_agent_tools_for", lambda *_: [])
+    if config is not None:
+        monkeypatch.setattr(executor, "_agent_config", lambda: config)
     step = {"id": "s1", "owner": "tester", "wave": 0, "input": {},
             "output_type": output_type, "success_criteria": ["produce output"]}
     return executor.call_executor(step, {}, REGISTRY), fp
@@ -94,6 +99,24 @@ def test_quiet_200_empty_list_is_flagged(monkeypatch):
     empty = json.dumps({"status": "ok", "output": [], "criteria_results": [], "error": None})
     result, _ = _run(monkeypatch, [{"content": empty}], output_type="list[Job]")
     assert any("quiet-200" in c["criterion"] for c in _failed_criteria(result))
+
+
+def test_llm_budget_exceeded_aborts(monkeypatch):
+    """Layer 2: too many LLM calls aborts loudly with layer=budget_exceeded."""
+    cfg = {"budgets": {"per_agent": {"max_llm_calls": 2, "max_tool_calls": 50}}}
+    result, _ = _run(monkeypatch, [{"tool_calls": TOOL_CALL}], config=cfg)  # loops on tool calls
+    assert result["status"] == "failed"
+    assert result["layer"] == "budget_exceeded"
+    assert "llm calls" in result["error"]
+
+
+def test_tool_budget_exceeded_aborts(monkeypatch):
+    """Layer 2: too many tool calls aborts loudly with layer=budget_exceeded."""
+    cfg = {"budgets": {"per_agent": {"max_llm_calls": 10, "max_tool_calls": 1}}}
+    result, _ = _run(monkeypatch, [{"tool_calls": TOOL_CALL}], config=cfg)
+    assert result["status"] == "failed"
+    assert result["layer"] == "budget_exceeded"
+    assert "tool calls" in result["error"]
 
 
 if __name__ == "__main__":

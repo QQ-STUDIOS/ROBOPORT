@@ -275,21 +275,24 @@ investigation surface.
 **Goal:** turn the three-layer error stack from documented doctrine into enforced
 behavior.
 
-> **Status:** v1 landed. The runtime now has a retryable-error type on the Provider
-> seam (`TransientProviderError`), and the executor enforces **Layer 1**: bounded
-> retries on transient (5xx) failures, a one-shot **schema-repair** pass before a
-> schema mismatch is recorded, and a **quiet-200 guard** (an empty search result
-> fails loudly instead of passing on). A deterministic `FaultProvider`
-> (`tests/fault_provider.py`) injects faults with no model, and
-> `tests/test_fault_injection.py` proves each behavior offline — gated by the CI
-> Tests job, so a layer that stops firing fails the build. Provider failures now
-> carry a `layer` and steps report `retries`/`repaired`.
+> **Status:** v1 + Layer 2 landed. The runtime has a retryable-error type on the
+> Provider seam (`TransientProviderError`), and the executor enforces:
+> - **Layer 1** — bounded retries on transient (5xx) failures, a one-shot
+>   **schema-repair** pass before a schema mismatch is recorded, and a
+>   **quiet-200 guard** (an empty search result fails loudly instead of passing on).
+> - **Layer 2** — a per-agent **call budget** (`budgets.per_agent` in
+>   `agent_config.yaml`, or an agent override) aborts loudly with
+>   `layer="budget_exceeded"` when LLM/tool calls exceed the cap; the repair pass is
+>   itself budget-gated.
 >
-> Still open: **Layer 2** budget-abort as a first-class eval and **Layer 3**
-> unsafe-action escalation; wiring the `FaultProvider` into a `--live`
-> `evals/fault_injection.json` benchmark set; and extracting the richer
-> `Response{cost,latency,...}` shape (the Phase-4 routing foundation) onto the same
-> seam.
+> A deterministic `FaultProvider` (`tests/fault_provider.py`) injects faults with no
+> model, and `tests/test_fault_injection.py` proves each behavior offline (incl. both
+> budget caps) — gated by the CI Tests job, so a layer that stops firing fails the
+> build. Provider/budget failures carry a `layer`; steps report `retries`/`repaired`.
+>
+> Still open: **Layer 3** unsafe-action escalation; wiring the `FaultProvider` into a
+> `--live` `evals/fault_injection.json` benchmark set; and extracting the richer
+> `Response{cost,latency,...}` shape (the Phase-4 routing foundation) onto the seam.
 
 Fault-injection evals:
 

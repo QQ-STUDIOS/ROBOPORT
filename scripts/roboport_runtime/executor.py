@@ -12,6 +12,30 @@ from .tools import dispatch, load_agent_tool_map, schemas_for
 
 MAX_TOOL_ROUNDS = 6
 MAX_PROVIDER_RETRIES = 2   # Layer 1: bounded retries on transient (5xx) failures
+DEFAULT_BUDGET = {"max_llm_calls": 8, "max_tool_calls": 20}
+
+
+@functools.lru_cache(maxsize=1)
+def _agent_config() -> dict:
+    try:
+        import yaml  # noqa: PLC0415
+        return yaml.safe_load(
+            (REPO / "config" / "agent_config.yaml").read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 — budgets fall back to defaults without config
+        return {}
+
+
+def _budget_for(owner: str, config: dict) -> dict:
+    """Layer 2: the per-step call budget for an agent — its override, else the
+    config's per_agent budget, else a safe default."""
+    over = ((config.get("agent_overrides") or {}).get(owner) or {}).get("budget") or {}
+    base = (config.get("budgets") or {}).get("per_agent") or {}
+    return {
+        "max_llm_calls": int(over.get("max_llm_calls",
+                             base.get("max_llm_calls", DEFAULT_BUDGET["max_llm_calls"]))),
+        "max_tool_calls": int(over.get("max_tool_calls",
+                              base.get("max_tool_calls", DEFAULT_BUDGET["max_tool_calls"]))),
+    }
 
 
 def _chat_retry(p, **kw) -> tuple[dict, int]:
@@ -110,6 +134,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
     model_hint = agent_meta.get("model_hint", "any")
     output_type = step.get("output_type", "object")
     output_schema = _resolve_output_schema(output_type)
+    budget = _budget_for(owner, _agent_config())
 
     user_prompt = (
         f"STEP\nid: {step['id']}\nwave: {step.get('wave', 0)}\n"
@@ -148,6 +173,12 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
 
     for round_idx in range(MAX_TOOL_ROUNDS):
         is_final_round = round_idx == MAX_TOOL_ROUNDS - 1
+        # Layer 2: abort loudly before exceeding the per-agent call budget.
+        if llm_calls >= budget["max_llm_calls"]:
+            return _failed(step, f"per-agent budget exceeded: {llm_calls} llm calls "
+                           f">= {budget['max_llm_calls']}", llm_calls=llm_calls,
+                           tool_calls=tool_calls_total, layer="budget_exceeded",
+                           retries=retries_total)
         try:
             out, r = _chat_retry(
                 p,
@@ -196,6 +227,11 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
                     "tool_use_id": tc["id"],  # used by Anthropic provider
                     "content": json.dumps(result, default=str),
                 })
+            if tool_calls_total > budget["max_tool_calls"]:
+                return _failed(step, f"per-agent budget exceeded: {tool_calls_total} tool "
+                               f"calls > {budget['max_tool_calls']}", llm_calls=llm_calls,
+                               tool_calls=tool_calls_total, layer="budget_exceeded",
+                               retries=retries_total)
             continue
 
         if not content.strip():
@@ -228,8 +264,10 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
         if output_schema is not None:
             issues = _validate_against(output_schema, result.get("output", {}))
             if issues:
-                fixed = _repair_schema(p, system_spec, messages, content,
-                                       issues, output_type, model_hint)
+                # one repair pass — but only if the budget still allows a call
+                fixed = (_repair_schema(p, system_spec, messages, content,
+                                        issues, output_type, model_hint)
+                         if llm_calls < budget["max_llm_calls"] else None)
                 if fixed is not None:
                     llm_calls += 1
                     result = fixed
