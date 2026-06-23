@@ -131,10 +131,9 @@ The phase table hides three ordering facts that will bite if ignored:
 
 1. **Per-step metadata for diffing is a Phase 1 blocker, not P0 backlog.** The
    benchmark run-dir `run.log` carries `status`, `criteria_results`, `tool_calls`,
-   `llm_calls` per `step_done` — but **no per-step latency** (that lives only in
-   the separate Ops Console log). Add `duration_ms` (and the config fingerprint) to
-   `step_done` so latency/comparability dimensions become real. `diff_runs` already
-   reads `duration_ms` if present.
+   `llm_calls` per `step_done` — and now **`duration_ms` + a `config_fp`
+   fingerprint** (Phase 1.x), so `diff_runs`' latency and comparability dimensions
+   are real rather than forward-compatible stubs. ✅
 2. **Phase 2 depends on a frozen, versioned Phase 1 JSON contract.** The dashboard
    parses the diff JSON; don't touch `feed_adapter.js` until the diff schema has a
    version field.
@@ -232,8 +231,11 @@ Implementation notes: JSON parsing (not string diff); canonical key order; absen
 optional artifacts → `inconclusive`, not pass; offline (no live provider); reuses
 `resources/schemas/output.schema.json`.
 
-Still open for Phase 1.x: stable-field annotations; config-fingerprint
-comparability; per-step latency once `benchmark.py` logs `duration_ms`.
+Phase 1.x — **landed:** `benchmark.py` now writes `duration_ms` + a `config_fp`
+fingerprint on every `step_done`, so `diff_runs` populates the **latency** dimension
+(a material per-step slowdown is a warning) and surfaces **config drift** (a changed
+model/route/spec fingerprint, shown as info so cross-config comparisons stay valid).
+Still open: schema-declared stable-field annotations.
 
 ## Phase 2: Make the dashboard load-bearing — **v1 shipped**
 
@@ -371,7 +373,7 @@ exit-code contract:
 - ~~Unit fixtures for pass, schema drift, blocker drift, cost drift.~~ **Done.**
 - Add `docs/OPERABILITY_BASELINE.md`.
 - Add blockers to every eval in `evals/evals.json`.
-- Add `duration_ms` + config fingerprint to `step_done` in `benchmark.py`.
+- ~~Add `duration_ms` + config fingerprint to `step_done` in `benchmark.py`.~~ **Done (Phase 1.x).**
 
 ### P1
 - Add `evals/fault_injection.json` + a fake provider / `Provider` protocol seam.

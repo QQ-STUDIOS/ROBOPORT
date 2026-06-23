@@ -93,5 +93,47 @@ def test_exit_codes(tmp_path):
                            "--fail-on", "warning", "--quiet"]) == 1
 
 
+def _write_min_run(d, *, duration_ms, config_fp, llm_calls=1):
+    """Minimal run dir: one synthesizer step with the given latency/fingerprint."""
+    d.mkdir(parents=True, exist_ok=True)
+    plan = {"goal": "g", "steps": [{"id": "synth", "owner": "synthesizer", "wave": 0,
+                                    "output_type": "object", "success_criteria": ["ok"]}]}
+    (d / "plan.json").write_text(json.dumps(plan))
+    sd = {"event": "step_done", "step_id": "synth", "status": "ok",
+          "criteria_results": [{"criterion": "ok", "passed": True}],
+          "tool_calls": 0, "llm_calls": llm_calls,
+          "duration_ms": duration_ms, "config_fp": config_fp}
+    (d / "run.log").write_text(json.dumps(sd) + "\n")
+
+
+def test_material_latency_increase_is_warning(tmp_path):
+    base = tmp_path / "b"; cand = tmp_path / "c"
+    _write_min_run(base, duration_ms=1000, config_fp="fp1")
+    _write_min_run(cand, duration_ms=2000, config_fp="fp1")
+    env = diff_runs.diff_runs(diff_runs.Run(base), diff_runs.Run(cand))
+    assert env["verdict"] == "warning"
+    assert env["summary"]["latency_delta_ms"] == 1000
+    assert any(s["kind"] == "latency_increase"
+               for d in env["agent_diffs"] for s in d["signals"])
+
+
+def test_small_latency_jitter_is_ignored(tmp_path):
+    base = tmp_path / "b"; cand = tmp_path / "c"
+    _write_min_run(base, duration_ms=1000, config_fp="fp1")
+    _write_min_run(cand, duration_ms=1100, config_fp="fp1")  # +100ms, below threshold
+    env = diff_runs.diff_runs(diff_runs.Run(base), diff_runs.Run(cand))
+    assert env["verdict"] == "pass"
+
+
+def test_config_drift_is_info_not_regression(tmp_path):
+    base = tmp_path / "b"; cand = tmp_path / "c"
+    _write_min_run(base, duration_ms=1000, config_fp="fp_ollama")
+    _write_min_run(cand, duration_ms=1000, config_fp="fp_anthropic")  # different model/route
+    env = diff_runs.diff_runs(diff_runs.Run(base), diff_runs.Run(cand))
+    assert env["verdict"] == "pass"  # config drift alone doesn't fail the build
+    assert any(s["kind"] == "config_changed"
+               for d in env["agent_diffs"] for s in d["signals"])
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
