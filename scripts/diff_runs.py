@@ -166,6 +166,60 @@ def _schema_validity(instance: Any, output_type: Optional[str]) -> Optional[bool
         return None
 
 
+# --- stable-field comparison (schema-declared reproducible subtrees) ---------
+
+def _collect_stable(schema: Any, defs: dict, instance: Any,
+                    path: str, out: dict, seen: tuple = ()) -> None:
+    """Walk an output schema; snapshot the value at every subtree marked
+    `x-roboport.stable` (these are fields that *should* reproduce run-to-run)."""
+    while isinstance(schema, dict) and "$ref" in schema:        # resolve $ref chains
+        name = schema["$ref"].split("/")[-1]
+        if name in seen:
+            return
+        seen = seen + (name,)
+        schema = defs.get(name, {})
+    if not isinstance(schema, dict):
+        return
+    if (schema.get("x-roboport") or {}).get("stable"):
+        out[path] = instance
+        return
+    props = schema.get("properties")
+    if props and isinstance(instance, dict):
+        for k, sub in props.items():
+            if k in instance:
+                _collect_stable(sub, defs, instance[k], f"{path}.{k}" if path else k, out, seen)
+    items = schema.get("items")
+    if items and isinstance(instance, list):
+        for i, el in enumerate(instance):
+            _collect_stable(items, defs, el, f"{path}[{i}]", out, seen)
+
+
+def _stable_field_signals(baseline: "Run", candidate: "Run") -> list[dict]:
+    """A stable field that changed value between runs is a warning — the strongest
+    *content* signal, between hard criteria/schema regressions and volatile prose."""
+    full = _load_json(OUTPUT_SCHEMA) or {}
+    defs = full.get("definitions") or {}
+    ot = candidate.final_output_type or baseline.final_output_type
+    if not ot or ot not in defs:
+        return []
+    root = {"$ref": f"#/definitions/{ot}"}
+    bmap: dict = {}
+    cmap: dict = {}
+    if baseline.final_output is not None:
+        _collect_stable(root, defs, baseline.final_output, "", bmap)
+    if candidate.final_output is not None:
+        _collect_stable(root, defs, candidate.final_output, "", cmap)
+    sigs = []
+    for p in sorted(set(bmap) & set(cmap)):
+        if bmap[p] != cmap[p]:
+            sigs.append({
+                "kind": "stable_field_changed", "severity": "warning",
+                "message": (f"stable field changed: {p} "
+                            f"({json.dumps(bmap[p])} -> {json.dumps(cmap[p])})")[:160],
+                "baseline": bmap[p], "candidate": cmap[p]})
+    return sigs
+
+
 # --- content diff (informational only in Phase 1) ----------------------------
 
 def _content_changes(base: Any, cand: Any, prefix: str = "") -> list[dict]:
@@ -299,6 +353,16 @@ def diff_runs(baseline: Run, candidate: Run) -> dict:
                                     f"{candidate.final_output_type}",
                          "baseline": "VALID", "candidate": "INVALID"}],
             "recommended_next_action": f"run analyzer on {agent} with baseline/candidate context",
+        })
+
+    # 2c) stable-field drift on the final typed output (schema-declared).
+    stable_sigs = _stable_field_signals(baseline, candidate)
+    if stable_sigs:
+        agent = type_to_agent.get(candidate.final_output_type or "", "(final_output)")
+        agent_diffs.append({
+            "agent": agent, "step_id": "(final_output)",
+            "contract": candidate.final_output_type, "severity": "warning",
+            "signals": stable_sigs,
         })
 
     # 2b) the run itself going from ok -> failed

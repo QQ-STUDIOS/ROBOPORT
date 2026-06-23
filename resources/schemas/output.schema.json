@@ -127,8 +127,8 @@
           "type": "object",
           "required": ["total_jobs", "verdicts"],
           "properties": {
-            "total_jobs": { "type": "integer", "minimum": 0 },
-            "verdicts":   { "type": "object" }
+            "total_jobs": { "type": "integer", "minimum": 0, "x-roboport": { "stable": true } },
+            "verdicts":   { "type": "object", "x-roboport": { "stable": true } }
           }
         },
         "ranked_matches": {

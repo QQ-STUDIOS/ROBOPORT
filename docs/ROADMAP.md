@@ -81,10 +81,10 @@ determinism:
 
 Two refinements:
 
-- **Schema-declared field stability** — annotate fields that *should* be
-  reproducible (IDs, enums, counts, booleans) in `output.schema.json` (e.g.
-  `x-roboport: { stable: true }`) so content diff focuses there and ignores
-  volatile narrative.
+- **Schema-declared field stability** *(implemented)* — fields that *should* be
+  reproducible are annotated `x-roboport: { stable: true }` in `output.schema.json`,
+  so `diff_runs` compares exactly those (a changed stable field is a warning) and
+  ignores volatile narrative.
 - The virtuous consequence: **the quality of `diff_runs` is bounded by the quality
   of your criteria** — exactly the pressure the "evals are part of the agent"
   principle already wants.
@@ -235,7 +235,12 @@ Phase 1.x — **landed:** `benchmark.py` now writes `duration_ms` + a `config_fp
 fingerprint on every `step_done`, so `diff_runs` populates the **latency** dimension
 (a material per-step slowdown is a warning) and surfaces **config drift** (a changed
 model/route/spec fingerprint, shown as info so cross-config comparisons stay valid).
-Still open: schema-declared stable-field annotations.
+**Stable-field annotations have also landed:** `output.schema.json` marks reproducible
+subtrees with `x-roboport: { stable: true }` (currently `FinalReport.summary.total_jobs`
+and `.verdicts`), and `diff_runs` compares exactly those — a changed stable field is a
+**warning**, the strongest *content* signal, between hard regressions and volatile
+prose. (`x-roboport` is an unknown keyword to JSON-Schema validators, so it is ignored
+by validation.) Future: annotate array-internal fields once run ordering is normalized.
 
 ## Phase 2: Make the dashboard load-bearing — **v1 shipped**
 
@@ -379,7 +384,7 @@ exit-code contract:
 - Add `evals/fault_injection.json` + a fake provider / `Provider` protocol seam.
 - Dashboard diff event support + `diff_against_baseline.json` file-drop.
 - Provider/model/cost/latency fields on run events.
-- Stable-field (`x-roboport`) annotations in `output.schema.json`.
+- ~~Stable-field (`x-roboport`) annotations in `output.schema.json`.~~ **Done (Phase 1.x).**
 
 ### P2
 - Routing policy config; aggregate cost-per-passing-run reports.
