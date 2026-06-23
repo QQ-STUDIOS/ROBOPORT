@@ -359,6 +359,88 @@ def translate(ev: dict, state: RunState) -> list[dict]:
     return out
 
 
+# ── Diff overlay: diff_runs.py output → console envelopes ─────────────────────
+# Renders a cross-run regression diff (scripts/diff_runs.py) onto the same
+# console, reusing the existing envelope vocabulary: a flagged agent becomes a
+# station-targeted alert (red = regression, amber = warning/inconclusive) — the
+# same ring mechanism step.failed uses — plus a readable log of every signal.
+STATION_IDS = {s["station_id"] for s in STATIONS}
+DIFF_KIND = {"regression": "critical", "warning": "warning",
+             "inconclusive": "warning", "info": "warning"}
+DIFF_COLOR = {"pass": "#4fd672", "warning": "#f2b134",
+              "regression": "#ff5a52", "inconclusive": "#8a9da8", "info": "#4fd672"}
+
+
+def diff_to_envelopes(diff: dict) -> list[dict]:
+    """Translate a diff_runs envelope into console envelopes (snapshot first)."""
+    out: list[dict] = []
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    def log(html: str):
+        out.append(make_envelope("log.appended", {"html": html, "ts": ts}))
+
+    out.append(make_envelope("snapshot", make_snapshot(diff.get("candidate") or "diff")))
+
+    verdict = diff.get("verdict") or "pass"
+    log(f'<b style="color:{DIFF_COLOR.get(verdict, "#8a9da8")}">RUN DIFF · {verdict.upper()}</b>')
+    log(f'<span style="color:#8a9da8">baseline</span> {diff.get("baseline", "?")}')
+    log(f'<span style="color:#8a9da8">candidate</span> {diff.get("candidate", "?")}')
+    s = diff.get("summary") or {}
+    if s:
+        log('changed: '
+            f'{", ".join(s.get("changed_agents") or []) or "(none)"} · '
+            f'blocker fails: {s.get("new_blocker_failures", 0)} · '
+            f'schema regs: {s.get("schema_regressions", 0)} · '
+            f'Δllm {s.get("cost_delta_llm_calls", 0):+d} · '
+            f'Δtool {s.get("cost_delta_tool_calls", 0):+d}')
+
+    for d in diff.get("agent_diffs", []):
+        sid = d.get("agent") or "?"
+        sev = d.get("severity") or "info"
+        contract = d.get("contract")
+        signals = d.get("signals") or []
+        body = ("; ".join(sig.get("message", "") for sig in signals)) or sev
+        if contract:
+            body = f"[{contract}] {body}"
+        if d.get("recommended_next_action"):
+            body += f" — next: {d['recommended_next_action']}"
+        target = {"type": "station", "id": sid} if sid in STATION_IDS else {"type": "port"}
+        if sev in ("regression", "warning", "inconclusive"):
+            out.append(make_envelope("alert.raised", {
+                "alert_id": f"al_diff_{next_seq()}",
+                "kind": DIFF_KIND.get(sev, "warning"),
+                "title": f"{sid} · {sev}",
+                "body": body,
+                "target": target,
+                "raised_at": ts, "ttl_s": 600,
+            }))
+            if sid in STATION_IDS:
+                out.append(make_envelope("station.updated", {
+                    "station_id": sid, "name": sid,
+                    "state": "drain" if sev == "regression" else "busy",
+                    "worker_agent_id": None, "queue_depth": 0,
+                    "drain": sev == "regression", "rev": 1,
+                }))
+        col = DIFF_COLOR.get(sev, "#8a9da8")
+        for sig in signals:
+            log(f'<b style="color:{col}">{sig.get("kind", "?")}</b> · '
+                f'<b style="color:{hue(sid)}">{sid}</b> · {sig.get("message", "")}')
+    if not diff.get("agent_diffs"):
+        log('<span style="color:#4fd672">no differences detected</span>')
+    return out
+
+
+def load_or_compute_diff(diff_file: str | None,
+                         baseline: str | None, candidate: str | None) -> dict:
+    """A precomputed diff JSON (--diff), or compute one via scripts/diff_runs.py."""
+    if diff_file:
+        return json.loads(Path(diff_file).read_text(encoding="utf-8"))
+    scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
+    sys.path.insert(0, str(scripts_dir))
+    import diff_runs  # type: ignore
+    return diff_runs.diff_runs(diff_runs.Run(Path(baseline)), diff_runs.Run(Path(candidate)))
+
+
 # ── File tailer ───────────────────────────────────────────────────────────────
 def tail_log(log_path: Path, state: RunState, stop_event: threading.Event):
     """Tail a JSONL run log and broadcast translated envelopes."""
@@ -576,9 +658,31 @@ def main():
     group.add_argument("--runs-dir", help="Directory containing run subdirectories")
     group.add_argument("--run-id",   help="Specific run ID under runs/")
     group.add_argument("--log-file", help="Path to a run_log.jsonl / run.log file")
+    group.add_argument("--diff", help="Render a precomputed diff_runs JSON as a regression overlay")
+    parser.add_argument("--baseline", help="Baseline run dir (with --candidate: compute + render a diff)")
+    parser.add_argument("--candidate", help="Candidate run dir (with --baseline: compute + render a diff)")
     parser.add_argument("--port", type=int, default=4242, help="HTTP port (default 4242)")
     parser.add_argument("--runs-base", default="runs", help="Base runs directory (default: runs)")
     args = parser.parse_args()
+
+    # ── Diff overlay mode: render a regression comparison, then serve it. ──
+    if args.diff or (args.baseline and args.candidate):
+        try:
+            diff = load_or_compute_diff(args.diff, args.baseline, args.candidate)
+        except (OSError, json.JSONDecodeError, KeyError) as e:
+            sys.exit(f"[bridge] could not load diff: {e}")
+        for env in diff_to_envelopes(diff):
+            broadcast(env)
+        server = HTTPServer(("0.0.0.0", args.port), Handler)
+        print(f"[bridge] Diff overlay · verdict={diff.get('verdict')} · "
+              f"{len(diff.get('agent_diffs', []))} agent diff(s)", flush=True)
+        print(f"[bridge] Listening on http://localhost:{args.port}", flush=True)
+        print(f"[bridge] Open: Roboport Ops Console.dc.html?api=http://localhost:{args.port}", flush=True)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\n[bridge] Stopped.")
+        return
 
     log_path: Optional[Path] = None
 
