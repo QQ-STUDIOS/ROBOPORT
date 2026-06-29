@@ -15,4 +15,4 @@ pytest>=9.0.3
 pytest-cov>=7.1.0
 
 # Supply-chain audit (also run in CI)
-pip-audit>=2.10.0
+pip-audit>=2.10.1
