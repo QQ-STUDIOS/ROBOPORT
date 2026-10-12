@@ -21,6 +21,7 @@ const state = {
   selMission: "M-0004",
   showPlan: false,
   savedAt: null,
+  dirty: false,
   draft: { ...DEFAULT_DRAFT },
 };
 
@@ -87,9 +88,11 @@ function planRows(d) {
   ];
 }
 
-const savedLabel = () => state.savedAt
-  ? `saved ${new Date(state.savedAt).toLocaleTimeString()} · local store`
-  : "unsaved · local store";
+function savedLabel() {
+  if (!state.savedAt) return "unsaved · local store";
+  const at = new Date(state.savedAt).toLocaleTimeString();
+  return state.dirty ? `unsaved changes · last saved ${at}` : `saved ${at} · local store`;
+}
 
 // ── shared fragments ────────────────────────────────────────────────────
 
@@ -425,8 +428,14 @@ function flash(msg) {
 
 function saveDraft() {
   const savedAt = new Date().toISOString();
-  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ draft: state.draft, savedAt })); } catch { /* storage blocked: draft stays in memory */ }
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ draft: state.draft, savedAt }));
+  } catch {
+    flash("Draft not saved — browser storage is unavailable; edits stay in this tab only");
+    return;
+  }
   state.savedAt = savedAt;
+  state.dirty = false;
   const label = $("saved-label");
   if (label) label.textContent = savedLabel();
   flash(`Draft saved locally · ${manifestInfo(state.draft).hash} · works offline`);
@@ -450,6 +459,7 @@ function onDraftInput(e) {
   state.draft = { ...state.draft, [el.name]: NUMERIC.has(el.name) ? Number(el.value) : el.value };
   $("plan-card").innerHTML = renderPlanCard();
   $("reviewer-req").textContent = reviewerReq(state.draft);
+  if (!state.dirty) { state.dirty = true; $("saved-label").textContent = savedLabel(); }
 }
 
 const ACTIONS = {
@@ -484,8 +494,11 @@ function init() {
   window.addEventListener("popstate", () => { state.section = sectionFromUrl(); render(); });
 
   // Narrow layouts force the accessible table; widening restores the topology.
+  // A media query measures the viewport including any scrollbar, so the taller topology view
+  // gaining a scrollbar cannot flip the mode back (as an element-width observer could).
+  const narrowQuery = window.matchMedia(`(max-width: ${NARROW_PX - 0.02}px)`);
   const applyWidth = () => {
-    const narrow = root.clientWidth < NARROW_PX;
+    const narrow = narrowQuery.matches;
     if (narrow === state.narrow) return false;
     state.narrow = narrow;
     state.fleetMode = narrow ? "table" : "topology";
@@ -493,9 +506,7 @@ function init() {
   };
   applyWidth();
   render();
-  if (window.ResizeObserver) {
-    new ResizeObserver(() => { if (applyWidth() && state.section === "fleet") render(); }).observe(root);
-  }
+  narrowQuery.addEventListener("change", () => { if (applyWidth() && state.section === "fleet") render(); });
 }
 
 init();
