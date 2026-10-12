@@ -147,8 +147,16 @@ dashboard/
   feed_adapter.js    Browser-side adapter — SSE client + file-drop parser
   bridge.py          Python SSE server — tails run_log.jsonl, translates events
   README.md          This file
+  launchpad/         Launch Pad operator shell (demo fixtures) — see launchpad/README.md
 
 Roboport Ops Console.dc.html   The dashboard (place anywhere accessible from a browser)
+```
+
+The Launch Pad wraps the console in a six-section shell (Launch Pad · Missions · Fleet ·
+Evidence · Approvals · Settings). Serve `dashboard/` and open `/launchpad/`:
+
+```bash
+python -m http.server 5500 --directory dashboard   # → http://localhost:5500/launchpad/
 ```
 
 To add the feed adapter to the console, load it before the closing `</body>` tag:
