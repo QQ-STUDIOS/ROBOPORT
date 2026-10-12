@@ -37,7 +37,7 @@ Deep links: `#missions`, `#fleet`, … or `?section=evidence`. Browser back/forw
 - **Preview digest** is FNV-1a over the pretty-printed manifest JSON — a change indicator only.
   The design is explicit that the real sha256 is assigned by the gateway at dispatch.
 - **Start when ready** is always disabled in demo mode; the missing requirements are listed beneath it.
-- **Fleet** embeds the Ops Console in an iframe (Topology) with a Table fallback. Below 720 px the
+- **Fleet** embeds the Ops Console in an iframe (`?embedded=1`, Topology) with a Table fallback. Below 720 px the
   table is forced and Topology is disabled; widening restores Topology.
 
 ## Swapping in a gateway
@@ -50,6 +50,7 @@ Keep the DEMO badge driven by the active mode — demo must never render as live
 
 - Font is loaded from Google Fonts (the design notes the spec wants bundled assets). Falls back to
   `ui-monospace` offline.
-- The design's embedded console hides some of its own chrome via an `embedded` prop. The console in
-  this repo has no such prop, so the iframe shows the full console UI.
 - The console loads React from unpkg; Topology needs network access to that CDN.
+
+The Fleet iframe loads the console with `?embedded=1`, which trims the console's own chrome
+(brand subtitle, global key handling while hidden) to fit inside the shell.

@@ -12,7 +12,7 @@ const DRAFT_KEY = "rbp.launchpad.draft.v1";
 const NARROW_PX = 720;
 const SECTIONS = NAV.map(n => n[0]);
 // The Ops Console lives one directory up (dashboard/) and is served by the same static server.
-const CONSOLE_SRC = "../Roboport%20Ops%20Console.dc.html";
+const CONSOLE_SRC = "../Roboport%20Ops%20Console.dc.html?embedded=1";
 
 const state = {
   section: "launch",

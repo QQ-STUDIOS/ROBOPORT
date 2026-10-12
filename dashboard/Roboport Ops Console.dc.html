@@ -2,6 +2,17 @@
 <html>
 <head>
 <meta charset="utf-8">
+<template id="__bundler_thumbnail" data-bg-color="#0e1418">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="1200" height="800" fill="#0e1418"/>
+    <circle cx="600" cy="400" r="250" fill="none" stroke="#223038" stroke-width="3" stroke-dasharray="10 14"/>
+    <g stroke="#2c3c46" stroke-width="3"><line x1="600" y1="400" x2="600" y2="150"/><line x1="600" y1="400" x2="838" y2="323"/><line x1="600" y1="400" x2="747" y2="602"/><line x1="600" y1="400" x2="453" y2="602"/><line x1="600" y1="400" x2="362" y2="323"/></g>
+    <g fill="#121b21" stroke-width="6"><polygon points="600,118 628,134 628,166 600,182 572,166 572,134" stroke="#7ea6ff"/><polygon points="838,291 866,307 866,339 838,355 810,339 810,307" stroke="#f2b134"/><polygon points="747,570 775,586 775,618 747,634 719,618 719,586" stroke="#4fd672"/><polygon points="453,570 481,586 481,618 453,634 425,618 425,586" stroke="#c98bff"/><polygon points="362,291 390,307 390,339 362,355 334,339 334,307" stroke="#36c6e0"/></g>
+    <circle cx="600" cy="400" r="54" fill="#13202e" stroke="#6c8cff" stroke-width="6"/>
+    <circle cx="600" cy="400" r="16" fill="#9db8ff"/>
+    <g><rect x="590" y="270" width="20" height="20" fill="#36c6e0" transform="rotate(45 600 280)"/><rect x="700" y="480" width="20" height="20" fill="#f2b134" transform="rotate(45 710 490)"/><rect x="470" y="350" width="20" height="20" fill="#4fd672" transform="rotate(45 480 360)"/></g>
+  </svg>
+</template>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="./support.js"></script>
 <script src="./feed_adapter.js"></script>
@@ -24,12 +35,15 @@
   }
   #rbp *{box-sizing:border-box}
   #rbp{position:fixed;inset:0;background:var(--floor2);color:var(--steel);font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:13px;-webkit-font-smoothing:antialiased;overflow:hidden}
+  #rbp.embedded{position:absolute}
   #rbp .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
   #rbp .app{height:100%;display:grid;grid-template-columns:296px 1fr 338px;grid-template-rows:auto 1fr auto;grid-template-areas:"hud hud hud" "left stage right" "dock dock dock";gap:1px;background:var(--line)}
 
   /* ---- HUD ---- */
   #rbp .hud{grid-area:hud;background:var(--panel2);display:flex;align-items:stretch;gap:var(--s4);padding:0 var(--s4);border-bottom:1px solid var(--line);min-height:64px}
-  #rbp .brand{display:flex;align-items:center;gap:11px;min-width:0;padding:11px 0}
+  #rbp .brand{display:flex;align-items:center;gap:11px;min-width:0;padding:11px 0;flex-wrap:wrap;row-gap:4px}
+  #rbp .feedbadge{white-space:nowrap;flex:none}
+  #rbp.embedded .brand .tt .sub{display:none}
   #rbp .brand .mark{width:30px;height:30px;border:1.5px solid var(--dock);border-radius:7px;position:relative;flex:none;box-shadow:0 0 14px rgba(108,140,255,.35) inset}
   #rbp .brand .mark::before{content:"";position:absolute;inset:8px;border-radius:50%;border:1.5px solid var(--dock)}
   #rbp .brand .mark::after{content:"";position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;border-radius:50%;background:#9db8ff;box-shadow:0 0 8px var(--dock)}
@@ -142,8 +156,8 @@
   #rbp .toast .tg{font-size:9px;color:var(--steel-dim);white-space:nowrap}
   #rbp .toast:hover{border-color:var(--dispatch)}
   @keyframes rbp-slidein{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
-  #rbp .tip{position:absolute;z-index:7;pointer-events:none;background:rgba(10,15,19,.95);border:1px solid var(--line2);border-radius:var(--r1);padding:5px 8px;font-size:10px;color:var(--bright);white-space:nowrap;transform:translate(-50%,-130%);opacity:0;transition:opacity var(--t-fast)}
-  #rbp .tip.on{opacity:1}#rbp .tip .s{color:var(--steel-dim)}
+  #rbp .tip{position:absolute;z-index:7;pointer-events:none;background:rgba(10,15,19,.95);border:1px solid var(--line2);border-radius:var(--r1);padding:6px 9px;font-size:12px;color:var(--bright);white-space:nowrap;transform:translate(-50%,-130%);opacity:0;transition:opacity var(--t-fast)}
+  #rbp .tip.on{opacity:1}#rbp .tip .s{color:var(--steel)}
   #rbp .wire{position:absolute;left:12px;bottom:48px;z-index:4;width:228px;background:rgba(11,16,21,.92);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden;box-shadow:var(--shadow)}
   #rbp .wire-h{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line);user-select:none}
   #rbp .wire-h .d{width:6px;height:6px;border-radius:50%;background:var(--dispatch);box-shadow:0 0 6px var(--dispatch);animation:rbp-pulse 1.4s infinite}
@@ -260,7 +274,7 @@
       <div class="tt"><h1>ROBOPORT</h1><div class="sub">fleet operations console</div></div>
       <span class="feedbadge"><span class="d"></span><span id="feed-status">feed · mock</span></span>
     </div>
-    <div class="viewtog" role="tablist" aria-label="Stage view"><button class="vt on" data-view="port" role="tab">◎ Port</button><button class="vt" data-view="flow" role="tab">⇶ Flow</button><button class="vt" data-view="dag" role="tab">⬡ DAG</button></div>
+    <div class="viewtog" role="tablist" aria-label="Stage view"><button class="vt on" data-view="port" role="tab">◎ Port</button><button class="vt" data-view="flow" role="tab">⇶ Flow</button><button class="vt" data-view="dag" role="tab">⬡ DAG</button><button class="vt" data-view="apg" role="tab">◈ APG</button></div>
     <div class="kpis">
       <div class="kpi"><div class="vrow"><span class="v" id="s-rate">0</span><span class="u">/min</span></div><span class="k">throughput</span><canvas class="spark" id="spark-rate" width="180" height="36"></canvas></div>
       <div class="kpi"><div class="vrow"><span class="v" id="s-done">0</span></div><span class="k">completed</span><span class="delta" id="d-done">—</span></div>
@@ -342,7 +356,7 @@
     <button class="btn" id="btn-replay">⏱ Replay</button><button class="btn" id="btn-export" title="Download metrics CSV">↓ Export</button><button class="btn" id="btn-summary" title="Session debrief (Tab)">⊞ Summary</button><button class="btn" id="btn-zoom" title="Zoom out to multi-port (scroll wheel or +/-)">&#9633; 100%</button><label class="btn" title="Load a ROBOPORT run (run_log.jsonl, plan.json, steps/*.json)" style="cursor:pointer">↑ Load Run<input type="file" id="run-file-input" multiple accept=".json,.jsonl" style="display:none"></label>
     <div class="injector"><label for="task-station">Queue task to</label><select id="task-station" aria-label="Target station"></select><button class="queue" id="btn-queue">Queue</button></div>
     <div class="speed"><label for="speed">Speed</label><input type="range" id="speed" min="0.25" max="3" step="0.25" value="1" /><output id="speed-out">1.0×</output></div>
-    <div class="hint">click agent/station/hub to inspect &amp; command · <b>↑↓</b> select · <b>R</b> recall · <b>H</b> hold · <b>Space</b> pause · <b>Tab</b> summary · <b>+/-</b> zoom · <b>0</b> reset zoom · <b>Esc</b> clear</div>
+    <div class="hint">click agent/station/hub to inspect &amp; command · <b>↑↓</b> select · <b>R</b> recall · <b>H</b> hold · <b>Space</b> pause · <b>Tab</b> summary · <b>wheel</b> zoom · <b>drag</b> pan · <b>dbl-click</b> focus · <b>F</b> follow · <b>0</b> reset zoom · <b>Esc</b> clear</div>
   </footer>
 </div>
 <div class="sr-only" id="sr" aria-live="polite"></div>
@@ -353,7 +367,9 @@ class Component extends DCLogic {
   componentDidMount(){ this.boot(); }
   boot(){
   "use strict";
-  const PROPS=this.props||{};
+  // ?embedded=1 lets a host page (dashboard/launchpad/) iframe the console in embedded mode.
+  const PROPS=Object.assign({},this.props||{},new URLSearchParams(location.search).get("embedded")==="1"?{embedded:true}:{});
+  if(PROPS.embedded){const r0=document.getElementById("rbp");if(r0)r0.classList.add("embedded");}
   const INIT_AGENTS=Math.max(1,Math.min(12,PROPS.initialAgents??5));
   const AUTO_ENQUEUE=PROPS.autoEnqueue!==false;
   const SHOW_WIRE=PROPS.showWire!==false;
@@ -572,20 +588,83 @@ class Component extends DCLogic {
   let selected=null,hovered=null,simSpeed=1,running=true,dockCounter=0;
   let view="port",showSummary=false;
   let viewScale=1.0,viewPanX=0,viewPanY=0;
+  const cam={s:1,px:0,py:0};const ZMIN=0.05,ZMAX=3.2;let camLast=performance.now(),MINI=null,drag=null,suppressClick=false,follow=null,inertia=null,VIS=[];
+  const clusterCache=new Map(),LBL=[],PLACED=[];
+  function camStep(){const now=performance.now();let dt=(now-camLast)/1000;camLast=now;if(dt>0.1)dt=0.1;
+    if(follow){const a=M.agents.get(follow);if(!a)follow=null;else{cam.px=-(a.x-W/2)*cam.s;cam.py=-(a.y-H/2)*cam.s;}}
+    if(inertia){cam.px+=inertia.vx*dt;cam.py+=inertia.vy*dt;const d=Math.pow(0.03,dt);inertia.vx*=d;inertia.vy*=d;if(Math.hypot(inertia.vx,inertia.vy)<8)inertia=null;}
+    const k=reduceMotion?1:1-Math.pow(0.0015,dt);viewScale+=(cam.s-viewScale)*k;viewPanX+=(cam.px-viewPanX)*k;viewPanY+=(cam.py-viewPanY)*k;if(Math.abs(cam.s-viewScale)<0.0004)viewScale=cam.s;}
+  function clampPan(){}
+  function zoomAt(ns,ex,ey){ns=Math.max(ZMIN,Math.min(ZMAX,ns));if(ex===undefined){ex=W/2;ey=H/2;}const wx=(ex-(W/2+cam.px))/cam.s+W/2,wy=(ey-(H/2+cam.py))/cam.s+H/2;cam.s=ns;cam.px=ex-W/2-(wx-W/2)*ns;cam.py=ey-H/2-(wy-H/2)*ns;clampPan();updateZoomBtn();}
+  function focusWorld(wx,wy,s){follow=null;inertia=null;cam.s=Math.max(ZMIN,Math.min(ZMAX,s));cam.px=-(wx-W/2)*cam.s;cam.py=-(wy-H/2)*cam.s;clampPan();updateZoomBtn();}
+  function resetCam(){follow=null;inertia=null;cam.s=1;cam.px=0;cam.py=0;updateZoomBtn();}
+  function worldToCanvas(wx,wy){return{x:(wx-W/2)*viewScale+W/2+viewPanX,y:(wy-H/2)*viewScale+H/2+viewPanY};}
+  const lod=(a,b)=>Math.max(0,Math.min(1,(viewScale-a)/(b-a)));
+  const qz=(max)=>Math.max(1,Math.min(max||3.2,1/viewScale));
+  const fs=(base,min,max)=>Math.max(min,Math.min(max,base*viewScale));
+  function tierOf(s){return s<0.14?0:s<0.5?1:s<1.15?2:3;}
+  function zoomTier(){const s=cam.s;return s<0.14?"network":s<0.5?"cluster":s<1.15?"port":"agent";}
   let replay=false,frames=[],replayIdx=0;
   const mouse={x:-999,y:-999};
 
-  // Sister ports — decorative zones that appear when zoomed out
-  const SISTER_PORTS=[
-    {label:"PORT-B",dx:-0.88,dy:-0.18,load:0.62,agents:4,hue:"#4fd672",seed:42},
-    {label:"PORT-C",dx:0.06,dy:0.88,load:0.38,agents:3,hue:"#f2b134",seed:77},
-    {label:"PORT-D",dx:0.9,dy:0.16,load:0.81,agents:6,hue:"#c98bff",seed:13},
-  ];
+  const ROADMAP={northStar:"Which agent, contract, model, tool, or routing decision caused this run to regress?",
+    phases:[
+      {n:0,label:"Baseline",theme:"Stabilize repo truth",          col:"#7ea6ff",gate:"validate.py --all passes",         active:true},
+      {n:1,label:"Diff",    theme:"Find regression boundary",      col:"#36c6e0",gate:"diff_runs.py verdict stable"},
+      {n:2,label:"Console", theme:"Dashboard load-bearing",        col:"#4fd672",gate:"diff JSON overlays severity"},
+      {n:3,label:"Faults",  theme:"Prove error stack",             col:"#f2b134",gate:"CI fails on blocker loss"},
+      {n:4,label:"Routing", theme:"Route with observability",      col:"#ff5a52",gate:"aggregate --compare shows cost"},
+      {n:5,label:"Scale",   theme:"Expand crews with proof",       col:"#c98bff",gate:"no crew without blockers"},
+    ],
+    goals:[
+      {n:"1",title:"Preserve truth",   col:"#7ea6ff",body:"Every run leaves typed artifacts: plan, outputs, criteria, blockers, logs."},
+      {n:"2",title:"Compare behavior", col:"#36c6e0",body:"Run N vs N-1 by schema, content, cost, latency, blockers, tool use."},
+      {n:"3",title:"Surface drift",    col:"#4fd672",body:"Ops Console becomes regression investigation surface."},
+      {n:"4",title:"Enforce proof",    col:"#f2b134",body:"Fault-injection evals prevent documented promises from staying aspirational."},
+    ],
+    loop:[
+      {step:"Capture",  col:"#7ea6ff",sub:"run artifacts",        built:true, note:"plan.json · run.log · typed outputs · criteria · blockers"},
+      {step:"Compare",  col:"#36c6e0",sub:"baseline vs candidate",built:false,note:"diff_runs.py — schema, blocker, cost, latency drift"},
+      {step:"Attribute",col:"#4fd672",sub:"agent boundary",       built:false,note:"regression signal → step + contract + recommended action"},
+      {step:"Surface",  col:"#f2b134",sub:"ops console",          built:true, note:"dashboard severity · station inspection · evidence panels"},
+      {step:"Enforce",  col:"#ff5a52",sub:"CI gates",             built:false,note:"blocker + fault-injection evals decide ship / no-ship"},
+    ],
+  };
+
+  // World model — an unbounded hex lattice of clusters. Each cluster = hub port + 3 ring ports + shared infra (event bus,
+  // artifact store, model gateway) + CI gate. Clusters derive from (q,r) on demand, so only what the viewport shows exists.
+  const SQ3=Math.sqrt(3),PAL=["#4fd672","#f2b134","#c98bff","#36c6e0","#ff8f6b","#7ea6ff"];
+  const INFRA_T=[{id:"bus",label:"EVENT BUS",sub:"run.log · SSE stream · envelopes",col:"#36c6e0"},{id:"art",label:"ARTIFACT STORE",sub:"plan · outputs · criteria · blockers",col:"#4fd672"},{id:"llm",label:"MODEL GATEWAY",sub:"qwen3:14b · tool routing",col:"#c98bff"}];
+  const CI_T={id:"ci",label:"CI GATE",sub:"validate.py · diff_runs.py",col:"#f2b134"};
+  const HOME=[{label:"PORT-B",load:0.62,agents:4,hue:"#4fd672",seed:42},{label:"PORT-C",load:0.38,agents:3,hue:"#f2b134",seed:77},{label:"PORT-D",load:0.81,agents:6,hue:"#c98bff",seed:13}];
+  const CS=()=>coverR*5.6,R1=()=>coverR*2.1;
+  function hashR(q,r,s){return sisterRand(q*127.1+r*311.7+s*74.7+13.37);}
+  function clusterName(q,r){const A="ABCDEFGHJKLMNPQRSTUVWXYZ";return A[Math.floor(hashR(q,r,1)*A.length)]+A[Math.floor(hashR(q,r,2)*A.length)]+((Math.abs(q)*7+Math.abs(r)*13)%90+10);}
+  function clusterAt(q,r){
+    const key=q+","+r;let c=clusterCache.get(key);if(c)return c;
+    const S=CS(),x=cx+S*(q+r/2),y=cy+S*(SQ3/2)*r,home=q===0&&r===0,R=R1(),code=home?"A":clusterName(q,r);
+    const hub={key:key+":h",ckey:key,label:"PORT-"+code,x,y,R:home?coverR:coverR*0.62,hue:"#7ea6ff",load:home?0:0.3+0.6*hashR(q,r,3),agents:home?0:4+Math.floor(hashR(q,r,4)*5),seed:Math.floor(hashR(q,r,5)*1000),hub:true,real:home,short:code};
+    const ports=[],infra=[];
+    for(let i=0;i<6;i++){const ang=-Math.PI/2+i*Math.PI/3,px=x+Math.cos(ang)*R,py=y+Math.sin(ang)*R;
+      if(i%2===0){const j=i/2,hp=HOME[j];ports.push(home?{key:key+":p"+j,ckey:key,label:hp.label,x:px,y:py,R:coverR*0.42,hue:hp.hue,load:hp.load,agents:hp.agents,seed:hp.seed,short:hp.label.slice(5)}:{key:key+":p"+j,ckey:key,label:"PORT-"+code+"-"+(j+1),x:px,y:py,R:coverR*0.42,hue:PAL[Math.floor(hashR(q,r,20+j)*PAL.length)],load:0.25+0.65*hashR(q,r,30+j),agents:3+Math.floor(hashR(q,r,40+j)*4),seed:Math.floor(hashR(q,r,50+j)*1000),short:code+"-"+(j+1)});}
+      else{const t=INFRA_T[(i-1)/2];infra.push(Object.assign({},t,{key:key+":"+t.id,ckey:key,x:px,y:py}));}
+    }
+    const ca=Math.PI/2+0.42,ci=Object.assign({},CI_T,{key:key+":ci",ckey:key,x:x+Math.cos(ca)*R*1.25,y:y+Math.sin(ca)*R*1.25});
+    c={key,q,r,x,y,R,hub,ports,infra,ci,home,rad:R*1.5};clusterCache.set(key,c);return c;
+  }
+  function visibleClusters(){
+    const S=CS();if(!S)return[];const tl=canvasToWorld(0,0),br=canvasToWorld(W,H),m=S*0.8,rh=S*SQ3/2;
+    const r0=Math.floor((tl.y-m-cy)/rh),r1=Math.ceil((br.y+m-cy)/rh),out=[];
+    for(let r=r0;r<=r1;r++){const q0=Math.floor((tl.x-m-cx)/S-r/2),q1=Math.ceil((br.x+m-cx)/S-r/2);for(let q=q0;q<=q1;q++){const c=clusterAt(q,r);if(c.x+c.rad<tl.x||c.x-c.rad>br.x||c.y+c.rad<tl.y||c.y-c.rad>br.y)continue;out.push(c);if(out.length>=400)return out;}}
+    return out;
+  }
+  function nodeByKey(k){if(!k)return null;const i=k.indexOf(":");if(i<0)return null;const qr=k.slice(0,i).split(",").map(Number),part=k.slice(i+1);if(!isFinite(qr[0])||!isFinite(qr[1]))return null;const c=clusterAt(qr[0],qr[1]);if(part==="h")return c.hub;if(part[0]==="p")return c.ports[+part.slice(1)]||null;if(part==="ci")return c.ci;return c.infra.find(n=>n.id===part)||null;}
+  function hubAnchor(c,to){if(!c.home)return{x:c.hub.x,y:c.hub.y};const dx=to.x-cx,dy=to.y-cy,l=Math.hypot(dx,dy)||1,r=coverR*1.32;return{x:cx+dx/l*r,y:cy+dy/l*r};}
 
   function layout(){
     const r=canvas.getBoundingClientRect();W=r.width;H=r.height;
     canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);ctx.setTransform(DPR,0,0,DPR,0,0);
-    cx=W/2;cy=H/2;coverR=Math.min(W,H)*0.42;positionStations();
+    cx=W/2;cy=H/2;coverR=Math.min(W,H)*0.42;clusterCache.clear();positionStations();
   }
   function positionStations(){
     if(!M.config)return;const r=coverR*0.82,n=M.config.stations.length;
@@ -657,7 +736,7 @@ class Component extends DCLogic {
     switch(env.type){
       case "snapshot":hydrate(env.data);break;
       case "agent.added":case "agent.updated":applyAgent(env.data);break;
-      case "agent.removed":{const a=M.agents.get(env.data.agent_id);if(a){M.agents.delete(env.data.agent_id);if(selected&&selected.type==="agent"&&selected.id===env.data.agent_id)clearSelection();}break;}
+      case "agent.removed":{const a=M.agents.get(env.data.agent_id);if(a){M.agents.delete(env.data.agent_id);if(selected&&selected.type==="agent"&&selected.id===env.data.agent_id)clearSelection();if(follow===env.data.agent_id)follow=null;}break;}
       case "task.enqueued":case "task.assigned":case "task.progress":case "task.updated":case "task.completed":case "task.cancelled":case "task.failed":applyTask(env.data,env.type);break;
       case "station.updated":{const s=M.stations.get(env.data.station_id);if(s&&env.data.rev>s.rev)Object.assign(s,env.data);break;}
       case "alert.raised":pushToast(env.data);pushIncident(env.data);pushNodeAlert(env.data);break;
@@ -710,7 +789,7 @@ class Component extends DCLogic {
   function stateColor(a){return(a.energy<22&&a.state!=="docked")?T.alert:(SCOL[a.state]||T.dock);}
 
   const dimWhenSel=()=>selected?0.4:1;
-  function isSel(o){return selected&&((o.type==="agent"&&selected.type==="agent"&&selected.id===o.id)||(o.type==="station"&&selected.type==="station"&&selected.id===o.id)||(o.type==="port"&&selected.type==="port"));}
+  function isSel(o){return !!selected&&selected.type===o.type&&(o.type==="port"||selected.id===o.id);}
   function selectionRing(x,y,r,col){const t=performance.now()*0.002;ctx.save();ctx.translate(x,y);ctx.rotate(reduceMotion?0:t);ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.setLineDash([4,5]);ctx.globalAlpha=0.95;ctx.beginPath();ctx.arc(0,0,r,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.restore();}
   function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 
@@ -783,57 +862,190 @@ class Component extends DCLogic {
 
   /* ── Mini-map PiP ───────────────────────────────────────────────── */
   function drawMiniMap(){
-    if(view!=="port"||!M.config)return;
+    if(view!=="port"||!M.config){MINI=null;return;}
     const mW=150,mH=112,mX=W-mW-12,mY=H-mH-44,mPad=8;
     const mCx=mX+mW/2,mCy=mY+mH/2,mR=Math.min(mW,mH)*0.35;
+    const tl=canvasToWorld(0,0),br=canvasToWorld(W,H),hvw=Math.max(1,(br.x-tl.x)/2),hvh=Math.max(1,(br.y-tl.y)/2);
+    const scale=Math.min(mR/coverR,(mW/2-mPad)/hvw*0.92,(mH/2-mPad)/hvh*0.92);
+    const mp=(wx,wy)=>({x:mCx+(wx-cx)*scale,y:mCy+(wy-cy)*scale});MINI={x:mX,y:mY,w:mW,h:mH,cx:mCx,cy:mCy,scale};
     ctx.save();
     roundRect(ctx,mX,mY,mW,mH,6);ctx.fillStyle="rgba(10,15,19,0.82)";ctx.fill();ctx.strokeStyle="rgba(44,60,70,0.7)";ctx.lineWidth=1;ctx.stroke();
     ctx.beginPath();ctx.rect(mX+mPad,mY+mPad,mW-mPad*2,mH-mPad*2);ctx.clip();
-    ctx.font="400 7px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.fillStyle="rgba(95,113,124,0.8)";ctx.fillText("mini-map",mX+mPad,mY+mPad+7);
-    const o=ordered(),n=o.length;
-    for(let i=0;i<n;i++){
-      const cfg=o[i],st=M.stations.get(cfg.station_id);if(!st)continue;
-      const ang=(-Math.PI/2)+(cfg.order/n)*Math.PI*2,jit=(Math.sin(cfg.order*12.9)*0.5+0.5)*0.16+0.84;
-      const nx2=mCx+Math.cos(ang)*mR*jit,ny2=mCy+Math.sin(ang)*mR*jit;
-      const hc=latHeatColor(stnP95(cfg.station_id));
-      ctx.fillStyle=hc||cfg.hue;ctx.shadowColor=hc||cfg.hue;ctx.shadowBlur=st.worker_agent_id?6:2;
-      ctx.beginPath();ctx.arc(nx2,ny2,3.5,0,6.283);ctx.fill();ctx.shadowBlur=0;
+    ctx.font="400 7px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillStyle="rgba(95,113,124,0.8)";ctx.fillText("mini-map · "+zoomTier()+" · "+(viewScale<0.1?Math.round(viewScale*1000)/10:Math.round(viewScale*100))+"%",mX+mPad,mY+mPad+7);
+    if(viewScale<0.95){ctx.globalAlpha=1-lod(0.6,0.95);for(const c of VIS){for(const nd of c.infra){const pp=mp(nd.x,nd.y);ctx.fillStyle=nd.col;ctx.fillRect(pp.x-1.5,pp.y-1.5,3,3);}for(const p0 of(c.home?c.ports:[c.hub].concat(c.ports))){const pp=mp(p0.x,p0.y);ctx.strokeStyle=p0.hue;ctx.lineWidth=1;ctx.beginPath();ctx.arc(pp.x,pp.y,p0.hub?3:2,0,6.283);ctx.stroke();}}ctx.globalAlpha=1;}
+    for(const st of M.stations.values()){
+      const p=mp(st.x,st.y),hc=latHeatColor(stnP95(st.station_id));
+      ctx.fillStyle=hc||st.hue;ctx.shadowColor=hc||st.hue;ctx.shadowBlur=st.worker_agent_id?6:2;
+      ctx.beginPath();ctx.arc(p.x,p.y,3,0,6.283);ctx.fill();ctx.shadowBlur=0;
     }
-    for(const a of M.agents.values()){
-      const col2=stateColor(a);const scale=mR/coverR;
-      const ax=mCx+(a.x-cx)*scale,ay2=mCy+(a.y-cy)*scale;
-      ctx.fillStyle=col2;ctx.beginPath();ctx.arc(ax,ay2,1.8,0,6.283);ctx.fill();
-    }
-    ctx.fillStyle=T.dock;ctx.shadowColor=T.dock;ctx.shadowBlur=4;ctx.beginPath();ctx.arc(mCx,mCy,3.5,0,6.283);ctx.fill();ctx.shadowBlur=0;
+    for(const a of M.agents.values()){const p=mp(a.x,a.y);ctx.fillStyle=stateColor(a);ctx.beginPath();ctx.arc(p.x,p.y,1.6,0,6.283);ctx.fill();}
+    ctx.fillStyle=T.dock;ctx.shadowColor=T.dock;ctx.shadowBlur=4;ctx.beginPath();ctx.arc(mCx,mCy,3,0,6.283);ctx.fill();ctx.shadowBlur=0;
+    const v0=mp(tl.x,tl.y),v1=mp(br.x,br.y);ctx.strokeStyle="rgba(232,241,245,0.45)";ctx.lineWidth=1;ctx.strokeRect(v0.x+0.5,v0.y+0.5,v1.x-v0.x-1,v1.y-v0.y-1);
     ctx.restore();
   }
 
   /* ── Sister port drawing ─────────────────────────────────────────── */
   function sisterRand(seed){let x=Math.sin(seed)*10000;return x-Math.floor(x);}
-  function drawSisterPort(sp,alpha){
-    const pCx=cx+sp.dx*W*0.68,pCy=cy+sp.dy*H*0.68,pR=coverR*0.36,n=7;
-    ctx.save();ctx.globalAlpha=alpha;
-    ctx.strokeStyle="rgba(108,140,255,0.14)";ctx.lineWidth=1;ctx.setLineDash([4,8]);
-    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(pCx,pCy);ctx.stroke();ctx.setLineDash([]);
-    ctx.strokeStyle="rgba(108,140,255,0.1)";ctx.lineWidth=1;ctx.setLineDash([4,10]);
-    ctx.beginPath();ctx.arc(pCx,pCy,pR*1.06,0,6.283);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle="#121b21";ctx.strokeStyle=sp.hue+"88";ctx.lineWidth=1.2;
-    ctx.beginPath();ctx.arc(pCx,pCy,10,0,6.283);ctx.fill();ctx.stroke();
-    ctx.fillStyle=sp.hue;ctx.shadowColor=sp.hue;ctx.shadowBlur=6;ctx.beginPath();ctx.arc(pCx,pCy,3,0,6.283);ctx.fill();ctx.shadowBlur=0;
-    ctx.fillStyle=sp.hue;ctx.font="600 9px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.fillText(sp.label,pCx,pCy-15);
-    ctx.fillStyle="rgba(138,157,168,0.6)";ctx.font="400 8px 'JetBrains Mono',monospace";ctx.fillText(Math.round(sp.load*100)+"% load · "+sp.agents+" agents",pCx,pCy+17);
-    for(let i=0;i<n;i++){
-      const ang=(-Math.PI/2)+(i/n)*Math.PI*2,busy=sisterRand(sp.seed+i)<sp.load;
-      const nx2=pCx+Math.cos(ang)*pR*0.82,ny2=pCy+Math.sin(ang)*pR*0.82;
-      ctx.fillStyle=busy?sp.hue:"rgba(44,60,70,0.9)";ctx.strokeStyle=busy?sp.hue:"rgba(95,113,124,0.4)";ctx.lineWidth=1;
-      ctx.beginPath();ctx.arc(nx2,ny2,4.5,0,6.283);ctx.fill();ctx.stroke();
+  /* ── Screen-space labels: constant legibility at any zoom, collision-culled by priority ── */
+  function label(wx,wy,text,o){LBL.push({wx,wy,text,parts:o.parts||null,size:o.size||11,weight:o.weight||500,col:o.col||T.bright,dx:o.dx||0,dy:o.dy||0,prio:o.prio||1,alpha:o.alpha==null?1:o.alpha,pill:!!o.pill,pillCol:o.pillCol||null,align:o.align||"center",base:o.base||"top"});}
+  function overlaps(r){for(const p of PLACED){if(r.x<p.x+p.w+3&&r.x+r.w+3>p.x&&r.y<p.y+p.h+3&&r.y+r.h+3>p.y)return true;}return false;}
+  function drawLabels(){
+    if(LBL.length){LBL.sort((a,b)=>b.prio-a.prio);ctx.save();ctx.textAlign="left";ctx.textBaseline="top";
+      for(const l of LBL){
+        if(l.alpha<=0.02)continue;const p=worldToCanvas(l.wx,l.wy),x=p.x+l.dx,y=p.y+l.dy;
+        ctx.font=l.weight+" "+l.size+"px 'JetBrains Mono',monospace";
+        const parts=l.parts||[[l.text,l.col]];let tw=0;for(const pt of parts)tw+=ctx.measureText(pt[0]).width;
+        const w=tw+(l.pill?12:0),h=l.size+(l.pill?8:2);
+        const rx=l.align==="center"?x-w/2:l.align==="right"?x-w:x,ry=l.base==="top"?y:l.base==="bottom"?y-h:y-h/2;
+        if(rx+w<0||rx>W||ry+h<0||ry>H)continue;const r={x:rx,y:ry,w,h};if(overlaps(r))continue;PLACED.push(r);
+        ctx.globalAlpha=l.alpha;
+        if(l.pill){ctx.fillStyle="rgba(10,15,19,0.88)";roundRect(ctx,rx,ry,w,h,4);ctx.fill();if(l.pillCol){ctx.strokeStyle=l.pillCol;ctx.globalAlpha=l.alpha*0.6;ctx.lineWidth=1;ctx.stroke();ctx.globalAlpha=l.alpha;}}
+        let tx=rx+(l.pill?6:0);const ty=ry+(l.pill?4:1);for(const pt of parts){ctx.fillStyle=pt[1];ctx.fillText(pt[0],tx,ty);tx+=ctx.measureText(pt[0]).width;}
+      }
+      ctx.restore();}
+    LBL.length=0;PLACED.length=0;
+  }
+  /* ── Network links with flowing packets ── */
+  function drawLink(a,b,col,alpha,k,speed,phase,dash){
+    const lw=1/viewScale,pr=2.2/viewScale,t=performance.now()*0.001;
+    ctx.save();ctx.globalAlpha=alpha*0.3;ctx.strokeStyle=col;ctx.lineWidth=lw;if(dash)ctx.setLineDash([5*lw,10*lw]);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
+    if(!reduceMotion&&k>0){ctx.fillStyle=col;if(viewScale>0.2){ctx.shadowColor=col;ctx.shadowBlur=4*pr;}for(let i=0;i<k;i++){const f=((t*speed+phase+i/k)%1+1)%1;ctx.globalAlpha=alpha*Math.sin(f*Math.PI);ctx.beginPath();ctx.arc(a.x+(b.x-a.x)*f,a.y+(b.y-a.y)*f,pr,0,6.283);ctx.fill();}}
+    ctx.restore();
+  }
+  function drawInfraNode(n,alpha,big){
+    const q=1/viewScale,t=performance.now()*0.001,sel=isSel({type:"infra",id:n.key}),hov=hovered&&hovered.type==="infra"&&hovered.id===n.key;
+    alpha*=sel||hov?1:dimWhenSel();if(alpha<=0.01)return;
+    const d=(big?(viewScale<0.14?3.6:5):3.6)*q;
+    ctx.save();ctx.globalAlpha=alpha;ctx.translate(n.x,n.y);
+    if(big&&viewScale>=0.14){ctx.strokeStyle=n.col+"55";ctx.lineWidth=q;ctx.setLineDash([3*q,6*q]);ctx.beginPath();ctx.arc(0,0,d*3.2,0,6.283);ctx.stroke();ctx.setLineDash([]);}
+    ctx.rotate(Math.PI/4);ctx.fillStyle="#0b1015";ctx.strokeStyle=n.col;ctx.lineWidth=1.2*q;if(viewScale>0.2){ctx.shadowColor=n.col;ctx.shadowBlur=(8+6*Math.sin(t*1.5+n.x*0.01))*q;}ctx.fillRect(-d,-d,d*2,d*2);ctx.strokeRect(-d,-d,d*2,d*2);ctx.shadowBlur=0;ctx.fillStyle=n.col;ctx.fillRect(-d*0.35,-d*0.35,d*0.7,d*0.7);
+    ctx.restore();
+    if(sel)selectionRing(n.x,n.y,d*4,n.col);
+    if(VIS.length>60&&!(sel||hov))return;
+    const pr=sel||hov?100:(n.id==="ci"?18:20),s1=fs(11,10,13);
+    label(n.x,n.y,n.label,{size:s1,weight:700,col:n.col,dy:d*1.5*viewScale+6,prio:pr,alpha});
+    label(n.x,n.y,n.sub,{size:fs(10,10,12),col:"#a5b5c6",dy:d*1.5*viewScale+6+s1+5,prio:pr-1,alpha:alpha*lod(0.28,0.5)});
+  }
+  /* ── Remote ports: same crew pipeline, procedurally simulated (deterministic in time, no stored state) ── */
+  function remoteAgents(p,t){
+    const o=ordered(),n=o.length||7,out=[];
+    for(let i=0;i<p.agents;i++){
+      const cyc=(reduceMotion?0.5:t*0.2)+i*0.41+sisterRand(p.seed+i)*0.5,cno=Math.floor(cyc),f=cyc-cno;
+      const k=Math.floor(sisterRand(p.seed*3.1+i*7.7+cno*1.3)*n),ang=-Math.PI/2+k/n*6.283,sx=p.x+Math.cos(ang)*p.R*0.82,sy=p.y+Math.sin(ang)*p.R*0.82;
+      const phase=f<0.38?"dispatched":f<0.62?"working":"returning",g=f<0.38?easeIO(f/0.38):f<0.62?1:1-easeIO((f-0.62)/0.38);
+      const dx=sx-p.x,dy=sy-p.y,bend=(i%2?1:-1)*0.22,m={x:p.x+dx*0.5-dy*bend,y:p.y+dy*0.5+dx*bend},pos=bez({x:p.x,y:p.y},m,{x:sx,y:sy},g);
+      out.push({id:p.short+"-"+String(i+1).padStart(2,"0"),x:pos.x,y:pos.y,k,sx,sy,m,phase,f,col:phase==="dispatched"?T.dispatch:phase==="working"?T.work:T.return,progress:phase==="working"?(f-0.38)/0.24:phase==="dispatched"?f/0.38:(f-0.62)/0.38,station:o[k]?o[k].name:"station "+(k+1),hue:o[k]?o[k].hue:p.hue});
     }
-    for(let i=0;i<sp.agents;i++){
-      const t2=performance.now()*0.001+i*1.9;
-      const ax=pCx+Math.cos(t2*0.7+i)*pR*0.45,ay2=pCy+Math.sin(t2*0.5+i)*pR*0.45;
-      ctx.fillStyle=sp.hue;ctx.beginPath();ctx.arc(ax,ay2,2,0,6.283);ctx.fill();
+    return out;
+  }
+  function ragentLabel(a){return a.phase==="dispatched"?"→ "+a.station:a.phase==="working"?"⚙ "+a.station+" "+Math.round(a.progress*100)+"%":"✓ result → hub";}
+  function drawRemotePort(p,alpha,tier){
+    const t=performance.now()*0.001,o=ordered(),n=o.length||7,q=1/viewScale,sel=isSel({type:"remote",id:p.key}),hov=hovered&&hovered.type==="remote"&&hovered.id===p.key;
+    alpha*=sel||hov?1:dimWhenSel();if(alpha<=0.01)return;
+    const scr=p.R*viewScale,namePr=sel||hov?100:p.hub?40:30;
+    ctx.save();ctx.globalAlpha=alpha;
+    const coarse=tier===0&&!p.hub;
+    if(!coarse){ctx.strokeStyle=sel||hov?"rgba(108,140,255,0.55)":"rgba(108,140,255,0.2)";ctx.lineWidth=q;ctx.setLineDash([5*q,10*q]);ctx.save();ctx.translate(p.x,p.y);ctx.rotate(reduceMotion?0:t*0.3);ctx.beginPath();ctx.arc(0,0,p.R*1.06,0,6.283);ctx.stroke();ctx.restore();ctx.setLineDash([]);}
+    if(tier===0||scr<24){
+      const gr=coarse?5*q:8*q;ctx.fillStyle="#121b21";ctx.strokeStyle=p.hue+(coarse?"77":"aa");ctx.lineWidth=(coarse?1:1.2)*q;ctx.beginPath();ctx.arc(p.x,p.y,gr,0,6.283);ctx.fill();ctx.stroke();
+      ctx.fillStyle=p.hue;ctx.beginPath();ctx.arc(p.x,p.y,(coarse?1.8:2.6)*q,0,6.283);ctx.fill();
+      if(!coarse){ctx.strokeStyle=p.hue;ctx.lineWidth=1.6*q;ctx.beginPath();ctx.arc(p.x,p.y,12*q,-Math.PI/2,-Math.PI/2+p.load*6.283);ctx.stroke();}
+      if(sel)selectionRing(p.x,p.y,16*q,p.hue);
+      ctx.restore();
+      if(p.hub||VIS.length<=60||sel||hov)label(p.x,p.y,p.label,{size:fs(14,10,13),weight:700,col:p.hue,dy:-18,base:"bottom",prio:namePr,alpha});
+      return;
+    }
+    const hexR=Math.max(5.5*q,p.R*0.075),ad=Math.max(3*q,p.R*0.04);
+    const stn=[];for(let i=0;i<n;i++){const ang=-Math.PI/2+i/n*6.283;stn.push({x:p.x+Math.cos(ang)*p.R*0.82,y:p.y+Math.sin(ang)*p.R*0.82,busy:null,name:o[i]?o[i].name:"station "+(i+1),hue:o[i]?o[i].hue:p.hue});}
+    const ags=remoteAgents(p,t);for(const a of ags)if(a.phase==="working")stn[a.k].busy=a;
+    ctx.strokeStyle="rgba(138,157,168,0.14)";ctx.lineWidth=q*0.8;ctx.setLineDash([2*q,6*q]);ctx.beginPath();ctx.arc(p.x,p.y,p.R*0.82,0,6.283);ctx.stroke();ctx.setLineDash([]);
+    for(const a of ags){if(a.phase==="working")continue;ctx.strokeStyle=a.phase==="dispatched"?"rgba(54,198,224,0.25)":"rgba(79,214,114,0.25)";ctx.lineWidth=q*0.8;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.quadraticCurveTo(a.m.x,a.m.y,a.sx,a.sy);ctx.stroke();}
+    const showStn=scr>70;
+    for(let i=0;i<n;i++){const s=stn[i];ctx.save();ctx.translate(s.x,s.y);ctx.beginPath();for(let k=0;k<6;k++){const ang=Math.PI/6+k*Math.PI/3;k?ctx.lineTo(Math.cos(ang)*hexR,Math.sin(ang)*hexR):ctx.moveTo(Math.cos(ang)*hexR,Math.sin(ang)*hexR);}ctx.closePath();ctx.fillStyle="#121b21";ctx.fill();ctx.lineWidth=q;ctx.strokeStyle=s.busy?s.hue:"rgba(138,157,168,0.5)";if(s.busy){ctx.shadowColor=s.hue;ctx.shadowBlur=10*q;}ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle=s.busy?s.hue:"rgba(138,157,168,0.6)";ctx.beginPath();ctx.arc(0,0,hexR*0.3,0,6.283);ctx.fill();
+      if(s.busy){ctx.strokeStyle=T.work;ctx.lineWidth=1.2*q;ctx.beginPath();ctx.arc(0,0,hexR+3*q,-Math.PI/2,-Math.PI/2+s.busy.progress*6.283);ctx.stroke();}
+      ctx.restore();
+      if(showStn)label(s.x,s.y,s.name,{size:fs(11,10,13),col:s.busy?s.hue:"rgba(232,241,245,0.8)",dy:(hexR+4)*viewScale,prio:12,alpha:alpha*lod(0.3,0.6)});
+    }
+    ctx.save();const g2=ctx.createRadialGradient(p.x,p.y,2,p.x,p.y,26*q);g2.addColorStop(0,"rgba(108,140,255,.4)");g2.addColorStop(1,"rgba(108,140,255,0)");ctx.fillStyle=g2;ctx.beginPath();ctx.arc(p.x,p.y,26*q,0,6.283);ctx.fill();
+    ctx.fillStyle="#121b21";ctx.strokeStyle=p.hue+"aa";ctx.lineWidth=1.2*q;ctx.beginPath();ctx.arc(p.x,p.y,8*q,0,6.283);ctx.fill();ctx.stroke();
+    ctx.translate(p.x,p.y);ctx.rotate(reduceMotion?0:t*1.2);ctx.strokeStyle=p.hue;ctx.lineWidth=1.6*q;ctx.lineCap="round";for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(0,0,8*q,i*2.1,i*2.1+0.7);ctx.stroke();}ctx.restore();
+    ctx.fillStyle=p.hue;ctx.shadowColor=p.hue;ctx.shadowBlur=6*q;ctx.beginPath();ctx.arc(p.x,p.y,2.6*q,0,6.283);ctx.fill();ctx.shadowBlur=0;
+    const showAg=scr>130;
+    for(const a of ags){const ak=p.key+"/"+a.id,ah=hovered&&hovered.type==="ragent"&&hovered.id===ak,as=isSel({type:"ragent",id:ak});
+      ctx.save();ctx.translate(a.x,a.y);ctx.rotate(reduceMotion?0:t*2);ctx.fillStyle="#0f1820";ctx.strokeStyle=a.col;ctx.lineWidth=q;ctx.shadowColor=a.col;ctx.shadowBlur=(ah||as?12:6)*q;ctx.fillRect(-ad,-ad,ad*2,ad*2);ctx.strokeRect(-ad,-ad,ad*2,ad*2);ctx.shadowBlur=0;if(a.phase==="returning"){ctx.rotate(-(reduceMotion?0:t*2));ctx.fillStyle=a.hue;ctx.fillRect(-ad*0.6,ad*1.6,ad*1.2,ad*1.2);}ctx.restore();
+      if(as)selectionRing(a.x,a.y,ad*3,a.col);
+      if(showAg||ah||as)label(a.x,a.y,null,{parts:[[a.id+"  ","rgba(232,241,245,0.75)"],[ragentLabel(a),a.col]],size:fs(10,10,12),pill:true,pillCol:a.col,dy:-(ad+6)*viewScale,base:"bottom",prio:ah||as?100:8,alpha:alpha*(ah||as?1:lod(0.55,0.9))});}
+    if(sel)selectionRing(p.x,p.y,p.R*1.12,p.hue);
+    ctx.restore();
+    const busyN=ags.filter(a=>a.phase==="working").length;
+    label(p.x,p.y,p.label,{size:fs(14,11,14),weight:700,col:p.hue,dy:-(p.R*1.06)*viewScale-6,base:"bottom",prio:namePr,alpha});
+    label(p.x,p.y,Math.round(p.load*100)+"% load · "+p.agents+" agents · "+busyN+" working · "+n+" stations · simulated",{size:fs(10,10,12),col:"#a5b5c6",dy:(p.R*1.06)*viewScale+6,prio:namePr-1,alpha:alpha*lod(0.2,0.45)});
+  }
+  function drawCluster(c,tier){
+    const fine=tier>=1&&VIS.length<=24,bus=c.infra[0],art=c.infra[1],llm=c.infra[2],ports=c.ports,H0=p=>hubAnchor(c,p);
+    ports.forEach((p,i)=>{drawLink(H0(p),p,"#6c8cff",0.9,fine?2:1,0.08,i*0.3,true);if(fine)drawLink(p,H0(p),"#6c8cff",0.9,1,0.06,i*0.5+0.2,false);});
+    if(fine)for(let i=0;i<3;i++)drawLink(ports[i],ports[(i+1)%3],"#6c8cff",0.4,1,0.05,i*0.33,true);
+    drawLink(H0(bus),bus,"#36c6e0",1,fine?3:1,0.12,0,false);ports.forEach((p,i)=>drawLink(p,bus,"#36c6e0",1,fine?3:1,0.12,(i+1)*0.21,false));
+    if(fine){[H0(llm),ports[2],ports[0]].forEach((p,i)=>{drawLink(p,llm,"#c98bff",0.8,2,0.1,i*0.4,false);drawLink(llm,p,"#c98bff",0.8,2,0.1,i*0.4+0.5,false);});
+      [H0(art),ports[0],ports[1]].forEach((p,i)=>drawLink(p,art,"#4fd672",0.8,2,0.07,i*0.3,false));
+      drawLink(art,c.ci,"#f2b134",1,2,0.06,0,true);drawLink(bus,c.ci,"#f2b134",0.7,1,0.05,0.4,true);}
+    [[1,0],[0,1],[-1,1]].forEach((d,i)=>{const nb=clusterAt(c.q+d[0],c.r+d[1]);drawLink(bus,nb.infra[0],"#36c6e0",0.55,fine?2:1,0.05,i*0.37+c.q*0.1,true);});
+    c.infra.forEach(n=>drawInfraNode(n,1,true));if(fine||viewScale>0.2)drawInfraNode(c.ci,1,false);
+    ports.forEach(p=>drawRemotePort(p,1,tier));if(!c.home)drawRemotePort(c.hub,1,tier);
+  }
+  /* ── Agent status cards (screen space): what each agent is doing and where it sits in the pipeline ── */
+  function drawAgentCards(){
+    if(!M.config)return;const detail=lod(1.15,1.5),o=ordered(),n=o.length||1,list=[];
+    for(const a of M.agents.values()){const sel=isSel({type:"agent",id:a.agent_id}),hov=hovered&&hovered.type==="agent"&&hovered.id===a.agent_id;let al=0;if(sel||hov)al=viewScale>=0.45?1:0;else if(detail>0.02&&a.state!=="docked")al=detail*dimWhenSel();if(al>0.02)list.push([a,al,sel||hov?1:0]);}
+    if(!list.length)return;list.sort((x,y)=>y[2]-x[2]);
+    ctx.save();
+    for(const[a,al]of list){
+      const p=worldToCanvas(a.x,a.y),col=stateColor(a),w=186,h=64,gapY=Math.min(24,12*viewScale)+8,x=Math.round(p.x-w/2),y=Math.round(p.y+gapY);
+      const r={x,y,w,h};if(x+w<0||x>W||y>H||y+h<0||overlaps(r))continue;PLACED.push(r);
+      ctx.globalAlpha=al*0.5;ctx.strokeStyle=col;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(p.x,p.y+gapY-10);ctx.lineTo(p.x,y);ctx.stroke();ctx.globalAlpha=al;
+      roundRect(ctx,x+0.5,y+0.5,w,h,5);ctx.fillStyle="rgba(8,13,19,0.94)";ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=al*0.6;ctx.stroke();ctx.globalAlpha=al;
+      ctx.textBaseline="alphabetic";ctx.textAlign="left";ctx.font="700 11px 'JetBrains Mono',monospace";ctx.fillStyle=T.bright;ctx.fillText(a.agent_id,x+10,y+16);
+      ctx.textAlign="right";ctx.font="600 10px 'JetBrains Mono',monospace";ctx.fillStyle=col;ctx.fillText(a.hold&&a.state==="docked"?"ON HOLD":a.state.toUpperCase(),x+w-10,y+16);
+      const cur=o.findIndex(s=>s.station_id===a.station_id);
+      ctx.textAlign="left";ctx.font="400 10px 'JetBrains Mono',monospace";ctx.fillStyle="#a5b5c6";let act=actLabel(a);const maxW=w-20-(cur>=0?52:0);while(ctx.measureText(act).width>maxW&&act.length>4)act=act.slice(0,-2);ctx.fillText(act,x+10,y+30);
+      if(cur>=0){ctx.textAlign="right";ctx.fillStyle="#a5b5c6";ctx.fillText("step "+(cur+1)+"/"+n,x+w-10,y+30);}
+      const sw=(w-20-(n-1)*3)/n,sy=y+37;
+      for(let i=0;i<n;i++){const sx=x+10+i*(sw+3);ctx.globalAlpha=al*(i===cur?(reduceMotion?1:0.7+0.3*Math.sin(performance.now()*0.006)):i<cur?0.5:0.16);ctx.fillStyle=i===cur?col:o[i].hue;ctx.fillRect(sx,sy,sw,4);}
+      ctx.globalAlpha=al;
+      const frac=a.state==="working"?a.task_progress:(a.state==="dispatched"||a.state==="returning")?Math.min(1,(a.travelT||0)/Math.max(0.0001,a.travelDur||1)):a.energy/100;
+      const pl=a.state==="working"?"task":a.state==="dispatched"?"transit":a.state==="returning"?"return":"charge";
+      ctx.fillStyle="rgba(255,255,255,0.09)";ctx.fillRect(x+10,y+46,w-20,3);ctx.fillStyle=col;ctx.fillRect(x+10,y+46,(w-20)*Math.max(0,Math.min(1,frac||0)),3);
+      ctx.font="400 10px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.fillStyle="#a5b5c6";ctx.fillText(pl+" "+Math.round((frac||0)*100)+"%",x+10,y+59);
+      const tokPct=Math.round((a.tokens_used||0)/(a.token_budget||60000)*100);ctx.textAlign="right";ctx.fillStyle=tokPct>85?T.alert:"#a5b5c6";ctx.fillText("ctx "+tokPct+"%",x+w-10,y+59);
     }
     ctx.restore();
+  }
+  function drawFollowHUD(){
+    if(!follow)return;const a=M.agents.get(follow);if(!a)return;const p=worldToCanvas(a.x,a.y),col=stateColor(a),r=Math.max(26,20*viewScale);
+    ctx.save();ctx.strokeStyle=col;ctx.lineWidth=1.2;ctx.globalAlpha=0.9;for(let i=0;i<4;i++){const sx=i%2?1:-1,sy=i<2?-1:1;ctx.beginPath();ctx.moveTo(p.x+sx*r,p.y+sy*(r-8));ctx.lineTo(p.x+sx*r,p.y+sy*r);ctx.lineTo(p.x+sx*(r-8),p.y+sy*r);ctx.stroke();}
+    const txt="⌖ following "+a.agent_id+" · "+actLabel(a)+" · drag, Esc or F to release";ctx.font="500 11px 'JetBrains Mono',monospace";const tw=ctx.measureText(txt).width+18,bx=Math.round(W/2-tw/2),by=48;
+    roundRect(ctx,bx,by,tw,24,5);ctx.fillStyle="rgba(8,13,19,0.92)";ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=0.7;ctx.stroke();ctx.globalAlpha=1;ctx.fillStyle=col;ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(txt,bx+9,by+12);PLACED.push({x:bx,y:by,w:tw,h:24});ctx.restore();
+  }
+  function drawModeBadge(){
+    const txt=replay?"REPLAY · recorded frames":"DEMO · simulated backend",col=replay?T.dispatch:T.work;
+    ctx.save();ctx.font="700 10px 'JetBrains Mono',monospace";const tw=ctx.measureText(txt).width+22,bx=W-12-tw,by=H-156-30;
+    roundRect(ctx,bx,by,tw,22,4);ctx.fillStyle="rgba(8,13,19,0.9)";ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=0.7;ctx.lineWidth=1;ctx.stroke();ctx.globalAlpha=1;
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(bx+10,by+11,3,0,6.283);ctx.fill();ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(txt,bx+18,by+11.5);PLACED.push({x:bx,y:by,w:tw,h:22});ctx.restore();
+  }
+  function selNode(){if(!selected)return null;if(selected.type==="ragent"){const i=selected.id.indexOf("/");const p=nodeByKey(selected.id.slice(0,i));if(!p)return null;const aid=selected.id.slice(i+1),a=remoteAgents(p,performance.now()*0.001).find(x=>x.id===aid);return a?Object.assign({},a,{label:aid,port:p}):null;}if(selected.type==="remote"||selected.type==="infra")return nodeByKey(selected.id);return null;}
+  function portFocusScale(p){return Math.max(0.6,Math.min(ZMAX,Math.min(W,H)*0.3/p.R));}
+  function focusNode(n){if(!n)return;if(n.port){focusWorld(n.port.x,n.port.y,portFocusScale(n.port));return;}if(n.R){focusWorld(n.x,n.y,portFocusScale(n));return;}focusWorld(n.x,n.y,Math.max(1,cam.s));}
+  function toggleFollow(id){if(follow===id){follow=null;updateZoomBtn();return;}const a=M.agents.get(id);if(!a)return;follow=id;inertia=null;if(cam.s<1.6)cam.s=1.8;updateZoomBtn();}
+  function drawPipelineArcs(){
+    if(!M.config)return;const o=ordered(),base=0.09+0.3*lod(1.0,1.7),lw=Math.min(2,1/viewScale);
+    ctx.save();ctx.lineWidth=lw;ctx.lineCap="round";ctx.setLineDash([3,6]);ctx.lineDashOffset=reduceMotion?0:-(performance.now()*0.012)%9;
+    for(let i=0;i<o.length-1;i++){const s0=M.stations.get(o[i].station_id),s1=M.stations.get(o[i+1].station_id);if(!s0||!s1)continue;
+      const mx=(s0.x+s1.x)/2,my=(s0.y+s1.y)/2,c={x:cx+(mx-cx)*1.24,y:cy+(my-cy)*1.24};
+      const hot=isSel({type:"station",id:s0.station_id})||isSel({type:"station",id:s1.station_id});
+      const grad=ctx.createLinearGradient(s0.x,s0.y,s1.x,s1.y);grad.addColorStop(0,s0.hue);grad.addColorStop(1,s1.hue);
+      ctx.globalAlpha=hot?0.75:base*(selected?0.45:1);ctx.strokeStyle=grad;ctx.beginPath();ctx.moveTo(s0.x,s0.y);ctx.quadraticCurveTo(c.x,c.y,s1.x,s1.y);ctx.stroke();
+    }
+    ctx.setLineDash([]);ctx.restore();
   }
 
   /* ── DAG view ───────────────────────────────────────────────────── */
@@ -953,7 +1165,16 @@ class Component extends DCLogic {
     return secs<60?secs+"s":Math.round(secs/60)+"m";
   }
 
-  function drawGrid(){ctx.fillStyle=T.floor;ctx.fillRect(0,0,W,H);ctx.strokeStyle="rgba(22,32,40,.32)";ctx.lineWidth=1;const g=42;ctx.beginPath();for(let x=cx%g;x<W;x+=g){ctx.moveTo(x,0);ctx.lineTo(x,H);}for(let y=cy%g;y<H;y+=g){ctx.moveTo(0,y);ctx.lineTo(W,y);}ctx.stroke();const gr=ctx.createRadialGradient(cx,cy,coverR*0.4,cx,cy,Math.max(W,H)*0.75);gr.addColorStop(0,"rgba(0,0,0,0)");gr.addColorStop(1,"rgba(0,0,0,0.55)");ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);}
+  function drawGrid(){
+    const port=view==="port",tl=port?canvasToWorld(0,0):{x:0,y:0},br=port?canvasToWorld(W,H):{x:W,y:H};
+    const x0=tl.x-60,y0=tl.y-60,x1=br.x+60,y1=br.y+60;
+    ctx.fillStyle=T.floor;ctx.fillRect(x0,y0,x1-x0,y1-y0);
+    let g=42;if(port)while(g*viewScale<24)g*=2;
+    ctx.strokeStyle="rgba(22,32,40,.32)";ctx.lineWidth=port?Math.min(2,1/viewScale):1;ctx.beginPath();
+    for(let x=cx-Math.ceil((cx-x0)/g)*g;x<x1;x+=g){ctx.moveTo(x,y0);ctx.lineTo(x,y1);}
+    for(let y=cy-Math.ceil((cy-y0)/g)*g;y<y1;y+=g){ctx.moveTo(x0,y);ctx.lineTo(x1,y);}ctx.stroke();
+    const Rv=Math.max(x1-x0,y1-y0)*0.72,mx=(x0+x1)/2,my=(y0+y1)/2;const gr=ctx.createRadialGradient(mx,my,Rv*0.22,mx,my,Rv);gr.addColorStop(0,"rgba(0,0,0,0)");gr.addColorStop(1,"rgba(0,0,0,0.55)");ctx.fillStyle=gr;ctx.fillRect(x0,y0,x1-x0,y1-y0);
+  }
   function drawCoverage(){const t=performance.now()*0.0004;ctx.save();ctx.translate(cx,cy);ctx.rotate(reduceMotion?0:t);ctx.strokeStyle="rgba(108,140,255,0.2)";ctx.lineWidth=1.5;ctx.setLineDash([6,12]);ctx.beginPath();ctx.arc(0,0,coverR,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.restore();ctx.strokeStyle="rgba(108,140,255,0.08)";ctx.beginPath();ctx.arc(cx,cy,coverR*0.55,0,6.283);ctx.stroke();}
   function drawSources(){
     if(!M.config)return;
@@ -964,7 +1185,7 @@ class Component extends DCLogic {
       for(const sn of st.srcNodes){
         ctx.save();ctx.globalAlpha=base*(active?0.42:0.16);ctx.setLineDash([3,8]);ctx.strokeStyle=active?st.hue:"rgba(138,157,168,0.8)";ctx.lineWidth=active?1.1:0.8;ctx.beginPath();ctx.moveTo(sn.x,sn.y);ctx.lineTo(st.x,st.y);ctx.stroke();ctx.setLineDash([]);ctx.restore();
         const D=5.5;ctx.save();ctx.globalAlpha=base*(active?1:0.5);ctx.translate(sn.x,sn.y);ctx.rotate(Math.PI/4);ctx.fillStyle=active?"#0b1015":"#0d1419";ctx.strokeStyle=active?st.hue:"rgba(138,157,168,0.45)";ctx.lineWidth=1.2;if(active){ctx.shadowColor=st.hue;ctx.shadowBlur=10;}ctx.fillRect(-D/2,-D/2,D,D);ctx.strokeRect(-D/2,-D/2,D,D);ctx.restore();
-        ctx.save();ctx.globalAlpha=base*(active?0.95:0.42);ctx.font="500 8px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="top";ctx.fillStyle=active?st.hue:"rgba(138,157,168,0.75)";ctx.fillText(sn.label,sn.x,sn.y+D+5);if(active){ctx.globalAlpha=base*0.55;ctx.font="400 7px 'JetBrains Mono',monospace";ctx.fillStyle="rgba(138,157,168,0.7)";ctx.fillText(sn.type,sn.x,sn.y+D+15);}ctx.restore();
+        const lblA=lod(0.55,0.82);if(lblA>0.02){const s1=fs(9,10,12);label(sn.x,sn.y,sn.label,{size:s1,col:active?st.hue:"#a5b5c6",dy:(D+4)*viewScale,prio:active?6:5,alpha:base*(active?0.95:0.6)*lblA});if(active||viewScale>1.3)label(sn.x,sn.y,sn.type,{size:fs(8,10,11),col:"#a5b5c6",dy:(D+4)*viewScale+s1+3,prio:4,alpha:base*0.7*lblA});}
       }
     }
     for(const pk of srcPackets){
@@ -987,7 +1208,8 @@ class Component extends DCLogic {
       if(st.drain){ctx.shadowBlur=0;ctx.strokeStyle="rgba(255,90,82,.8)";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-6,-6);ctx.lineTo(6,6);ctx.stroke();}ctx.restore();
       const qn=qcount(st.station_id);
       if(qn>0){ctx.save();ctx.translate(st.x+R-2,st.y-R+2);ctx.fillStyle="#0b1015";ctx.strokeStyle=st.hue;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,8,0,6.283);ctx.fill();ctx.stroke();ctx.fillStyle=st.hue;ctx.font="700 9px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(qn,0,0.5);ctx.restore();}
-      ctx.font="500 11px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="top";ctx.fillStyle=sel||hov?"rgba(232,241,245,1)":"rgba(232,241,245,0.82)";ctx.fillText(st.name,st.x,st.y+R+6);
+      label(st.x,st.y,st.name,{size:fs(11,10,15),col:sel||hov?"rgba(232,241,245,1)":"rgba(232,241,245,0.86)",dy:(R+5)*viewScale,prio:sel||hov?100:25,alpha:(sel||hov?1:dimWhenSel())*lod(0.12,0.3)});
+      const dA=lod(1.15,1.6);if(dA>0.02&&(sel||hov)){ctx.save();ctx.globalAlpha=dA;ctx.font="400 9px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="top";const lines=[[st.det?"deterministic · no LLM":(st.model||"qwen3:14b")+" · "+(st.model_hint||"")+(st.temperature!==undefined?" · T="+st.temperature:""),"rgba(138,157,168,0.95)"],[(st.contract_in?st.contract_in+" → ":"")+(st.contract_out||""),st.hue],[(st.srcNodes?st.srcNodes.length:0)+" tools · step "+(st.order+1)+(st.optional?" · optional":""),"rgba(95,113,124,0.95)"]].filter(l=>l[0]);const bw=Math.max(...lines.map(l=>ctx.measureText(l[0]).width))+14,bh=lines.length*12+8,bx=st.x-bw/2,by=st.y+R+19;ctx.fillStyle="rgba(10,15,19,0.9)";roundRect(ctx,bx,by,bw,bh,4);ctx.fill();ctx.strokeStyle=st.hue;ctx.globalAlpha=dA*0.45;ctx.lineWidth=1;roundRect(ctx,bx,by,bw,bh,4);ctx.stroke();ctx.globalAlpha=dA;lines.forEach((l,i)=>{ctx.fillStyle=l[1];ctx.fillText(l[0],st.x,by+5+i*12);});ctx.restore();}
       if(sel)selectionRing(st.x,st.y,R+9,hc||st.hue);ctx.globalAlpha=1;
     }
   }
@@ -999,7 +1221,12 @@ class Component extends DCLogic {
     ctx.save();ctx.translate(cx,cy);for(let ring=0;ring<2;ring++){const rr=26-ring*9;ctx.beginPath();for(let i=0;i<8;i++){const ang=i*Math.PI/4+(ring?t*0.4:-t*0.3),px=Math.cos(ang)*rr,py=Math.sin(ang)*rr;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}ctx.closePath();ctx.fillStyle=ring?"#1b2740":"#13202e";ctx.fill();ctx.strokeStyle="rgba(124,158,255,0.55)";ctx.lineWidth=1.5;ctx.stroke();}
     ctx.fillStyle="#9db8ff";ctx.shadowColor="#6c8cff";ctx.shadowBlur=18;ctx.beginPath();ctx.arc(0,0,5+Math.sin(t*3)*1.2,0,6.283);ctx.fill();ctx.restore();
     if(sel)selectionRing(cx,cy,54,T.dock);ctx.globalAlpha=1;
-    if(viewScale<0.9){ctx.fillStyle="rgba(108,140,255,0.7)";ctx.font="700 10px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.fillText("PORT-A",cx,cy-64);}
+    const la=1-lod(0.6,0.92);
+    if(la>0.02){const wk=[...M.agents.values()].filter(a=>a.state!=="docked").length;
+      label(cx,cy,"PORT-A",{size:fs(16,11,15),weight:700,col:"#9db8ff",dy:-(coverR*1.2)*viewScale-6,base:"bottom",prio:sel?100:50,alpha:la});
+      label(cx,cy,"primary · "+M.agents.size+" agents · "+wk+" active · "+M.stations.size+" stations",{size:fs(10,10,12),col:"#a5b5c6",dy:(coverR*1.2)*viewScale+6,prio:49,alpha:la*lod(0.2,0.45)});}
+    const fg=1-lod(0.14,0.3);
+    if(fg>0.02){const q=1/viewScale;ctx.save();ctx.globalAlpha=fg;ctx.strokeStyle="#7ea6ff";ctx.lineWidth=1.4*q;ctx.beginPath();ctx.arc(cx,cy,12*q,0,6.283);ctx.stroke();ctx.strokeStyle="rgba(126,166,255,0.5)";ctx.lineWidth=q;ctx.setLineDash([4*q,6*q]);ctx.beginPath();ctx.arc(cx,cy,coverR*1.1,0,6.283);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle="#9db8ff";ctx.shadowColor="#6c8cff";ctx.shadowBlur=10*q;ctx.beginPath();ctx.arc(cx,cy,3*q,0,6.283);ctx.fill();ctx.restore();}
   }
   function drawDrone(a){
     const col=stateColor(a),sel=isSel({type:"agent",id:a.agent_id}),hov=hovered&&hovered.type==="agent"&&hovered.id===a.agent_id;
@@ -1019,22 +1246,397 @@ class Component extends DCLogic {
     if(a.specialty&&M.config){const spSt=M.config.stations.find(s=>s.station_id===a.specialty);if(spSt){ctx.save();ctx.translate(7,-7);ctx.fillStyle=spSt.hue;ctx.shadowColor=spSt.hue;ctx.shadowBlur=4;ctx.beginPath();ctx.arc(0,0,2,0,6.283);ctx.fill();ctx.restore();}}
     ctx.restore();
     if(sel){selectionRing(x,y,18,col);ctx.save();ctx.translate(x,y);ctx.strokeStyle="rgba(255,255,255,.12)";ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(0,0,23,0,6.283);ctx.stroke();ctx.strokeStyle=a.energy<22?T.alert:T.return;ctx.beginPath();ctx.arc(0,0,23,-Math.PI/2,-Math.PI/2+(a.energy/100)*6.283);ctx.stroke();ctx.restore();}
-    if(a.tag){ctx.font="500 9px 'JetBrains Mono',monospace";const tw=ctx.measureText(a.agent_id+"  "+a.tag).width+12,tx=x-tw/2,ty=y-22;ctx.fillStyle="rgba(10,15,19,0.8)";roundRect(ctx,tx,ty,tw,15,4);ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=ctx.globalAlpha*0.5;ctx.lineWidth=1;roundRect(ctx,tx,ty,tw,15,4);ctx.stroke();ctx.globalAlpha=sel||hov?1:dimWhenSel();ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillStyle="rgba(232,241,245,0.65)";ctx.fillText(a.agent_id,tx+6,ty+7.5);const idw=ctx.measureText(a.agent_id+"  ").width;ctx.fillStyle=col;ctx.fillText(a.tag,tx+6+idw,ty+7.5);}
+    const tagA=lod(0.5,0.72);
+    if(a.tag&&tagA>0.02)label(x,y,null,{parts:[[a.agent_id+"  ","rgba(232,241,245,0.75)"],[a.tag,col]],size:fs(10,10,12),pill:true,pillCol:col,dy:-14*viewScale-2,base:"bottom",prio:sel||hov?100:15,alpha:(sel||hov?1:dimWhenSel())*tagA});
     ctx.globalAlpha=1;
   }
   function drawSparks(){for(const s of sparks){ctx.globalAlpha=Math.max(0,s.life)*(selected?dimWhenSel():1);ctx.fillStyle=s.hue;ctx.shadowColor=s.hue;ctx.shadowBlur=6;ctx.beginPath();ctx.arc(s.x,s.y,1.6,0,6.283);ctx.fill();}ctx.globalAlpha=1;ctx.shadowBlur=0;}
 
+
+
+  /* ── Roadmap HUD (Port view overlay) ──────────────────────────────────── */
+  function drawRoadmapHUD(){
+    const t2=performance.now()*0.001;
+    // Phase strip — top right
+    const phW=208,phH=46,phX=W-phW-12,phY=12;
+    ctx.save();
+    roundRect(ctx,phX,phY,phW,phH,5);ctx.fillStyle="rgba(8,13,19,0.82)";ctx.fill();
+    ctx.strokeStyle="rgba(44,60,70,0.55)";ctx.lineWidth=1;ctx.stroke();
+    const dot=6,gap=2,colW=(phW-16)/ROADMAP.phases.length;
+    ROADMAP.phases.forEach((ph,i)=>{
+      const dx=phX+8+i*colW+colW/2,dy=phY+14;
+      ctx.globalAlpha=ph.active?1:0.22+i*0.04;
+      ctx.fillStyle=ph.col;ctx.shadowColor=ph.col;ctx.shadowBlur=ph.active?(8+3*Math.sin(t2*2.2)):0;
+      ctx.beginPath();ctx.arc(dx,dy,dot*(ph.active?1:0.65),0,6.283);ctx.fill();ctx.shadowBlur=0;
+      ctx.font=(ph.active?"700":"400")+" 7px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="top";
+      ctx.fillStyle=ph.active?ph.col:"rgba(95,113,124,0.45)";ctx.fillText("P"+ph.n,dx,dy+dot+2);
+    });
+    ctx.globalAlpha=1;
+    const act=ROADMAP.phases.find(p=>p.active);
+    ctx.fillStyle="#7ea6ff";ctx.font="500 7px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.fillText("PHASE "+act.n+" · "+act.label.toUpperCase()+" · "+act.theme.toUpperCase(),phX+8,phY+phH-8);
+    ctx.restore();
+    // North-star question — bottom center (faint)
+    ctx.save();ctx.globalAlpha=0.24;ctx.fillStyle="#36c6e0";ctx.font="400 8.5px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="alphabetic";
+    ctx.fillText(ROADMAP.northStar,W/2,H-8);ctx.restore();
+    // 4 operating goal dots around coverage ring
+    if(!selected){
+      ROADMAP.goals.forEach((g,i)=>{
+        const ang=-Math.PI/2+(i/4)*Math.PI*2;const gr=coverR*1.12;
+        const gx=cx+Math.cos(ang)*gr,gy=cy+Math.sin(ang)*gr;
+        ctx.save();ctx.globalAlpha=0.18+0.08*Math.sin(t2*1.1+i);
+        ctx.fillStyle=g.col;ctx.shadowColor=g.col;ctx.shadowBlur=5;ctx.beginPath();ctx.arc(gx,gy,3.5,0,6.283);ctx.fill();ctx.shadowBlur=0;
+        ctx.font="400 7.5px 'JetBrains Mono',monospace";ctx.textAlign=i===1?"left":i===3?"right":"center";ctx.textBaseline=i===0?"bottom":i===2?"top":"middle";ctx.fillStyle=g.col;
+        const off=12;ctx.fillText(g.n+". "+g.title,gx+(i===1?off:i===3?-off:0),gy+(i===0?-off:i===2?off:0));
+        ctx.restore();
+      });
+    }
+  }
+
+  /* ── Operating loop panel (Flow view — right column) ──────────────────── */
+  function drawOperatingLoopPanel(){
+    if(W<640)return;
+    const t2=performance.now()*0.001;
+    const PAD_F=20,LX=Math.max(360,W*0.6),LW=W-LX-PAD_F,TOP=H*0.10,nodeH=Math.min(88,(H*0.78)/ROADMAP.loop.length);
+    const PAD_F2=20;
+    // Divider line
+    ctx.save();ctx.strokeStyle="rgba(44,60,70,0.4)";ctx.lineWidth=1;ctx.setLineDash([3,8]);ctx.beginPath();ctx.moveTo(W*0.59,H*0.06);ctx.lineTo(W*0.59,H*0.94);ctx.stroke();ctx.setLineDash([]);
+    // Header
+    ctx.fillStyle="#36c6e0";ctx.font="500 8px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillText("THE OPERATING LOOP",W*0.61,TOP-4);
+    ROADMAP.loop.forEach((s,i)=>{
+      const nx=W*0.61,ny=TOP+i*nodeH+4,nw=W-nx-PAD_F2,nh=nodeH-10,nr=5;
+      ctx.globalAlpha=s.built?1:0.55;
+      // Glow bg
+      ctx.fillStyle=s.col;ctx.shadowColor=s.col;ctx.shadowBlur=s.built?(10+3*Math.sin(t2*1.6+i)):3;ctx.globalAlpha*=0.1;
+      roundRect(ctx,nx,ny,nw,nh,nr);ctx.fill();ctx.shadowBlur=0;ctx.globalAlpha=s.built?1:0.55;
+      // Box
+      roundRect(ctx,nx,ny,nw,nh,nr);ctx.fillStyle="#0d1820";ctx.fill();
+      ctx.strokeStyle=s.col;ctx.lineWidth=s.built?1.4:0.8;ctx.setLineDash(s.built?[]:[3,5]);ctx.stroke();ctx.setLineDash([]);
+      // Dot
+      ctx.fillStyle=s.col;ctx.shadowColor=s.col;ctx.shadowBlur=s.built?7:2;ctx.beginPath();ctx.arc(nx+12,ny+nh/2,3.5,0,6.283);ctx.fill();ctx.shadowBlur=0;
+      // Step name
+      ctx.fillStyle=s.built?"rgba(232,241,245,0.95)":"rgba(138,157,168,0.7)";ctx.font=(s.built?"600":"400")+" 11px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(s.step,nx+22,ny+nh*0.38);
+      // Sub
+      ctx.fillStyle=s.col+"77";ctx.font="400 7.5px 'JetBrains Mono',monospace";ctx.textBaseline="middle";ctx.fillText(s.sub,nx+22,ny+nh*0.62);
+      // Note
+      ctx.fillStyle="rgba(95,113,124,0.62)";ctx.font="400 7.5px 'JetBrains Mono',monospace";ctx.textBaseline="alphabetic";ctx.fillText(s.note,nx+22,ny+nh-5);
+      // Built badge
+      ctx.textAlign="right";ctx.fillStyle=s.built?"#4fd672":"rgba(95,113,124,0.4)";ctx.font="500 7px 'JetBrains Mono',monospace";ctx.textBaseline="top";
+      ctx.fillText(s.built?"✓ built":"○ planned",nx+nw-6,ny+4);
+      // Arrow
+      if(i<ROADMAP.loop.length-1){ctx.globalAlpha=(s.built?1:0.55)*0.35;ctx.fillStyle=s.col;ctx.beginPath();ctx.moveTo(nx+nw/2-4,ny+nh+1);ctx.lineTo(nx+nw/2+4,ny+nh+1);ctx.lineTo(nx+nw/2,ny+nh+6);ctx.closePath();ctx.fill();}
+      ctx.globalAlpha=1;
+    });
+    // North-star (faint, bottom)
+    ctx.globalAlpha=0.45;ctx.fillStyle="#36c6e0";ctx.font="italic 400 8px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.fillText('"'+ROADMAP.northStar+'"',W*0.61,TOP+ROADMAP.loop.length*nodeH+14);ctx.globalAlpha=1;
+    ctx.restore();
+  }
+
+  /* ── Phase roadmap strip (DAG view — bottom) ───────────────────────────── */
+  function drawPhaseStrip(){
+    if(W<480||!ROADMAP)return;
+    const t2=performance.now()*0.001;
+    const SY=H*0.72,SH=H-SY-8,PAD=W*0.045;
+    const n=ROADMAP.phases.length,arrowW=38,totalArrows=(n-1)*arrowW,nodeW=Math.floor((W-PAD*2-totalArrows)/n);
+    ctx.save();
+    ctx.strokeStyle="rgba(44,60,70,0.38)";ctx.lineWidth=1;ctx.setLineDash([3,8]);ctx.beginPath();ctx.moveTo(PAD,SY-3);ctx.lineTo(W-PAD,SY-3);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="rgba(95,113,124,0.4)";ctx.font="400 7px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.fillText("ROADMAP · 90 DAYS · Framework-first, product-shaped, proof before breadth",PAD,SY-7);
+    ROADMAP.phases.forEach((ph,i)=>{
+      const nx=PAD+i*(nodeW+arrowW),ny=SY+4,nh=SH-8,nr=5;
+      ctx.globalAlpha=ph.active?1:0.28+i*0.06;
+      if(ph.active){ctx.fillStyle=ph.col;ctx.shadowColor=ph.col;ctx.shadowBlur=14+4*Math.sin(t2*1.8);ctx.globalAlpha=0.11;roundRect(ctx,nx,ny,nodeW,nh,nr);ctx.fill();ctx.shadowBlur=0;ctx.globalAlpha=1;}
+      roundRect(ctx,nx,ny,nodeW,nh,nr);ctx.fillStyle=ph.active?"#0f1c26":"#0b1218";ctx.fill();
+      ctx.strokeStyle=ph.col;ctx.lineWidth=ph.active?1.5:0.7;ctx.setLineDash(ph.active?[]:[3,5]);ctx.stroke();ctx.setLineDash([]);
+      // Number
+      ctx.fillStyle=ph.col;ctx.shadowColor=ph.col;ctx.shadowBlur=ph.active?10:2;
+      ctx.font="700 17px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="alphabetic";ctx.fillText(ph.n,nx+nodeW/2,ny+22);ctx.shadowBlur=0;
+      // Label
+      ctx.fillStyle=ph.active?"rgba(232,241,245,0.95)":"rgba(138,157,168,0.5)";ctx.font="600 8px 'JetBrains Mono',monospace";ctx.fillText(ph.label.toUpperCase(),nx+nodeW/2,ny+33);
+      // Theme (word-wrap)
+      ctx.fillStyle=ph.active?ph.col+"aa":"rgba(95,113,124,0.38)";ctx.font="400 7px 'JetBrains Mono',monospace";
+      const words=ph.theme.split(" ");let line="",ly=ny+44;
+      words.forEach(w=>{const test=line+(line?" ":"")+w;if(ctx.measureText(test).width>nodeW-8&&line){ctx.fillText(line,nx+nodeW/2,ly);ly+=10;line=w;}else line=test;});if(line)ctx.fillText(line,nx+nodeW/2,ly);
+      // Gate badge
+      const gateY=ny+nh-10;ctx.fillStyle=ph.active?ph.col:"rgba(95,113,124,0.28)";ctx.font="400 6px 'JetBrains Mono',monospace";ctx.fillText(ph.gate,nx+nodeW/2,gateY);
+      // Active badge
+      if(ph.active){ctx.fillStyle=ph.col;ctx.font="700 6.5px 'JetBrains Mono',monospace";ctx.textBaseline="top";ctx.fillText("● ACTIVE",nx+4,ny+3);}
+      // Arrow
+      if(i<n-1){
+        const ax=nx+nodeW,ay=ny+nh/2;ctx.globalAlpha=ph.active?0.65:0.18;
+        ctx.strokeStyle=ph.col;ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(ax+4,ay);ctx.lineTo(ax+arrowW-4,ay);ctx.stroke();
+        ctx.fillStyle=ph.col;ctx.beginPath();ctx.moveTo(ax+arrowW-4,ay-3.5);ctx.lineTo(ax+arrowW,ay);ctx.lineTo(ax+arrowW-4,ay+3.5);ctx.closePath();ctx.fill();}
+      ctx.globalAlpha=1;
+    });
+    ctx.restore();
+  }
+
+  /* ── Applied Proving Ground view ───────────────────────────────────── */
+  function drawAPG(){
+    drawGrid();
+    if(W<600){ctx.fillStyle='rgba(138,157,168,0.5)';ctx.font='400 11px JetBrains Mono,monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('APG view requires wider canvas',W/2,H/2);return;}
+    const PAD=36,LW=Math.max(180,W*0.38),RX=PAD+LW+28,RW=Math.max(200,W-RX-PAD);
+    const AMBER="#f2b134",TEAL="#36c6e0",VIOLET="#c98bff",GREEN="#4fd672",ALERT="#ff5a52";
+
+    // ── Header bar ────────────────────────────────────────────────────
+    ctx.save();
+    const hg=ctx.createLinearGradient(0,0,W,0);
+    hg.addColorStop(0,"rgba(18,27,33,0.0)");hg.addColorStop(0.5,"rgba(28,44,54,0.55)");hg.addColorStop(1,"rgba(18,27,33,0.0)");
+    ctx.fillStyle=hg;ctx.fillRect(0,PAD-10,W,52);
+    ctx.fillStyle=TEAL;ctx.font="700 13px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.shadowColor=TEAL;ctx.shadowBlur=12;ctx.fillText("◈ APPLIED PROVING GROUND",PAD,PAD+16);ctx.shadowBlur=0;
+    ctx.fillStyle="rgba(138,157,168,0.75)";ctx.font="400 9px 'JetBrains Mono',monospace";
+    ctx.fillText("SharePoint Tenant Mirror · neurotechus.sharepoint.com · bounded 30-min cycles · zero unauthorized mutations",PAD,PAD+32);
+    ctx.fillStyle="rgba(95,113,124,0.6)";ctx.textAlign="right";ctx.font="400 8px 'JetBrains Mono',monospace";
+    ctx.fillText("standalone validation environment · not a ROBOPORT roadmap phase",W-PAD,PAD+32);
+    ctx.restore();
+
+    const TOP=PAD+56,BOT=H-PAD-20;
+
+    // ── LEFT: Pipeline flow ──────────────────────────────────────────
+    const PHASES=[
+      {id:"MapSites",   label:"MapSites",    sub:"site inventory",      hue:AMBER,  gate:null,           artifact:"*-sites.csv"},
+      {id:"MapFiles",   label:"MapFiles",    sub:"file inventory",       hue:AMBER,  gate:"GraphSearch",  artifact:"*-file-inventory.csv"},
+      {id:"Copy",       label:"Copy",        sub:"local mirror",         hue:TEAL,   gate:"WhatIfCopy",   artifact:"files/ + *-copy-log.csv"},
+      {id:"Review",     label:"ReviewBatch", sub:"queue + classify",     hue:TEAL,   gate:null,           artifact:"*-review-queue.csv"},
+      {id:"Restructure",label:"Restructure", sub:"local stage only",     hue:VIOLET, gate:"NoChange",     artifact:"*-org-restructure-plan.csv"},
+      {id:"RAG",        label:"RAG / Pinecone",sub:"workflow memory",    hue:VIOLET, gate:null,           artifact:"agent-memory-index.jsonl"},
+    ];
+    const NP=PHASES.length,nodeH=(BOT-TOP)/(NP-0.5),nodeW=LW-8,nodeR=7;
+    const nx=PAD+LW/2;
+
+    // Spine line
+    ctx.save();ctx.strokeStyle="rgba(54,198,224,0.12)";ctx.lineWidth=1.5;ctx.setLineDash([4,8]);
+    ctx.beginPath();ctx.moveTo(nx,TOP+16);ctx.lineTo(nx,BOT-16);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+
+    const t2=performance.now()*0.001;
+    PHASES.forEach((ph,i)=>{
+      const py=TOP+i*nodeH+nodeH*0.3;
+
+      // Gate blocker above phase (except first)
+      if(ph.gate&&i>0){
+        const gy=py-nodeH*0.44;
+        const isOpen=ph.gate==="GraphSearch"; // GraphSearch is partial, not fully blocked
+        const blocked=ph.gate==="NoChange"||ph.gate==="WhatIfCopy";
+        const gc=blocked?ALERT:(isOpen?"rgba(95,113,124,0.6)":AMBER);
+        ctx.save();ctx.translate(nx,gy);ctx.rotate(Math.PI/4);
+        ctx.fillStyle=blocked?"rgba(255,90,82,0.12)":"rgba(242,177,52,0.08)";
+        roundRect(ctx,-9,-9,18,18,2);ctx.fill();
+        ctx.strokeStyle=gc;ctx.lineWidth=1.2;ctx.shadowColor=gc;ctx.shadowBlur=blocked?8:4;
+        roundRect(ctx,-9,-9,18,18,2);ctx.stroke();ctx.shadowBlur=0;
+        if(blocked){ctx.strokeStyle=gc;ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(-5,-5);ctx.lineTo(5,5);ctx.stroke();}
+        ctx.restore();
+        ctx.fillStyle=gc;ctx.font="500 7.5px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="middle";
+        ctx.fillText("⊠ "+ph.gate,nx+16,gy);
+      }
+
+      // Phase node box
+      const bx=PAD+4,bw=LW-8,bh=38;
+      const busy=false,sel=false;
+      ctx.save();
+      // Glow
+      ctx.globalAlpha=0.18+0.06*Math.sin(t2*1.4+i);ctx.fillStyle=ph.hue;ctx.shadowColor=ph.hue;ctx.shadowBlur=22;
+      roundRect(ctx,bx,py-bh/2,bw,bh,nodeR);ctx.fill();ctx.shadowBlur=0;ctx.globalAlpha=1;
+      // Box
+      roundRect(ctx,bx,py-bh/2,bw,bh,nodeR);ctx.fillStyle="#0d1820";ctx.fill();
+      ctx.strokeStyle=ph.hue;ctx.lineWidth=1.2;ctx.shadowColor=ph.hue;ctx.shadowBlur=8;ctx.stroke();ctx.shadowBlur=0;
+      // Dot
+      ctx.fillStyle=ph.hue;ctx.shadowColor=ph.hue;ctx.shadowBlur=6;ctx.beginPath();ctx.arc(bx+14,py,3.5,0,6.283);ctx.fill();ctx.shadowBlur=0;
+      // Labels
+      ctx.textAlign="left";ctx.textBaseline="alphabetic";
+      ctx.fillStyle="rgba(232,241,245,0.95)";ctx.font="600 11px 'JetBrains Mono',monospace";ctx.fillText(ph.label,bx+26,py+1);
+      ctx.fillStyle="rgba(95,113,124,0.85)";ctx.font="400 8.5px 'JetBrains Mono',monospace";ctx.fillText(ph.sub,bx+26,py+13);
+      // Artifact tag
+      ctx.fillStyle=ph.hue+"99";ctx.font="400 7.5px 'JetBrains Mono',monospace";ctx.textAlign="right";
+      ctx.fillText(ph.artifact,bx+bw-8,py+1);
+      ctx.restore();
+    });
+
+    // ── Divider ───────────────────────────────────────────────────────
+    ctx.save();ctx.strokeStyle="rgba(44,60,70,0.55)";ctx.lineWidth=1;ctx.setLineDash([3,8]);
+    ctx.beginPath();ctx.moveTo(PAD+LW+14,TOP);ctx.lineTo(PAD+LW+14,BOT);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+
+    // ── RIGHT COLUMN ─────────────────────────────────────────────────
+    // Stats row
+    const STATS=[
+      {n:"25",  u:"tests",   sub:"passing",        col:GREEN},
+      {n:"12,302",u:"records",sub:"app-only inventory",col:TEAL},
+      {n:"0",   u:"mutations",sub:"unauthorized",   col:GREEN},
+      {n:"30",  u:"min",     sub:"bounded cycle",   col:AMBER},
+    ];
+    const sW=(RW)/STATS.length,sY=TOP+2;
+    STATS.forEach((s,i)=>{
+      const sx=RX+i*sW+sW*0.5;
+      ctx.save();
+      ctx.fillStyle=s.col;ctx.shadowColor=s.col;ctx.shadowBlur=18;
+      ctx.font="700 24px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="alphabetic";
+      ctx.fillText(s.n,sx,sY+28);ctx.shadowBlur=0;
+      ctx.fillStyle="rgba(232,241,245,0.55)";ctx.font="400 9px 'JetBrains Mono',monospace";
+      ctx.fillText(s.u,sx,sY+43);
+      ctx.fillStyle="rgba(95,113,124,0.6)";ctx.font="400 7.5px 'JetBrains Mono',monospace";
+      ctx.fillText(s.sub,sx,sY+55);
+      ctx.restore();
+    });
+
+    // ── What this tests ──────────────────────────────────────────────
+    const sec1Y=sY+74;
+    ctx.save();
+    ctx.fillStyle=TEAL;ctx.font="500 8px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.letterSpacing="1px";ctx.fillText("WHAT THIS TESTS",RX,sec1Y);
+    const theses=[
+      {col:GREEN,  txt:"Resumable, evidence-producing agent runs"},
+      {col:AMBER,  txt:"Explicit permission + mutation gates"},
+      {col:VIOLET, txt:"Specialized agent roles + handoffs"},
+      {col:TEAL,   txt:"Local artifacts for review + regression"},
+      {col:GREEN,  txt:"Workflow-memory retrieval (RAG + Pinecone)"},
+      {col:AMBER,  txt:"discovered → copied → reviewed → staged"},
+    ];
+    theses.forEach((th,i)=>{
+      const ty=sec1Y+16+i*18;
+      ctx.fillStyle=th.col;ctx.beginPath();ctx.arc(RX+5,ty-3,2.5,0,6.283);ctx.fill();
+      ctx.fillStyle="rgba(232,241,245,0.82)";ctx.font="400 10px 'JetBrains Mono',monospace";ctx.fillText(th.txt,RX+14,ty);
+    });
+    ctx.restore();
+
+    // ── State machine strip ──────────────────────────────────────────
+    const smY=sec1Y+16+theses.length*18+20;
+    const STATES=["discovered","copied","reviewed","staged"];
+    const stW=(RW-4)/STATES.length;
+    ctx.save();
+    ctx.fillStyle="rgba(95,113,124,0.4)";ctx.font="500 8px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.fillText("STATE MACHINE",RX,smY);
+    STATES.forEach((s,i)=>{
+      const sx=RX+i*stW,sy=smY+10;const isLast=i===STATES.length-1;
+      const cols=[AMBER,TEAL,TEAL,VIOLET];
+      roundRect(ctx,sx+2,sy,stW-(isLast?4:0)-2,22,4);ctx.fillStyle="rgba(13,24,32,0.85)";ctx.fill();
+      ctx.strokeStyle=cols[i]+"66";ctx.lineWidth=1;ctx.stroke();
+      ctx.fillStyle=cols[i];ctx.font="500 8.5px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText(s,sx+stW/2,sy+11);
+      if(!isLast){ctx.fillStyle="rgba(54,198,224,0.45)";ctx.font="400 9px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText("→",sx+stW-4,sy+11);}
+    });
+    ctx.restore();
+
+    // ── Agent roles ──────────────────────────────────────────────────
+    const arY=smY+44;
+    const ROLES=[
+      {name:"Orchestrator",       role:"owns 30-min cycle · summarises · stops on blocker",  col:T.dock},
+      {name:"Inventory Agent",    role:"MapSites + MapFiles · no tenant write",              col:AMBER},
+      {name:"Copy Agent",         role:"local mirror only · dry-run first",                  col:TEAL},
+      {name:"Review Agent",       role:"queue + classify · no mutation",                     col:TEAL},
+      {name:"RAG Agent",          role:"index rebuild after each new manifest",              col:VIOLET},
+    ];
+    ctx.save();
+    ctx.fillStyle=TEAL;ctx.font="500 8px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillText("AGENT ROLES",RX,arY);
+    ROLES.forEach((r,i)=>{
+      const ry=arY+14+i*17;
+      ctx.fillStyle=r.col;ctx.beginPath();ctx.arc(RX+5,ry-3,2.5,0,6.283);ctx.fill();
+      ctx.fillStyle="rgba(232,241,245,0.9)";ctx.font="600 9.5px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+      ctx.fillText(r.name,RX+13,ry);
+      const nw=ctx.measureText(r.name).width;
+      ctx.fillStyle="rgba(95,113,124,0.75)";ctx.font="400 9px 'JetBrains Mono',monospace";
+      ctx.fillText(" · "+r.role,RX+13+nw,ry);
+    });
+    ctx.restore();
+
+    // ── Open blocker ─────────────────────────────────────────────────
+    const blY=arY+14+ROLES.length*17+18;
+    ctx.save();
+    roundRect(ctx,RX,blY,RW-2,40,5);ctx.fillStyle="rgba(255,90,82,0.07)";ctx.fill();ctx.strokeStyle="rgba(255,90,82,0.3)";ctx.lineWidth=1;ctx.stroke();
+    ctx.fillStyle=ALERT;ctx.font="500 8px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.fillText("⊠  OPEN PERMISSION BLOCKER",RX+10,blY+14);
+    ctx.fillStyle="rgba(232,241,245,0.65)";ctx.font="400 9px 'JetBrains Mono',monospace";
+    ctx.fillText("Get-PnPTenantSite → Attempted to perform an unauthorized operation",RX+10,blY+29);
+    ctx.fillStyle="rgba(95,113,124,0.6)";ctx.font="400 8px 'JetBrains Mono',monospace";
+    ctx.fillText("GraphSearch only · not a complete tenant inventory · awaiting approved Entra app client id",RX+10,blY+40);
+    ctx.restore();
+
+    // ── Next proof gate ───────────────────────────────────────────────
+    const npY=blY+56;
+    ctx.save();
+    ctx.fillStyle=AMBER;ctx.font="500 8px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillText("NEXT PROOF GATE",RX,npY);
+    const gates=["inventory drift between runs","failed permission boundaries","permission blocker map","artifact changes across handoffs"];
+    gates.forEach((g,i)=>{
+      ctx.fillStyle=AMBER+"aa";ctx.beginPath();ctx.arc(RX+5,npY+14+i*16-3,2,0,6.283);ctx.fill();
+      ctx.fillStyle="rgba(232,241,245,0.75)";ctx.font="400 9.5px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+      ctx.fillText("ROBOPORT identifies "+g,RX+13,npY+14+i*16);
+    });
+    ctx.restore();
+
+    // ── Roadmap position — Phase 0 connection ────────────────────────
+    const rpY=BOT-170;
+    ctx.save();
+    roundRect(ctx,PAD+4,rpY,LW-8,52,5);ctx.fillStyle="rgba(122,166,255,0.07)";ctx.fill();ctx.strokeStyle="rgba(122,166,255,0.25)";ctx.lineWidth=1;ctx.stroke();
+    ctx.fillStyle="#7ea6ff";ctx.font="700 8px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.fillText("PHASE 0 · BASELINE HARDENING",PAD+12,rpY+14);
+    ctx.fillStyle="rgba(232,241,245,0.7)";ctx.font="400 9px 'JetBrains Mono',monospace";
+    ctx.fillText("SPT Mirror is a real validation environment for ROBOPORT Phase 0:",PAD+12,rpY+26);
+    ctx.fillStyle="rgba(138,157,168,0.8)";ctx.font="400 8.5px 'JetBrains Mono',monospace";
+    ctx.fillText("25 tests · 12,302 records · documented 30-min handoffs · 0 unauthorized mutations",PAD+12,rpY+38);
+    ctx.fillStyle="rgba(95,113,124,0.6)";ctx.font="400 7.5px 'JetBrains Mono',monospace";
+    ctx.fillText("Not a roadmap phase · standalone validation environment proving ROBOPORT's core thesis",PAD+12,rpY+48);
+    ctx.restore();
+
+    // ── Roadmap goals — what SPT Mirror proves ──────────────────────
+    const rgY=rpY+58;
+    const P0_PROOF=[
+      {col:"#7ea6ff",g:"1. Preserve truth",   v:"every run writes timestamped manifests, logs, and RAG artifacts"},
+      {col:"#36c6e0",g:"2. Compare behavior",  v:"run-over-run drift detectable via diff on sites.csv + file-inventory.csv"},
+      {col:"#4fd672",g:"3. Surface drift",      v:"review-queue.csv exposes active/dormant/stale classification changes"},
+      {col:"#f2b134",g:"4. Enforce proof",      v:"UpdateMode=NoChange gate prevents mutations until explicitly overridden"},
+    ];
+    ctx.save();
+    ctx.fillStyle="rgba(54,198,224,0.5)";ctx.font="500 7.5px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.fillText("ROBOPORT GOAL COVERAGE",PAD+4,rgY);
+    P0_PROOF.forEach((p,i)=>{
+      const ry=rgY+12+i*16;
+      ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(PAD+10,ry-2.5,2.5,0,6.283);ctx.fill();
+      ctx.fillStyle="rgba(232,241,245,0.82)";ctx.font="600 8.5px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+      ctx.fillText(p.g,PAD+18,ry);
+      const gw=ctx.measureText(p.g).width;
+      ctx.fillStyle="rgba(95,113,124,0.6)";ctx.font="400 8px 'JetBrains Mono',monospace";
+      ctx.fillText(" · "+p.v,PAD+18+gw,ry);
+    });
+    ctx.restore();
+
+    // ── Current batch telemetry (real data) ──────────────────────────
+    const btY=BOT-70;
+    ctx.save();
+    ctx.strokeStyle="rgba(44,60,70,0.5)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(RX,btY-8);ctx.lineTo(RX+RW-2,btY-8);ctx.stroke();
+    ctx.fillStyle="rgba(95,113,124,0.5)";ctx.font="400 7.5px 'JetBrains Mono',monospace";ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.fillText("LATEST BATCH · 20260520-030516",RX,btY);
+    const bstats=[
+      {k:"queued items",v:"48"},
+      {k:"high risk",v:"6",col:ALERT},{k:"medium risk",v:"10",col:AMBER},{k:"low risk",v:"32",col:GREEN},
+      {k:"active sites",v:"10",col:GREEN},{k:"dormant",v:"21",col:AMBER},{k:"stale",v:"17",col:ALERT},
+    ];
+    bstats.forEach((b,i)=>{
+      const bx=RX+(i*(RW/bstats.length));
+      ctx.fillStyle=b.col||"rgba(138,157,168,0.7)";ctx.font="700 13px 'JetBrains Mono',monospace";ctx.textAlign="center";ctx.textBaseline="alphabetic";
+      ctx.fillText(b.v,bx+RW/(bstats.length*2),btY+20);
+      ctx.fillStyle="rgba(95,113,124,0.65)";ctx.font="400 7.5px 'JetBrains Mono',monospace";
+      ctx.fillText(b.k,bx+RW/(bstats.length*2),btY+31);
+    });
+    ctx.restore();
+  }
+
   function render(){
-    if(view==="flow"){drawFlow();drawChain();drawAlertRings();if(showSummary)drawSummaryOverlay();return;}
-    if(view==="dag"){drawDAG();if(showSummary)drawSummaryOverlay();return;}
+    if(view==="flow"){drawFlow();drawOperatingLoopPanel();drawChain();drawAlertRings();if(showSummary)drawSummaryOverlay();return;}
+    if(view==="dag"){drawDAG();drawPhaseStrip();if(showSummary)drawSummaryOverlay();return;}
+    if(view==="apg"){drawAPG();if(showSummary)drawSummaryOverlay();return;}
+    camStep();
     ctx.save();
     ctx.translate(W/2+viewPanX,H/2+viewPanY);ctx.scale(viewScale,viewScale);ctx.translate(-W/2,-H/2);
-    if(viewScale<0.88){const alpha=Math.min(1,(0.88-viewScale)/0.38);SISTER_PORTS.forEach(sp=>drawSisterPort(sp,alpha));}
-    drawGrid();drawCoverage();drawSources();drawLinks();drawStations();drawSparks();drawPort();
+    drawGrid();
+    VIS=visibleClusters();const tier=tierOf(viewScale);
+    for(const c of VIS)drawCluster(c,tier);
+    drawCoverage();drawPipelineArcs();drawSources();drawLinks();drawStations();drawSparks();drawPort();
     [...M.agents.values()].sort((a,b)=>a.y-b.y).forEach(drawDrone);
     drawChain();drawCapacity();drawAlertRings();
     ctx.restore();
-    drawMiniMap();
+    PLACED.push({x:W-162,y:H-156,w:150,h:112},{x:W-220,y:12,w:208,h:46});
+    drawModeBadge();drawFollowHUD();drawAgentCards();drawLabels();
+    drawMiniMap();drawRoadmapHUD();
     if(showSummary)drawSummaryOverlay();
   }
 
@@ -1170,7 +1772,7 @@ class Component extends DCLogic {
       D.inspBody.innerHTML='<div class="insp-grid"><div class="f"><div class="k">task</div><div class="v">'+(a.task_id||"—")+'</div></div><div class="f"><div class="k">station</div><div class="v">'+((M.stations.get(a.station_id)||{}).name||"—")+'</div></div><div class="f"><div class="k">completed</div><div class="v">'+a.completed_total+'</div></div><div class="f"><div class="k">energy</div><div class="v">'+Math.round(a.energy)+'%</div></div></div><div class="insp-bar"><i style="width:'+a.energy+'%;background:'+ecolor(a.energy)+';box-shadow:0 0 6px '+ecolor(a.energy)+'"></i></div>'+'<div style="margin-top:7px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--steel-dim)">context tokens</span><span style="font-size:10px;color:'+tokCol+'">'+tokPct+'%</span></div><div class="insp-bar"><i style="width:'+tokPct+'%;background:'+tokCol+';box-shadow:0 0 6px '+tokCol+'"></i></div></div>'+(spSt?'<div style="margin-top:7px;font-size:10px;color:var(--steel)">specialty <span style="color:'+spSt.hue+'">'+spSt.name+'</span></div>':"");
       const ahi=agentHistory.get(a.agent_id)||[];if(ahi.length){const hd=document.createElement("div");hd.style.cssText="margin-top:9px;padding-top:9px;border-top:1px solid var(--line)";let hh='<div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--steel-dim);margin-bottom:6px">task history</div>';ahi.slice(0,5).forEach(h=>{hh+='<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;font-size:10px"><div style="width:5px;height:5px;border-radius:50%;background:'+(h.ok?T.return:T.alert)+';box-shadow:0 0 4px '+(h.ok?T.return:T.alert)+';flex:none"></div><span style="color:var(--bright)">'+(h.station||"?")+"</span>"+(h.lat_ms!=null?'<span style="color:var(--steel-dim);font-size:9px;margin-left:auto">'+h.lat_ms+"ms</span>":"")+"</div>";});hd.innerHTML=hh;D.inspBody.appendChild(hd);}
       const acx=agentCtx.get(a.agent_id)||[];if(acx.length){const cd=document.createElement("div");cd.style.cssText="margin-top:9px;padding-top:9px;border-top:1px solid var(--line)";let ch='<div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--steel-dim);margin-bottom:6px">context log</div><div style="max-height:72px;overflow-y:auto">';acx.forEach(e=>{ch+='<div style="font-size:10px;padding:2px 0;border-top:1px solid var(--line);display:flex;gap:6px;align-items:baseline"><span style="color:'+(e.hue||T.steel)+';font-size:8px;letter-spacing:.5px;flex:none;text-transform:uppercase">'+e.type+"</span>"+'<span style="color:var(--steel)">'+e.msg+"</span></div>";});ch+="</div>";cd.innerHTML=ch;D.inspBody.appendChild(cd);}
-      D.inspActions.innerHTML='<button class="cmd go" data-cmd="recall" '+(a.state==="docked"?"disabled":"")+'>Recall</button><button class="cmd '+(a.hold?"on":"warn")+'" data-cmd="hold">'+(a.hold?"Resume":"Hold")+'</button><button class="cmd" data-cmd="ctx_reset" '+(tokPct<40?"disabled":"")+'>Reset ctx</button><button class="cmd danger" data-cmd="retire">Retire</button>';
+      D.inspActions.innerHTML='<button class="cmd go" data-cmd="recall" '+(a.state==="docked"?"disabled":"")+'>Recall</button><button class="cmd '+(a.hold?"on":"warn")+'" data-cmd="hold">'+(a.hold?"Resume":"Hold")+'</button><button class="cmd" data-cmd="ctx_reset" '+(tokPct<40?"disabled":"")+'>Reset ctx</button><button class="cmd'+(follow===a.agent_id?" on":"")+'" data-cmd="follow">'+(follow===a.agent_id?"Unfollow":"Follow")+'</button><button class="cmd danger" data-cmd="retire">Retire</button>';
     }else if(selected.type==="station"){
       const st=M.stations.get(selected.id),qn=qcount(st.station_id),worker=st.worker_agent_id;
       const cfg2=M.config&&M.config.stations.find(s=>s.station_id===st.station_id)||{};
@@ -1212,6 +1814,23 @@ class Component extends DCLogic {
       D.inspBody.innerHTML='<div class="insp-grid"><div class="f"><div class="k">fleet</div><div class="v">'+M.agents.size+' agents</div></div><div class="f"><div class="k">docked</div><div class="v">'+docked+'</div></div><div class="f"><div class="k">held</div><div class="v">'+held+'</div></div><div class="f"><div class="k">queue</div><div class="v">'+M.metrics.queued+'</div></div></div>';
       const allHeld=M.agents.size&&[...M.agents.values()].every(a=>a.hold);
       D.inspActions.innerHTML='<button class="cmd warn" data-cmd="holdall">'+(allHeld?"Resume all":"Hold all")+'</button><button class="cmd go" data-cmd="recallall">Recall all</button><button class="cmd danger" data-cmd="clearq" '+(M.metrics.queued?"":"disabled")+'>Clear queue</button>';
+    }else if(selected.type==="remote"){
+      const p=nodeByKey(selected.id);if(!p){clearSelection();return;}
+      const ags=remoteAgents(p,performance.now()*0.001),busy=ags.filter(a=>a.phase==="working").length,n=ordered().length||7,qr=p.ckey.split(",").map(Number),lat=Math.round(14+hashR(qr[0],qr[1],9)*46);
+      D.inspRing.style.color=p.hue;D.inspRing.style.background=p.hue;D.inspName.textContent=p.label;D.inspType.textContent=(p.hub?"cluster hub":"remote port")+" · cluster "+p.ckey+" · simulated";
+      D.inspBody.innerHTML='<div class="insp-grid"><div class="f"><div class="k">load</div><div class="v">'+Math.round(p.load*100)+'%</div></div><div class="f"><div class="k">agents</div><div class="v">'+p.agents+'</div></div><div class="f"><div class="k">working</div><div class="v">'+busy+'</div></div><div class="f"><div class="k">stations</div><div class="v">'+n+'</div></div><div class="f"><div class="k">backbone</div><div class="v">'+lat+'ms</div></div><div class="f"><div class="k">feed</div><div class="v" style="color:var(--steel)">not attached</div></div></div>'
+        +'<div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--line)"><div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--steel-dim);margin-bottom:6px">agents · simulated</div>'+ags.map(a=>'<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;font-size:10px"><div style="width:5px;height:5px;border-radius:50%;background:'+a.col+';box-shadow:0 0 4px '+a.col+';flex:none"></div><span style="color:var(--bright)">'+a.id+'</span><span style="color:var(--steel);margin-left:auto">'+ragentLabel(a)+'</span></div>').join("")+'</div>';
+      D.inspActions.innerHTML='<button class="cmd go" data-cmd="focus">Focus</button><button class="cmd" data-cmd="home">Back to PORT-A</button><button class="cmd" disabled title="Attach this port\'s run.log stream to make it live">Attach feed</button>';
+    }else if(selected.type==="infra"){
+      const nd=nodeByKey(selected.id);if(!nd){clearSelection();return;}
+      D.inspRing.style.color=nd.col;D.inspRing.style.background=nd.col;D.inspName.textContent=nd.label;D.inspType.textContent="shared infrastructure · cluster "+nd.ckey;
+      D.inspBody.innerHTML='<div style="font-size:10px;color:var(--steel);margin-bottom:8px">'+nd.sub+'</div><div class="insp-grid"><div class="f"><div class="k">serves</div><div class="v">'+(nd.id==="ci"?"artifact store":"hub + 3 ports")+'</div></div><div class="f"><div class="k">state</div><div class="v" style="color:var(--return)">nominal</div></div></div>';
+      D.inspActions.innerHTML='<button class="cmd go" data-cmd="focus">Focus</button><button class="cmd" data-cmd="home">Back to PORT-A</button>';
+    }else if(selected.type==="ragent"){
+      const nd=selNode();if(!nd){clearSelection();return;}const pct=Math.round(nd.progress*100);
+      D.inspRing.style.color=nd.col;D.inspRing.style.background=nd.col;D.inspName.textContent=nd.label;D.inspType.textContent="remote agent · "+nd.port.label+" · "+nd.phase+" · simulated";
+      D.inspBody.innerHTML='<div class="insp-grid"><div class="f"><div class="k">station</div><div class="v">'+nd.station+'</div></div><div class="f"><div class="k">phase</div><div class="v" style="color:'+nd.col+'">'+nd.phase+'</div></div><div class="f"><div class="k">progress</div><div class="v">'+pct+'%</div></div><div class="f"><div class="k">step</div><div class="v">'+(nd.k+1)+'/'+(ordered().length||7)+'</div></div></div><div class="insp-bar"><i style="width:'+pct+'%;background:'+nd.col+';box-shadow:0 0 6px '+nd.col+'"></i></div>';
+      D.inspActions.innerHTML='<button class="cmd go" data-cmd="focus">Focus port</button><button class="cmd" data-cmd="home">Back to PORT-A</button>';
     }
   }
   function command(cmd){
@@ -1220,7 +1839,8 @@ class Component extends DCLogic {
       if(cmd==="recall")feed.command("agent.recall",{type:"agent",id});
       else if(cmd==="hold"){const a=M.agents.get(id);feed.command("agent.hold",{type:"agent",id},{hold:!a.hold});}
       else if(cmd==="ctx_reset")feed.command("agent.ctx_reset",{type:"agent",id});
-      else if(cmd==="retire")feed.command("agent.retire",{type:"agent",id});}
+      else if(cmd==="retire")feed.command("agent.retire",{type:"agent",id});
+      else if(cmd==="follow")toggleFollow(id);}
     else if(selected.type==="station"){const id=selected.id;const st=M.stations.get(id);
       if(cmd==="queuehere")feed.command("task.enqueue",{type:"station",id});
       else if(cmd==="priority")feed.command("station.prioritize",{type:"station",id});
@@ -1229,27 +1849,58 @@ class Component extends DCLogic {
       if(cmd==="recallall")feed.command("fleet.recall",{type:"port"});
       else if(cmd==="holdall"){const allHeld=[...M.agents.values()].every(a=>a.hold);feed.command("fleet.hold",{type:"port"},{hold:!allHeld});}
       else if(cmd==="clearq")feed.command("queue.clear",{type:"port"});}
+    else{const nd=selNode();if(!nd)return;if(cmd==="focus")focusNode(nd);else if(cmd==="home")resetCam();}
   }
   function select(o){selected=o;D.insp.classList.add("on");renderInspector();refreshPanels();announce();}
   function clearSelection(){selected=null;D.insp.classList.remove("on");refreshPanels();}
-  function announce(){if(!selected){D.sr.textContent="Selection cleared.";return;}if(selected.type==="agent"){const a=M.agents.get(selected.id);if(a)D.sr.textContent=a.agent_id+" selected. "+actLabel(a)+". Energy "+Math.round(a.energy)+" percent.";}else if(selected.type==="station"){D.sr.textContent=M.stations.get(selected.id).name+" station selected.";}else D.sr.textContent="Hub overview selected.";}
+  function announce(){if(!selected){D.sr.textContent="Selection cleared.";return;}if(selected.type==="agent"){const a=M.agents.get(selected.id);if(a)D.sr.textContent=a.agent_id+" selected. "+actLabel(a)+". Energy "+Math.round(a.energy)+" percent.";}else if(selected.type==="station"){D.sr.textContent=M.stations.get(selected.id).name+" station selected.";}else if(selected.type==="port")D.sr.textContent="Hub overview selected.";else{const nd=selNode();D.sr.textContent=(nd?nd.label:"Node")+" selected.";}}
 
   function hitTest(px,py){
     if(view==="flow"){const o=ordered(),n=o.length;for(let i=0;i<n;i++){const p=flowPos(i,n);if(Math.hypot(p.x-px,p.y-py)<22)return{type:"station",id:o[i].station_id};}const h=flowHub();if(Math.hypot(h.x-px,h.y-py)<26)return{type:"port"};return null;}
     if(view==="dag"){for(const st of M.stations.values()){const p=dagNodePos(st.station_id);if(p&&Math.hypot(p.x-px,p.y-py)<28)return{type:"station",id:st.station_id};}return null;}
+    if(MINI&&px>=MINI.x&&px<=MINI.x+MINI.w&&py>=MINI.y&&py<=MINI.y+MINI.h)return null;
     const wp=canvasToWorld(px,py);const wpx=wp.x,wpy=wp.y;
-    for(const a of M.agents.values())if(Math.hypot(a.x-wpx,a.y-wpy)<15)return{type:"agent",id:a.agent_id};
-    for(const st of M.stations.values())if(Math.hypot(st.x-wpx,st.y-wpy)<22)return{type:"station",id:st.station_id};
-    if(Math.hypot(cx-wpx,cy-wpy)<48)return{type:"port"};return null;
+    const tol=1/viewScale,tnow=performance.now()*0.001;
+    for(const a of M.agents.values())if(Math.hypot(a.x-wpx,a.y-wpy)<Math.max(15,10*tol))return{type:"agent",id:a.agent_id};
+    for(const st of M.stations.values())if(Math.hypot(st.x-wpx,st.y-wpy)<Math.max(22,12*tol))return{type:"station",id:st.station_id};
+    if(Math.hypot(cx-wpx,cy-wpy)<Math.max(48,14*tol))return{type:"port"};
+    for(const c of VIS){
+      for(const nd of c.infra.concat([c.ci]))if(Math.hypot(nd.x-wpx,nd.y-wpy)<14*tol)return{type:"infra",id:nd.key};
+      for(const p of(c.home?c.ports:[c.hub].concat(c.ports))){
+        if(p.R*viewScale>130){for(const a of remoteAgents(p,tnow))if(Math.hypot(a.x-wpx,a.y-wpy)<Math.max(10*tol,p.R*0.06))return{type:"ragent",id:p.key+"/"+a.id};}
+        if(Math.hypot(p.x-wpx,p.y-wpy)<Math.max(p.R*0.45,14*tol))return{type:"remote",id:p.key};
+      }
+    }
+    return null;
   }
   function toCanvas(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};}
 
-  canvas.addEventListener("mousemove",e=>{const p=toCanvas(e);mouse.x=p.x;mouse.y=p.y;hovered=hitTest(p.x,p.y);canvas.style.cursor=hovered?"pointer":"default";if(hovered){let label="",sub="";if(hovered.type==="agent"){const a=M.agents.get(hovered.id);label=a.agent_id;sub=actLabel(a);}else if(hovered.type==="station"){const st=M.stations.get(hovered.id);label=st.name;sub=(st.worker_agent_id?"busy":"idle")+" · "+qcount(st.station_id)+" queued";}else{label="ROBOPORT hub";sub="click for overview";}D.tip.innerHTML=label+' <span class="s">· '+sub+'</span>';const rb=canvas.getBoundingClientRect();D.tip.style.left=e.clientX-rb.left+"px";D.tip.style.top=(hovered.type==="agent"?((M.agents.get(hovered.id)||{}).y??p.y):p.y)+"px";D.tip.classList.add("on");}else D.tip.classList.remove("on");});
-  canvas.addEventListener("mouseleave",()=>{hovered=null;D.tip.classList.remove("on");canvas.style.cursor="default";});
-  canvas.addEventListener("click",e=>{if(showSummary){showSummary=false;return;}const p=toCanvas(e),hit=hitTest(p.x,p.y);hit?select(hit):clearSelection();});
-  canvas.addEventListener("wheel",e=>{if(view!=="port")return;e.preventDefault();const delta=e.deltaY>0?-0.08:0.08;viewScale=Math.max(0.3,Math.min(1.0,viewScale+delta));updateZoomBtn();},{passive:false});
+  canvas.addEventListener("mousemove",e=>{const p=toCanvas(e);mouse.x=p.x;mouse.y=p.y;hovered=drag&&drag.moved?null:hitTest(p.x,p.y);const inMini=view==="port"&&MINI&&p.x>=MINI.x&&p.x<=MINI.x+MINI.w&&p.y>=MINI.y&&p.y<=MINI.y+MINI.h;canvas.style.cursor=drag&&drag.moved?"grabbing":hovered?"pointer":inMini?"crosshair":"default";
+    if(hovered){let lab="",sub="",ty=p.y;
+      if(hovered.type==="agent"){const a=M.agents.get(hovered.id);lab=a.agent_id;sub=actLabel(a)+" · dbl-click to follow";ty=worldToCanvas(a.x,a.y).y;}
+      else if(hovered.type==="station"){const st=M.stations.get(hovered.id);lab=st.name;sub=(st.worker_agent_id?"busy":"idle")+" · "+qcount(st.station_id)+" queued";}
+      else if(hovered.type==="port"){lab="ROBOPORT hub";sub="click for overview · dbl-click to reset zoom";}
+      else if(hovered.type==="remote"){const nd=nodeByKey(hovered.id);if(nd){lab=nd.label;sub=Math.round(nd.load*100)+"% load · "+nd.agents+" agents · simulated · dbl-click to focus";ty=worldToCanvas(nd.x,nd.y).y;}}
+      else if(hovered.type==="infra"){const nd=nodeByKey(hovered.id);if(nd){lab=nd.label;sub=nd.sub;ty=worldToCanvas(nd.x,nd.y).y;}}
+      else if(hovered.type==="ragent"){const i=hovered.id.indexOf("/"),pt=nodeByKey(hovered.id.slice(0,i)),aid=hovered.id.slice(i+1);const a=pt&&remoteAgents(pt,performance.now()*0.001).find(x=>x.id===aid);if(a){lab=aid;sub=ragentLabel(a)+" · "+pt.label;ty=worldToCanvas(a.x,a.y).y;}}
+      D.tip.innerHTML=lab+' <span class="s">· '+sub+'</span>';D.tip.style.left=p.x+"px";D.tip.style.top=ty+"px";D.tip.classList.add("on");}
+    else D.tip.classList.remove("on");});
+  canvas.addEventListener("mouseleave",()=>{hovered=null;D.tip.classList.remove("on");if(!drag)canvas.style.cursor="default";});
+  canvas.addEventListener("mousedown",e=>{if(view!=="port"||e.button!==0)return;const p=toCanvas(e);drag={x:p.x,y:p.y,px:cam.px,py:cam.py,moved:false,lx:p.x,ly:p.y,lt:performance.now(),vx:0,vy:0};});
+  window.addEventListener("mousemove",e=>{if(!drag)return;const p=toCanvas(e),dx=p.x-drag.x,dy=p.y-drag.y;if(!drag.moved&&Math.hypot(dx,dy)>3){drag.moved=true;follow=null;inertia=null;D.tip.classList.remove("on");}if(drag.moved){const now=performance.now(),dt=Math.max(0.001,(now-drag.lt)/1000);drag.vx=(p.x-drag.lx)/dt;drag.vy=(p.y-drag.ly)/dt;drag.lx=p.x;drag.ly=p.y;drag.lt=now;cam.px=drag.px+dx;cam.py=drag.py+dy;canvas.style.cursor="grabbing";}});
+  window.addEventListener("mouseup",()=>{if(!drag)return;if(drag.moved){suppressClick=true;setTimeout(()=>{suppressClick=false;},0);const sp=Math.hypot(drag.vx,drag.vy);if(!reduceMotion&&sp>80&&performance.now()-drag.lt<90){const c=Math.min(1,2600/sp);inertia={vx:drag.vx*0.55*c,vy:drag.vy*0.55*c};}}drag=null;canvas.style.cursor="default";});
+  canvas.addEventListener("click",e=>{if(suppressClick)return;if(showSummary){showSummary=false;return;}const p=toCanvas(e);
+    if(view==="port"&&MINI&&p.x>=MINI.x&&p.x<=MINI.x+MINI.w&&p.y>=MINI.y&&p.y<=MINI.y+MINI.h){focusWorld(cx+(p.x-MINI.cx)/MINI.scale,cy+(p.y-MINI.cy)/MINI.scale,cam.s);return;}
+    const hit=hitTest(p.x,p.y);hit?select(hit):clearSelection();});
+  canvas.addEventListener("dblclick",e=>{if(view!=="port")return;const p=toCanvas(e);if(MINI&&p.x>=MINI.x&&p.x<=MINI.x+MINI.w&&p.y>=MINI.y&&p.y<=MINI.y+MINI.h)return;const hit=hitTest(p.x,p.y);
+    if(!hit){if(Math.abs(cam.s-1)>0.01)resetCam();else zoomAt(0.38);return;}
+    if(hit.type==="agent"){const a=M.agents.get(hit.id);if(a){focusWorld(a.x,a.y,Math.max(1.8,cam.s));follow=hit.id;updateZoomBtn();}}
+    else if(hit.type==="station"){const st=M.stations.get(hit.id);if(st)focusWorld(st.x,st.y,Math.max(1.8,cam.s));}
+    else if(hit.type==="port")resetCam();
+    else{select(hit);focusNode(selNode());}});
+  canvas.addEventListener("wheel",e=>{if(view!=="port")return;e.preventDefault();const p=toCanvas(e),dy=Math.max(-120,Math.min(120,e.deltaY));zoomAt(cam.s*Math.exp(-dy*(e.ctrlKey?0.012:0.0022)),p.x,p.y);},{passive:false});
 
-  function updateZoomBtn(){const zb=el("btn-zoom");if(zb)zb.textContent=(viewScale<0.99?"□ "+Math.round(viewScale*100)+"%":"□ 100%");}
+  function updateZoomBtn(){const zb=el("btn-zoom");if(zb)zb.textContent="□ "+zoomTier()+" "+(cam.s<0.1?Math.round(cam.s*1000)/10:Math.round(cam.s*100))+"%"+(follow?" ⌖":"");}
 
   D.roster.addEventListener("click",e=>{const r=e.target.closest("[data-aid]");if(r)select({type:"agent",id:r.dataset.aid});});
   D.roster.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){const r=e.target.closest("[data-aid]");if(r){e.preventDefault();select({type:"agent",id:r.dataset.aid});}}});
@@ -1259,13 +1910,15 @@ class Component extends DCLogic {
   D.inspActions.addEventListener("click",e=>{const b=e.target.closest("[data-cmd]");if(b&&!b.disabled)command(b.dataset.cmd);});
   el("insp-close").addEventListener("click",clearSelection);
 
-  function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT")return;
+  function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.isContentEditable)return;
+    if(PROPS.embedded){const r0=document.getElementById("rbp");if(!r0||r0.offsetParent===null)return;if(e.key==="Tab")return;}
     if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
     if(e.key==="Tab"){e.preventDefault();showSummary=!showSummary;return;}
-    if(e.key==="Escape"){if(showSummary){showSummary=false;return;}clearSelection();return;}
-    if(e.key==="="||e.key==="+"){if(view==="port"){viewScale=Math.min(1.0,viewScale+0.1);updateZoomBtn();}return;}
-    if(e.key==="-"){if(view==="port"){viewScale=Math.max(0.3,viewScale-0.1);updateZoomBtn();}return;}
-    if(e.key==="0"){viewScale=1.0;viewPanX=0;viewPanY=0;updateZoomBtn();return;}
+    if(e.key==="Escape"){if(showSummary){showSummary=false;return;}if(follow){follow=null;updateZoomBtn();return;}clearSelection();return;}
+    if(e.key==="="||e.key==="+"){if(view==="port")zoomAt(cam.s*1.25);return;}
+    if(e.key==="-"){if(view==="port")zoomAt(cam.s/1.25);return;}
+    if(e.key==="0"){resetCam();return;}
+    if(e.key==="f"||e.key==="F"){if(selected&&selected.type==="agent")toggleFollow(selected.id);return;}
     if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();const list=[...M.agents.keys()];if(!list.length)return;let idx=selected&&selected.type==="agent"?list.indexOf(selected.id):-1;idx=(idx+(e.key==="ArrowDown"?1:-1)+list.length)%list.length;select({type:"agent",id:list[idx]});return;}
     if(selected&&selected.type==="agent"){if(e.key==="r"||e.key==="R")command("recall");if(e.key==="h"||e.key==="H")command("hold");}
   }
@@ -1275,14 +1928,14 @@ class Component extends DCLogic {
   el("sla-dn")&&el("sla-dn").addEventListener("click",()=>{slaTarget=Math.max(50,slaTarget-1);const stg=el("sla-tgt");if(stg)stg.textContent=slaTarget;});
   el("sla-up")&&el("sla-up").addEventListener("click",()=>{slaTarget=Math.min(100,slaTarget+1);const stg=el("sla-tgt");if(stg)stg.textContent=slaTarget;});
   el("btn-summary")&&el("btn-summary").addEventListener("click",()=>{showSummary=!showSummary;});
-  el("btn-zoom")&&el("btn-zoom").addEventListener("click",()=>{if(viewScale===1.0){viewScale=0.52;viewPanX=0;viewPanY=0;}else{viewScale=1.0;viewPanX=0;viewPanY=0;}updateZoomBtn();});
+  el("btn-zoom")&&el("btn-zoom").addEventListener("click",()=>{if(cam.s>0.99)zoomAt(0.38);else if(cam.s>0.12)zoomAt(0.08);else resetCam();});
   el("btn-export")&&el("btn-export").addEventListener("click",()=>{
     const rows=["timestamp,tasks_per_min,queued,completed,failed,p95_ms,uptime_s"];
     const now2=new Date().toISOString();hist.rate.forEach((r,i)=>rows.push([now2,r,hist.queued[i]||0,M.metrics.completed_total,M.metrics.failed_total||0,M.metrics.p95_ms||0,M.metrics.uptime_s].join(",")));
     let sr2="station_id,name,throughput_per_min,p95_ms\n";if(M.config)M.config.stations.forEach(s=>{sr2+=s.station_id+","+s.name+","+(stnThru.get(s.station_id)||[]).length+","+stnP95(s.station_id)+"\n";});
     const csv=rows.join("\n")+"\n\n"+sr2;const b=new Blob([csv],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="roboport-"+Date.now()+".csv";a.click();URL.revokeObjectURL(a.href);
   });
-  function applyViewChrome(){const f=view==="flow"||view==="dag";const lg=document.querySelector("#rbp .legend");if(lg)lg.style.display=f?"none":"";el("wire").style.display=(f||!SHOW_WIRE)?"none":"";}
+  function applyViewChrome(){const f=view==="flow"||view==="dag"||view==="apg";const lg=document.querySelector("#rbp .legend");if(lg)lg.style.display=f?"none":"";el("wire").style.display=(f||!SHOW_WIRE)?"none":"";}
   document.querySelector("#rbp .viewtog").addEventListener("click",e=>{const b=e.target.closest("[data-view]");if(!b)return;view=b.dataset.view;[...b.parentNode.children].forEach(x=>x.classList.toggle("on",x===b));applyViewChrome();if(!replay)render();});
   el("btn-replay").addEventListener("click",()=>{replay?exitReplay():enterReplay();});
   el("rl-exit").addEventListener("click",exitReplay);
