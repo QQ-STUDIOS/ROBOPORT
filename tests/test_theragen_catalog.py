@@ -33,16 +33,12 @@ def test_catalog_present_and_populated():
 def test_catalog_is_separate_from_runnable_agents():
     runnable = set(REGISTRY["agents"])
     catalog = set(CATALOG)
-    assert runnable.isdisjoint(catalog)            # no external catalog agent leaks into runnable
-    assert len(runnable) == 19                      # runnable set stays fixed as crews are modeled
-    # A catalog agent MAY be a modeled-crew station (frontier 4), but it is still never
-    # executable: every crew station that is a catalog agent resolves only via theragen_agents.
+    assert runnable.isdisjoint(catalog)            # no external agent leaks into runnable
+    assert len(runnable) == 19                      # runnable set untouched by this frontier
+    # no catalog key is referenced as a crew station (these are not runnable)
     for crew in REGISTRY["crews"].values():
         stations = {crew["entry"]} | {e["from"] for e in crew["edges"]} | {e["to"] for e in crew["edges"]}
-        for st in stations:
-            assert st in runnable or st in catalog   # every station resolves to a registry citizen
-            if st in catalog:
-                assert st not in runnable            # a catalog station is never also runnable
+        assert stations.isdisjoint(catalog)
 
 
 @pytest.mark.parametrize("key", sorted(CATALOG))

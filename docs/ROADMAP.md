@@ -464,20 +464,6 @@ so no crew lands without proof. Both crews pass R1/R2/R4; validated by
 > `tests/test_theragen_catalog.py`; governance stays clean (the catalog is reference,
 > not crew stations).
 
-> **Modeled Theragen crews — read-only reporting flows (shipped):** the first real
-> Theragen workflows land as offline, governance-gated crews that wire a **catalog
-> agent as a crew station** feeding ROBOPORT's `reporting` agent: `brightree_rounds_crew`
-> (PHI — `theragen_brightree_pdf_extraction` → reporting, modeling Brightree PDF → the
-> Rounds report) and `tenant_scan_crew` (Confidential — `theragen_tenant_scan` →
-> reporting, modeling the M365 legacy-site disposition report). Governance R4 now
-> recognizes `theragen_agents` as valid stations (a catalog agent is a first-class
-> registry citizen, still never executed), and the dashboard's diff-flagged `STATION_IDS`
-> unions the catalog too. New typed contracts `ExtractedRecords` (PHI columns **named,
-> never carried**) and `SiteInventory` (metadata only). Both crews are **read-only** and
-> run only against synthetic fixtures — **ROBOPORT never touches real Brightree,
-> Snowflake, or Microsoft Graph, and no PHI value flows through this repository.**
-> Four-kind + blockered eval sets, proven by `tests/test_theragen_crews.py`.
-
 ---
 
 ## The end-state workflow: localize → explain

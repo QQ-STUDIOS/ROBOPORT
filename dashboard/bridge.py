@@ -434,11 +434,7 @@ def translate(ev: dict, state: RunState) -> list[dict]:
 # station-targeted alert (red = regression, amber = warning/inconclusive) — the
 # same ring mechanism step.failed uses — plus a readable log of every signal.
 # Any registered agent can be a diff-flagged station — crew-agnostic.
-_REG = load_registry()
-# runnable agents plus offline Theragen catalog records — a modeled crew can wire
-# a catalog agent as a station, so both are valid diff-flagged station ids.
-STATION_IDS = (set(_REG.get("agents", {})) | set(_REG.get("theragen_agents", {}))) \
-    or {s["station_id"] for s in STATIONS}
+STATION_IDS = set(load_registry().get("agents", {})) or {s["station_id"] for s in STATIONS}
 DIFF_KIND = {"regression": "critical", "warning": "warning",
              "inconclusive": "warning", "info": "warning"}
 DIFF_COLOR = {"pass": "#4fd672", "warning": "#f2b134",

@@ -254,63 +254,6 @@
           }
         }
       }
-    },
-
-    "ExtractedRecords": {
-      "type": "object",
-      "description": "theragen_brightree_pdf_extraction output (offline model): structured records extracted from source PDFs, with the PHI-bearing columns named but NOT carried — the model records which columns would be PHI, it never holds their values.",
-      "required": ["source", "schema_doc", "row_count", "phi_columns", "lineage_log"],
-      "properties": {
-        "source": { "type": "string", "description": "e.g. 'Brightree PDF (synthetic fixture)'." },
-        "schema_doc": {
-          "type": "object",
-          "required": ["columns"],
-          "properties": {
-            "columns": {
-              "type": "array",
-              "minItems": 1,
-              "items": {
-                "type": "object",
-                "required": ["name", "dtype"],
-                "properties": {
-                  "name":  { "type": "string" },
-                  "dtype": { "type": "string" },
-                  "phi":   { "type": "boolean", "description": "true if this column would carry PHI in production." }
-                }
-              }
-            }
-          }
-        },
-        "row_count":    { "type": "integer", "minimum": 0 },
-        "phi_columns":  { "type": "array", "items": { "type": "string" },
-                          "description": "names of columns classified PHI; their values are redacted/absent in the offline model." },
-        "lineage_log":  { "type": "array", "items": { "type": "string" } },
-        "artifact_path": { "type": "string" }
-      }
-    },
-
-    "SiteInventory": {
-      "type": "object",
-      "description": "theragen_tenant_scan output (offline model): a read-only inventory of Microsoft 365 sites for disposition. No site content is read — only metadata.",
-      "required": ["generated_at", "total_sites", "sites"],
-      "properties": {
-        "generated_at": { "type": "string", "format": "date-time" },
-        "total_sites":  { "type": "integer", "minimum": 0 },
-        "sites": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["site_id", "title"],
-            "properties": {
-              "site_id":       { "type": "string" },
-              "title":         { "type": "string" },
-              "last_activity": { "type": ["string", "null"] },
-              "item_count":    { "type": "integer", "minimum": 0 },
-              "disposition":   { "type": "string", "enum": ["keep", "archive", "review", "dormant"] }
-            }
-          }
-        }
-      }
     }
   }
 }
