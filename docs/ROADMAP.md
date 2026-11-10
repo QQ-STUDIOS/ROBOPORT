@@ -389,23 +389,36 @@ self-tuning.
          - { provider: anthropic, model: claude-sonnet-4-6 }
    ```
 
-## Phase 5: Crew expansion with proof discipline
+## Phase 5: Crew expansion with proof discipline — **v1 shipped (governance gate + JD-Crew hardening)**
 
 **Goal:** prevent breadth from outrunning proof.
 
+> **Status:** v1 landed — the governance layer is now **enforced**, not just documented.
+> `scripts/governance.py` gates the repo against the mechanically-checkable rules with a
+> diff_runs-style exit code (0 clean · 1 violation · 2 load error), wired into the CI
+> Tests job: **R1** every eval carries a blocker, **R2** each crew's eval set covers all
+> four proof kinds (`happy_path`, `empty`, `schema_failure`, `evidence_grounding` — now a
+> first-class `kind` field on the eval schema), **R4** every crew station maps to a
+> registered agent and every edge declares its output contract. R3 (diff_runs artifact
+> compat) stays enforced at runtime; R5 (generic-agent growth) is a review-time judgment —
+> both reported as advisories. **JD-Crew hardening** is done: all evals now carry blockers
+> (eval 2's empty-case invariant included), every eval is tagged with its `kind`, and a
+> `schema_failure` eval was added to close the one real coverage gap the gate surfaced —
+> so the flagship crew passes its own governance. Proven offline by `tests/test_governance.py`.
+
 Rules:
 
-1. No new agent lands without blocker evals.
+1. No new agent lands without blocker evals. ✅ enforced (R1)
 2. No new crew lands without: one happy-path, one empty/no-result, one
-   schema/failure, and one anti-hallucination / evidence-grounding eval.
+   schema/failure, and one anti-hallucination / evidence-grounding eval. ✅ enforced (R2)
 3. Every new crew must produce run artifacts compatible with `diff_runs.py`.
-4. Every new dashboard station must map to a registry agent and output contract.
+   (enforced at runtime by `diff_runs.py`)
+4. Every new dashboard station must map to a registry agent and output contract. ✅ enforced (R4)
 5. Generic agent count grows only when an eval proves an existing agent cannot
-   cover the role.
+   cover the role. (review-time judgment; reported as advisory)
 
-First expansion candidates: **JD-Crew hardening** (give all six evals blockers)
-before any second flagship crew. Do not add a second crew until Phases 1 and 3 are
-complete.
+First expansion candidate **JD-Crew hardening** (give all evals blockers) is complete.
+A second flagship crew would now have to pass the governance gate before landing.
 
 ---
 

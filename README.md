@@ -182,6 +182,12 @@ static priority by default, or, given an `aggregate.py` scoreboard,
 budget). **Runs emit cost/latency → aggregate scores each provider/model → the router
 picks the winner.**
 
+Breadth is kept from outrunning proof by a **governance gate** (`scripts/governance.py`,
+run in CI): every eval must carry a blocker, every crew's eval set must cover all four
+proof kinds (`happy_path`, `empty`, `schema_failure`, `evidence_grounding`), and every
+crew station must map to a registered agent and a declared output contract — or the gate
+exits nonzero and CI fails.
+
 ---
 
 ## Adding an agent
