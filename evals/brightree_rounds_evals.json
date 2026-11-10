@@ -1,0 +1,77 @@
+{
+  "$schema": "../resources/schemas/eval.schema.json",
+  "target": "brightree_rounds_crew",
+  "version": "0.1.0",
+  "_note": "Offline proof set for the MODELED Brightree->Rounds crew (theragen_brightree_pdf_extraction -> reporting). PHI-classified, read-only. ROBOPORT never touches real Brightree or Snowflake; every eval runs against a synthetic fixture and the PHI columns are named, never carried. Covers the four Phase-5 proof kinds with blockers.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run the Brightree->Rounds crew on a SYNTHETIC set of extracted PDF records. Extraction produces ExtractedRecords (naming the PHI columns but not carrying their values), then reporting produces the Rounds report grounded in the record counts.",
+      "expected_output": "ExtractedRecords with a typed schema_doc, a phi_columns list, and lineage; a DataReport whose source_row_count equals the ExtractedRecords.row_count.",
+      "expectations": [
+        "ExtractedRecords.schema_doc.columns is non-empty and every column has a name and dtype",
+        "ExtractedRecords.phi_columns names every PHI-bearing column; none of their values appear in the output",
+        "ExtractedRecords.lineage_log records the extraction and any normalization steps",
+        "DataReport.source_row_count equals ExtractedRecords.row_count",
+        "Every numeric claim in the Rounds report is derivable from the extracted record counts",
+        "No PHI value flows into the repository — the model holds counts and column names only"
+      ],
+      "blockers": [
+        "ExtractedRecords.phi_columns names every PHI-bearing column; none of their values appear in the output",
+        "DataReport.source_row_count equals ExtractedRecords.row_count",
+        "No PHI value flows into the repository — the model holds counts and column names only"
+      ],
+      "tags": ["brightree", "rounds", "phi", "happy_path", "end_to_end"],
+      "kind": "happy_path"
+    },
+    {
+      "id": 2,
+      "prompt": "Run the crew on a source with zero extractable records (an empty or unreadable PDF set).",
+      "expected_output": "The crew halts cleanly; reporting does not fabricate a Rounds report over zero records.",
+      "expectations": [
+        "ExtractedRecords.row_count == 0",
+        "No DataReport with nonzero source_row_count is produced",
+        "The run surfaces a 'no records' message",
+        "reporting invents no patients, visits, or totals"
+      ],
+      "blockers": [
+        "No DataReport with nonzero source_row_count is produced"
+      ],
+      "tags": ["brightree", "edge_case", "empty_results"],
+      "kind": "empty"
+    },
+    {
+      "id": 3,
+      "prompt": "Same as eval 1, but extraction's first response is schema-invalid (ExtractedRecords is missing phi_columns). Exercises the Layer-1 schema-repair path before reporting runs.",
+      "expected_output": "ExtractedRecords recovers via at most one repair pass or the step fails cleanly; no record set lacking its PHI-column declaration ever reaches reporting.",
+      "expectations": [
+        "extraction output validates against the ExtractedRecords contract (phi_columns present) before reporting runs",
+        "If the one repair pass does not fix it, the step status is 'failed' with a schema-layer error and no DataReport is produced",
+        "reporting never consumes an ExtractedRecords missing phi_columns",
+        "At most one schema-repair pass is attempted"
+      ],
+      "blockers": [
+        "reporting never consumes an ExtractedRecords missing phi_columns"
+      ],
+      "tags": ["brightree", "schema_failure", "error_stack", "phi"],
+      "kind": "schema_failure"
+    },
+    {
+      "id": 4,
+      "prompt": "Run the crew on exactly 42 synthetic records. Verify the Rounds report's figures are grounded in the extracted counts and never invented, and that no PHI value is cited.",
+      "expected_output": "Every number in the Rounds report traces to the ExtractedRecords; no figure cites a PHI value.",
+      "expectations": [
+        "DataReport.source_row_count == 42",
+        "Every figure in the report references a column that exists in ExtractedRecords.schema_doc.columns",
+        "No numeric claim exceeds or contradicts the extracted record counts",
+        "No PHI column value is quoted anywhere in the report"
+      ],
+      "blockers": [
+        "No numeric claim exceeds or contradicts the extracted record counts",
+        "No PHI column value is quoted anywhere in the report"
+      ],
+      "tags": ["brightree", "anti_hallucination", "evidence_grounding", "phi"],
+      "kind": "evidence_grounding"
+    }
+  ]
+}
