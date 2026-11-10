@@ -4,6 +4,8 @@ An agent orchestration framework with typed contracts, deterministic-when-possib
 
 The flagship example shipped with the repo is **JD-Crew** — the eight-agent sequential job-description analyzer pictured in the Crew Builder UI: `scout → (technical, compliance) → strategist → synth (+ optional resume_tailor, cover_letter_writer, salary_estimator)`.
 
+A second crew, **DataOps** (`data_engineering → reporting`), ships alongside it to show the framework generalizes: it ingests messy tabular data and produces a report grounded in it, reusing existing agents with typed contracts (`CleanedDataset`, `DataReport`). It landed *under the governance gate* — the gate now requires every registry crew to carry a four-kind, blockered eval set, so no crew lands without proof.
+
 ```
 ┌──────────┐   ┌─────────────────┐   ┌──────────────────┐   ┌─────────────┐
 │ job      │──▶│ technical_      │──┐                                       

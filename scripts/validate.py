@@ -107,9 +107,12 @@ def main() -> int:
     targets: list[tuple[str, list[str]]] = []
 
     if args.all:
-        ev = REPO / "evals" / "evals.json"
-        if ev.exists():
-            targets.append(("evals.json", validate_evals(ev)))
+        for ev in sorted((REPO / "evals").glob("*.json")):
+            try:  # only eval sets (a top-level `evals` list); skip e.g. fault_injection.json
+                if isinstance(load_json(ev).get("evals"), list):
+                    targets.append((ev.name, validate_evals(ev)))
+            except Exception:  # noqa: BLE001 — a malformed file fails its own validation elsewhere
+                continue
         rg = REPO / "agents" / "registry.json"
         if rg.exists():
             targets.append(("registry.json", validate_registry(rg)))

@@ -95,13 +95,42 @@ def test_run_governance_rule_subset_skips_others():
     assert report["ok"] is True  # only R4 ran, and there are no crews
 
 
-# --- real-repo integration: the gate must stay green -------------------------
+# --- crew coverage: every registry crew needs an eval set --------------------
+
+def test_crew_without_eval_set_is_flagged():
+    registry = {"agents": {"a": {}}, "crews": {"jd_crew": {"entry": "a", "edges": []},
+                                               "ghost_crew": {"entry": "a", "edges": []}}}
+    v = governance.check_crews_have_evals(registry, [_eval_set([], target="jd_crew")])
+    assert len(v) == 1 and v[0]["rule"] == "R2" and v[0]["subject"] == "ghost_crew"
+
+
+def test_crew_coverage_clean_when_all_crews_have_sets():
+    registry = {"agents": {}, "crews": {"jd_crew": {"entry": "a", "edges": []}}}
+    assert governance.check_crews_have_evals(registry, [_eval_set([], target="jd_crew")]) == []
+
+
+def test_discover_eval_sets_skips_non_eval_sets(tmp_path):
+    (tmp_path / "set.json").write_text(json.dumps({"target": "c", "evals": [_eval(1)]}))
+    (tmp_path / "faults.json").write_text(json.dumps({"target": "x", "scenarios": []}))
+    (tmp_path / "junk.json").write_text("{ not json")
+    found = governance.discover_eval_sets(tmp_path)
+    assert len(found) == 1 and found[0]["target"] == "c"
+
+
+# --- real-repo integration: the gate must stay green for every crew ----------
 
 def test_repo_is_governance_clean():
-    eval_set = json.loads((REPO / "evals" / "evals.json").read_text())
+    eval_sets = governance.discover_eval_sets(REPO / "evals")
     registry = json.loads((REPO / "agents" / "registry.json").read_text())
-    report = governance.run_governance([eval_set], registry)
+    report = governance.run_governance(eval_sets, registry)
     assert report["ok"], report["violations"]
+
+
+def test_both_crews_are_covered():
+    eval_sets = governance.discover_eval_sets(REPO / "evals")
+    registry = json.loads((REPO / "agents" / "registry.json").read_text())
+    assert {"jd_crew", "dataops_crew"} <= set(registry["crews"])
+    assert governance.check_crews_have_evals(registry, eval_sets) == []
 
 
 if __name__ == "__main__":

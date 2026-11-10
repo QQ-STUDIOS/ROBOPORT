@@ -39,6 +39,13 @@
         { "from": "synthesizer",            "to": "cover_letter_writer",    "type": "FinalReport", "optional": true },
         { "from": "synthesizer",            "to": "salary_estimator",       "type": "FinalReport", "optional": true }
       ]
+    },
+    "dataops_crew": {
+      "description": "Read-only DataOps pipeline: ingest+clean messy tabular data (data_engineering), then produce a templated report grounded in it (reporting). No side effects.",
+      "entry": "data_engineering",
+      "edges": [
+        { "from": "data_engineering", "to": "reporting", "type": "CleanedDataset" }
+      ]
     }
   }
 }
