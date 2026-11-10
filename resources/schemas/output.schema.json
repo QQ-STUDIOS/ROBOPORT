@@ -148,6 +148,59 @@
         },
         "warnings": { "type": "array", "items": { "type": "string" } }
       }
+    },
+
+    "CleanedDataset": {
+      "type": "object",
+      "description": "data_engineering output: a staged dataset plus its schema and lineage.",
+      "required": ["schema_doc", "row_count", "lineage_log"],
+      "properties": {
+        "schema_doc": {
+          "type": "object",
+          "required": ["columns"],
+          "properties": {
+            "columns": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["name", "dtype"],
+                "properties": {
+                  "name":  { "type": "string" },
+                  "dtype": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "row_count":   { "type": "integer", "minimum": 0 },
+        "lineage_log": { "type": "array", "items": { "type": "string" } },
+        "artifact_path": { "type": "string" }
+      }
+    },
+
+    "DataReport": {
+      "type": "object",
+      "description": "reporting output: a templated report grounded in a CleanedDataset.",
+      "required": ["generated_at", "title", "sections", "source_row_count"],
+      "properties": {
+        "generated_at":     { "type": "string", "format": "date-time" },
+        "title":            { "type": "string" },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["heading", "body"],
+            "properties": {
+              "heading": { "type": "string" },
+              "body":    { "type": "string" }
+            }
+          }
+        },
+        "figures":          { "type": "array", "items": { "type": "object" } },
+        "source_row_count": { "type": "integer", "minimum": 0 }
+      }
     }
   }
 }

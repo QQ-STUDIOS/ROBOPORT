@@ -421,7 +421,15 @@ Rules:
    cover the role. (review-time judgment; reported as advisory)
 
 First expansion candidate **JD-Crew hardening** (give all evals blockers) is complete.
-A second flagship crew would now have to pass the governance gate before landing.
+
+The **second flagship crew has landed under the gate**: `dataops_crew` — a read-only
+pipeline (`data_engineering` → `reporting`) that ingests messy tabular data and produces
+a report grounded in it. It reuses existing registered agents (no new generic agents —
+rule 5), adds typed output contracts (`CleanedDataset`, `DataReport`), and ships its own
+four-kind + blockered eval set (`evals/dataops_evals.json`). Governance now **discovers
+every eval set under `evals/` and requires each registry crew to have a covering set** —
+so no crew lands without proof. Both crews pass R1/R2/R4; validated by
+`tests/test_governance.py`.
 
 ---
 

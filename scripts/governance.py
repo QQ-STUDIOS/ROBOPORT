@@ -67,6 +67,18 @@ def check_kind_coverage(eval_set: dict) -> list[dict]:
     return out
 
 
+def check_crews_have_evals(registry: dict, eval_sets: list[dict]) -> list[dict]:
+    """R2: every crew in the registry must have an eval set (matched by target) —
+    no crew lands without its proof set."""
+    targets = {es.get("target") for es in eval_sets}
+    out = []
+    for cname in sorted(registry.get("crews") or {}):
+        if cname not in targets:
+            out.append(_violation(
+                "R2", cname, "crew has no eval set — cannot prove the four kinds"))
+    return out
+
+
 # --- R4: station / contract integrity ----------------------------------------
 
 def check_stations(registry: dict) -> list[dict]:
@@ -92,24 +104,33 @@ def check_stations(registry: dict) -> list[dict]:
 
 # --- orchestration -----------------------------------------------------------
 
-_CHECKS = {
-    "R1": ("eval_sets", check_blockers),
-    "R2": ("eval_sets", check_kind_coverage),
-    "R4": ("registry", check_stations),
-}
+def discover_eval_sets(evals_dir: Path) -> list[dict]:
+    """Every *.json under evals/ that is an eval set (has a top-level `evals` list).
+    Skips non-eval-set files such as fault_injection.json (which has `scenarios`)."""
+    out = []
+    for p in sorted(evals_dir.glob("*.json")):
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(d, dict) and isinstance(d.get("evals"), list):
+            out.append(d)
+    return out
 
 
 def run_governance(eval_sets: list[dict], registry: dict,
                    rules: tuple[str, ...] = ALL_RULES) -> dict:
     """Run the selected rules; return a report with every violation found."""
     violations: list[dict] = []
-    for rule in rules:
-        scope, fn = _CHECKS[rule]
-        if scope == "eval_sets":
-            for es in eval_sets:
-                violations.extend(fn(es))
-        else:
-            violations.extend(fn(registry))
+    if "R1" in rules:
+        for es in eval_sets:
+            violations.extend(check_blockers(es))
+    if "R2" in rules:
+        for es in eval_sets:
+            violations.extend(check_kind_coverage(es))
+        violations.extend(check_crews_have_evals(registry, eval_sets))
+    if "R4" in rules:
+        violations.extend(check_stations(registry))
     by_rule = {r: sum(1 for v in violations if v["rule"] == r) for r in rules}
     return {"ok": not violations, "rules": list(rules),
             "violations": violations, "counts_by_rule": by_rule}
@@ -136,7 +157,7 @@ def _load_json(path: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Enforce ROBOPORT crew-expansion governance.")
     ap.add_argument("--eval-set", type=Path, action="append", default=None,
-                    help="Eval set JSON (repeatable). Default: evals/evals.json")
+                    help="Eval set JSON (repeatable). Default: every eval set under evals/.")
     ap.add_argument("--registry", type=Path, default=REPO / "agents" / "registry.json",
                     help="Agent/crew registry JSON.")
     ap.add_argument("--rule", action="append", choices=list(ALL_RULES), default=None,
@@ -145,9 +166,9 @@ def main() -> int:
     ap.add_argument("--quiet", action="store_true", help="Suppress stdout on pass.")
     args = ap.parse_args()
 
-    eval_paths = args.eval_set or [REPO / "evals" / "evals.json"]
     try:
-        eval_sets = [_load_json(p) for p in eval_paths]
+        eval_sets = ([_load_json(p) for p in args.eval_set] if args.eval_set
+                     else discover_eval_sets(REPO / "evals"))
         registry = _load_json(args.registry)
     except (OSError, json.JSONDecodeError) as e:
         print(f"governance: could not load inputs: {e}", file=sys.stderr)
