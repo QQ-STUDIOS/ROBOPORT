@@ -89,7 +89,10 @@ STATION_HUES = {
     "cover_letter_writer": "#80d8c8",
 }
 
-STATIONS = [
+REPO = Path(__file__).resolve().parent.parent
+
+# Fallback stations if the registry can't be read — keeps the console rendering.
+_JD_FALLBACK = [
     {"station_id": "job_scout",              "order": 0, "wave": 0},
     {"station_id": "technical_analyst",      "order": 1, "wave": 1},
     {"station_id": "compliance_risk",        "order": 2, "wave": 1},
@@ -99,6 +102,69 @@ STATIONS = [
     {"station_id": "resume_tailor",          "order": 6, "wave": 4, "optional": True},
     {"station_id": "cover_letter_writer",    "order": 7, "wave": 4, "optional": True},
 ]
+
+
+def load_registry() -> dict:
+    try:
+        return json.loads((REPO / "agents" / "registry.json").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — the console must render without a registry
+        return {"agents": {}, "crews": {}}
+
+
+def derive_stations(crew_name: str, registry: dict | None = None) -> list[dict]:
+    """Compute dashboard stations (station_id, order, wave, optional) for ANY registry
+    crew by relaxing waves from its entry over the typed edges. A station is optional
+    only if every incoming edge is optional. Falls back to the JD layout if the crew
+    is unknown — so the console is no longer hardwired to one crew."""
+    reg = registry if registry is not None else load_registry()
+    crew = (reg.get("crews") or {}).get(crew_name)
+    if not crew or not crew.get("entry"):
+        return [dict(s) for s in _JD_FALLBACK]
+    entry = crew["entry"]
+    edges = crew.get("edges", [])
+    wave = {entry: 0}
+    seen = [entry]
+    for _ in range(len(edges) + 1):            # relax (small DAG)
+        for e in edges:
+            u, v = e.get("from"), e.get("to")
+            if u in wave and v is not None:
+                w = wave[u] + 1
+                if v not in wave or w > wave[v]:
+                    wave[v] = w
+                if v not in seen:
+                    seen.append(v)
+    any_in, required_in = set(), set()
+    for e in edges:
+        any_in.add(e.get("to"))
+        if not e.get("optional"):
+            required_in.add(e.get("to"))
+    optional = any_in - required_in - {entry}
+    ordered = sorted(seen, key=lambda s: (wave.get(s, 0), seen.index(s)))
+    out = []
+    for i, sid in enumerate(ordered):
+        st = {"station_id": sid, "order": i, "wave": wave.get(sid, 0)}
+        if sid in optional:
+            st["optional"] = True
+        out.append(st)
+    return out
+
+
+def detect_crew(run_dir) -> str:
+    """The crew named in a run dir's run.log run.start event (default jd_crew)."""
+    log = _find_run_log(run_dir)
+    if not log:
+        return "jd_crew"
+    try:
+        for raw in log.read_text(encoding="utf-8").splitlines():
+            ev = json.loads(raw)
+            if ev.get("event") == "run.start" and ev.get("crew"):
+                return ev["crew"]
+    except (OSError, json.JSONDecodeError):
+        pass
+    return "jd_crew"
+
+
+STATIONS = derive_stations("jd_crew")
 
 class RunState:
     def __init__(self):
@@ -135,7 +201,9 @@ class RunState:
         return tid
 
 
-def make_snapshot(run_id: str | None = None, state: RunState | None = None) -> dict:
+def make_snapshot(run_id: str | None = None, state: RunState | None = None,
+                  crew: str = "jd_crew") -> dict:
+    stations = derive_stations(crew)
     agents = []
     for i in range(4):
         aid = f"executor-{i+1:02d}"
@@ -144,13 +212,14 @@ def make_snapshot(run_id: str | None = None, state: RunState | None = None) -> d
             "energy": 88.0, "hold": False, "task_id": None,
             "station_id": None, "task_progress": 0, "eta_s": None,
             "completed_total": 0, "error": None, "rev": 0,
-            "specialty": STATIONS[i % len(STATIONS)]["station_id"],
+            "specialty": stations[i % len(stations)]["station_id"],
             "tokens_used": 0, "token_budget": 2048,
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         })
     return {
         "config": {
-            "stations": STATIONS,
+            "stations": stations,
+            "crew": crew,
             "energy_low_threshold": 22,
             "max_agents": 12,
             "token_budget_default": 2048,
@@ -161,7 +230,7 @@ def make_snapshot(run_id: str | None = None, state: RunState | None = None) -> d
             {"station_id": s["station_id"], "name": s["station_id"],
              "order": s["order"], "state": "idle", "worker_agent_id": None,
              "queue_depth": 0, "drain": False, "rev": 0}
-            for s in STATIONS
+            for s in stations
         ],
         "tasks": [],
         "alerts": [],
@@ -364,7 +433,8 @@ def translate(ev: dict, state: RunState) -> list[dict]:
 # console, reusing the existing envelope vocabulary: a flagged agent becomes a
 # station-targeted alert (red = regression, amber = warning/inconclusive) — the
 # same ring mechanism step.failed uses — plus a readable log of every signal.
-STATION_IDS = {s["station_id"] for s in STATIONS}
+# Any registered agent can be a diff-flagged station — crew-agnostic.
+STATION_IDS = set(load_registry().get("agents", {})) or {s["station_id"] for s in STATIONS}
 DIFF_KIND = {"regression": "critical", "warning": "warning",
              "inconclusive": "warning", "info": "warning"}
 DIFF_COLOR = {"pass": "#4fd672", "warning": "#f2b134",
@@ -611,9 +681,9 @@ def _now_iso() -> str:
 # serve.py imports `envelope`; it's our make_envelope.
 envelope = make_envelope
 
-def build_snapshot(run_id: str | None = None) -> dict:
-    """serve.py alias for make_snapshot."""
-    return make_snapshot(run_id)
+def build_snapshot(run_id: str | None = None, crew: str = "jd_crew") -> dict:
+    """serve.py alias for make_snapshot (crew-aware)."""
+    return make_snapshot(run_id, crew=crew)
 
 # A shared RunState for serve.py's --watch stream (one growing log → one state).
 _watch_state = RunState()
@@ -635,7 +705,8 @@ def convert_run(run_dir) -> list[dict]:
     for serve.py's replay / /api/run endpoints."""
     run_dir = Path(run_dir)
     state = RunState()
-    out: list[dict] = [make_envelope("snapshot", make_snapshot(run_dir.name, state))]
+    crew = detect_crew(run_dir)
+    out: list[dict] = [make_envelope("snapshot", make_snapshot(run_dir.name, state, crew=crew))]
     state.snapshot_sent = True
     log = _find_run_log(run_dir)
     if log:

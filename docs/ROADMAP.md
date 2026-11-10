@@ -247,6 +247,13 @@ by validation.) Future: annotate array-internal fields once run ordering is norm
 **Goal:** move the Ops Console from live-demo visualization to a regression
 investigation surface.
 
+> **Generic per-crew dashboard (shipped):** the console's stations are no longer
+> hardwired to JD-Crew. `bridge.derive_stations(crew, registry)` computes the station
+> layout (ids, waves, optional flags) for *any* registry crew by relaxing waves from
+> its entry over the typed edges, and the bridge detects the crew from each run's
+> `run.log` `run.start` event — so `dataops_crew` (and every future crew) renders on
+> the same console. Proven by `tests/test_bridge_stations.py`.
+
 > **Status:** v1 landed — `bridge.py --baseline/--candidate` (or `--diff FILE`)
 > renders a `diff_runs` comparison as a regression overlay, and the console accepts
 > a dropped `diff_against_baseline.json` offline. Rather than invent new `diff.*`
