@@ -25,7 +25,8 @@ class FaultProvider(Provider):
         self.script = list(script)
         self.calls = 0
 
-    def chat_with_tools(self, *, system, messages, tools, force_json, model_hint):
+    def chat_with_tools(self, *, system, messages, tools, force_json, model_hint,
+                        model=None):
         beh = self.script[min(self.calls, len(self.script) - 1)] if self.script else {"content": "{}"}
         self.calls += 1
         if beh.get("transient"):

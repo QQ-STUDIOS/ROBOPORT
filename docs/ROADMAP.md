@@ -328,10 +328,23 @@ cost/latency fields). Pull a thin protocol forward into Phase 1/0 enabling work;
 CI must run without paid or local model dependencies, and must fail if any fault
 eval loses a blocker.
 
-## Phase 4: Observability-aware routing — **telemetry + reporting shipped (tasks 1–3)**
+## Phase 4: Observability-aware routing — **complete (tasks 1–4)**
 
 **Goal:** make provider/model routing operationally visible and eventually
 self-tuning.
+
+> **Status (task 4 — routing):** complete. `--provider routing` selects a concrete
+> `{provider, model}` candidate per `model_hint` from the `routing` policy in
+> `agent_config.yaml`. The decision engine (`routing.select_candidate`, pure) uses the
+> policy's **static priority** with no telemetry, and — given a *scoreboard* built from
+> an `aggregate.py` routing report (`scoreboard_from_report` → `by_provider_model`) —
+> the `blocker_pass_then_cost` objective ranks candidates by highest blocker pass rate,
+> then lowest per-step cost, after dropping any whose per-step latency exceeds
+> `max_latency_ms_per_step`. The `RoutingProvider` delegates to the chosen provider,
+> pins its model (the seam now takes an optional `model` override), and records every
+> decision + annotates `usage` with `routed_provider`/`routed_model`. This closes the
+> loop the telemetry was built for: **runs emit cost/latency → aggregate scores each
+> provider/model → the router picks the winner.** Proven offline by `tests/test_routing.py`.
 
 > **Status (task 3 — reporting):** `aggregate.py` now reads the per-step telemetry off
 > each run's `run.log` and reports **cost/latency per *passing* run** (a run that
@@ -358,15 +371,13 @@ self-tuning.
 > and `tests/test_telemetry.py` (executor accumulation + the `routing_summary` rollup),
 > gated by the CI Tests job.
 >
-> Still open (v2): task 4 (the routing policy file + a routing provider that acts on
-> the telemetry).
-
 1. Expand run-log events with provider, model, model_hint, prompt/completion
    tokens, `cost_usd` (when available), `latency_ms`, `retry_count`. ✅
 2. Add a per-agent routing summary to `summary.json`. ✅
 3. Teach `aggregate.py` to report cost/latency per *passing* run and blocker pass
    rate by provider/model, and to flag cost/latency regressions by agent. ✅
-4. Add an optional routing policy file:
+4. Add an optional routing policy file: ✅ (`routing:` in `agent_config.yaml`,
+   consumed by `--provider routing`)
 
    ```yaml
    routing:
@@ -441,7 +452,7 @@ exit-code contract:
 - ~~Stable-field (`x-roboport`) annotations in `output.schema.json`.~~ **Done (Phase 1.x).**
 
 ### P2
-- ~~Aggregate cost-per-passing-run reports.~~ **Done (Phase 4 task 3).** Routing policy config still open.
+- ~~Aggregate cost-per-passing-run reports; routing policy config.~~ **Done (Phase 4 tasks 3–4).**
 - Analyzer handoff from `diff_runs.py`.
 - `evals/benchmarks/current_baseline.json` pointer + promotion rule.
 - CI job: benchmark smoke + fault-injection evals + `diff_runs --fail-on regression`.
