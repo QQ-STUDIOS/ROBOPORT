@@ -316,7 +316,12 @@ def get_provider(name: str | None = None) -> Provider:
         # Phase 4 task 4: pick a provider/model per hint from the routing policy.
         from .routing import build_routing_provider  # lazy — avoids import cycle
         return build_routing_provider(get_provider)
-    raise ValueError(f"unknown provider: {name!r} (expected: ollama|anthropic|routing)")
+    if name == "fault":
+        # Offline fault injection (scripts/fault_bench.py): script via ROBOPORT_FAULT_SCRIPT.
+        from .fault_provider import fault_provider_from_env  # lazy
+        return fault_provider_from_env()
+    raise ValueError(
+        f"unknown provider: {name!r} (expected: ollama|anthropic|routing|fault)")
 
 
 def _coerce_args(args: Any) -> dict:
