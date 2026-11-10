@@ -201,6 +201,59 @@
         "figures":          { "type": "array", "items": { "type": "object" } },
         "source_row_count": { "type": "integer", "minimum": 0 }
       }
+    },
+
+    "ActionProposal": {
+      "type": "object",
+      "description": "automation output: side-effecting actions PROPOSED from an insight (a DataReport), each gated by an approval decision and an audit event. The automation station never executes an unsafe action — it proposes and escalates; the executor's Layer-3 unsafe-action policy blocks any proposed tool call that is irreversible or outward-facing until a human grants approval.",
+      "required": ["generated_at", "source_report", "proposed_actions", "audit_event", "approval"],
+      "properties": {
+        "generated_at": { "type": "string", "format": "date-time" },
+        "source_report": {
+          "type": "object",
+          "description": "grounding back to the insight the actions are drawn from.",
+          "required": ["title", "source_row_count"],
+          "properties": {
+            "title":            { "type": "string" },
+            "source_row_count": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "proposed_actions": {
+          "type": "array",
+          "description": "an empty array is valid: 'the insight warrants no action' is a legitimate proposal.",
+          "items": {
+            "type": "object",
+            "required": ["tool", "args", "requires_approval", "rationale", "idempotency_key"],
+            "properties": {
+              "tool":              { "type": "string" },
+              "args":              { "type": "object" },
+              "requires_approval": { "type": "boolean" },
+              "rationale":         { "type": "string" },
+              "idempotency_key":   { "type": "string", "minLength": 1 },
+              "grounded_in":       { "type": "string", "description": "the DataReport section/figure this action is justified by." }
+            }
+          }
+        },
+        "audit_event": {
+          "type": "object",
+          "required": ["actor", "action", "target", "ts"],
+          "properties": {
+            "actor":  { "type": "string" },
+            "action": { "type": "string" },
+            "target": { "type": "string" },
+            "ts":     { "type": "string", "format": "date-time" }
+          }
+        },
+        "approval": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status":        { "type": "string", "enum": ["pending", "granted", "denied"] },
+            "token":         { "type": ["string", "null"] },
+            "escalated_to":  { "type": "string" }
+          }
+        }
+      }
     }
   }
 }

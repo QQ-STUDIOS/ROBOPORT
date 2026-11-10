@@ -46,6 +46,14 @@
       "edges": [
         { "from": "data_engineering", "to": "reporting", "type": "CleanedDataset" }
       ]
+    },
+    "insight_to_action_crew": {
+      "description": "Insight-to-Action: clean data (data_engineering) -> grounded report (reporting) -> PROPOSE side-effecting actions (automation). The terminal automation station exercises the Phase-3 Layer-3 unsafe-action escalation in a real crew: every irreversible or outward-facing action is proposed with requires_approval, audited, and escalated to a human — never executed. Offline; side effects are represented via policy/escalation, not performed.",
+      "entry": "data_engineering",
+      "edges": [
+        { "from": "data_engineering", "to": "reporting",  "type": "CleanedDataset" },
+        { "from": "reporting",         "to": "automation", "type": "DataReport" }
+      ]
     }
   }
 }
