@@ -76,6 +76,13 @@ jobs:
       - name: Run test suite
         run: python -m pytest tests/ -q
 
+      - name: Crew-expansion governance gate
+        run: |
+          # the repo must satisfy the Phase-5 expansion rules (blockers, proof
+          # kinds, station/contract integrity)
+          python scripts/governance.py --quiet
+          echo "governance gate verified"
+
       - name: diff_runs regression-gate smoke
         run: |
           # a clean comparison passes the gate

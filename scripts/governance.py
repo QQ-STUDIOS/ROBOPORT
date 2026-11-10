@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Phase 5 — crew-expansion governance gate.
+
+Prevents breadth from outrunning proof by enforcing the mechanically-checkable
+expansion rules from docs/ROADMAP.md against the repo's own artifacts, with a
+diff_runs-style exit code so CI can gate on it:
+
+  R1  every eval carries at least one blocker (no new agent lands unproven).
+  R2  each crew's eval set covers all four proof kinds — happy_path, empty,
+      schema_failure, evidence_grounding.
+  R4  every crew station maps to a registered agent and every edge declares its
+      output contract (`type`).
+
+R3 (run artifacts compatible with diff_runs) is enforced at runtime by
+`diff_runs.py`; R5 (generic-agent growth needs a justifying eval) is a review-time
+judgment — both are reported as advisories here, not gated.
+
+Exit codes: 0 clean · 1 governance violation · 2 usage/load error.
+
+    python scripts/governance.py                      # gate the repo
+    python scripts/governance.py --json               # machine-readable report
+    python scripts/governance.py --rule R1 --rule R2  # a subset of rules
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+
+REQUIRED_EVAL_KINDS = ("happy_path", "empty", "schema_failure", "evidence_grounding")
+ALL_RULES = ("R1", "R2", "R4")
+
+
+def _violation(rule: str, subject: str, message: str) -> dict:
+    return {"rule": rule, "severity": "violation", "subject": subject, "message": message}
+
+
+# --- R1: blocker discipline --------------------------------------------------
+
+def check_blockers(eval_set: dict) -> list[dict]:
+    """R1: every eval must carry at least one blocker."""
+    target = eval_set.get("target", "?")
+    out = []
+    for e in eval_set.get("evals", []):
+        if not e.get("blockers"):
+            out.append(_violation(
+                "R1", f"{target}#eval-{e.get('id')}",
+                "eval has no blocker — a failure here would not fail the eval"))
+    return out
+
+
+# --- R2: proof-kind coverage -------------------------------------------------
+
+def check_kind_coverage(eval_set: dict) -> list[dict]:
+    """R2: the crew's eval set must cover all four required proof kinds."""
+    target = eval_set.get("target", "?")
+    covered = {e.get("kind") for e in eval_set.get("evals", []) if e.get("kind")}
+    out = []
+    for kind in REQUIRED_EVAL_KINDS:
+        if kind not in covered:
+            out.append(_violation(
+                "R2", f"{target}:{kind}",
+                f"no eval of kind '{kind}' — crew proof set is incomplete"))
+    return out
+
+
+# --- R4: station / contract integrity ----------------------------------------
+
+def check_stations(registry: dict) -> list[dict]:
+    """R4: every crew station maps to a registered agent, and every edge declares
+    its output contract (`type`)."""
+    agents = set(registry.get("agents", {}))
+    out = []
+    for cname, crew in (registry.get("crews") or {}).items():
+        stations = {crew.get("entry")} if crew.get("entry") else set()
+        for edge in crew.get("edges", []):
+            stations |= {edge.get("from"), edge.get("to")}
+            if not edge.get("type"):
+                out.append(_violation(
+                    "R4", f"{cname}:{edge.get('from')}->{edge.get('to')}",
+                    "crew edge has no output contract (`type`)"))
+        for st in sorted(s for s in stations if s):
+            if st not in agents:
+                out.append(_violation(
+                    "R4", f"{cname}:{st}",
+                    "crew station is not a registered agent"))
+    return out
+
+
+# --- orchestration -----------------------------------------------------------
+
+_CHECKS = {
+    "R1": ("eval_sets", check_blockers),
+    "R2": ("eval_sets", check_kind_coverage),
+    "R4": ("registry", check_stations),
+}
+
+
+def run_governance(eval_sets: list[dict], registry: dict,
+                   rules: tuple[str, ...] = ALL_RULES) -> dict:
+    """Run the selected rules; return a report with every violation found."""
+    violations: list[dict] = []
+    for rule in rules:
+        scope, fn = _CHECKS[rule]
+        if scope == "eval_sets":
+            for es in eval_sets:
+                violations.extend(fn(es))
+        else:
+            violations.extend(fn(registry))
+    by_rule = {r: sum(1 for v in violations if v["rule"] == r) for r in rules}
+    return {"ok": not violations, "rules": list(rules),
+            "violations": violations, "counts_by_rule": by_rule}
+
+
+def _render(report: dict) -> str:
+    lines = ["ROBOPORT governance gate (Phase 5)", ""]
+    if report["ok"]:
+        lines.append(f"  PASS — no violations across rules {', '.join(report['rules'])}")
+    else:
+        lines.append(f"  FAIL — {len(report['violations'])} violation(s)")
+        for v in report["violations"]:
+            lines.append(f"    [{v['rule']}] {v['subject']}: {v['message']}")
+    lines.append("")
+    lines.append("  advisory: R3 (diff_runs artifact compat) is enforced at runtime; "
+                 "R5 (generic-agent growth) is a review-time judgment.")
+    return "\n".join(lines)
+
+
+def _load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Enforce ROBOPORT crew-expansion governance.")
+    ap.add_argument("--eval-set", type=Path, action="append", default=None,
+                    help="Eval set JSON (repeatable). Default: evals/evals.json")
+    ap.add_argument("--registry", type=Path, default=REPO / "agents" / "registry.json",
+                    help="Agent/crew registry JSON.")
+    ap.add_argument("--rule", action="append", choices=list(ALL_RULES), default=None,
+                    help="Run only these rules (repeatable). Default: all.")
+    ap.add_argument("--json", action="store_true", help="Emit the report as JSON.")
+    ap.add_argument("--quiet", action="store_true", help="Suppress stdout on pass.")
+    args = ap.parse_args()
+
+    eval_paths = args.eval_set or [REPO / "evals" / "evals.json"]
+    try:
+        eval_sets = [_load_json(p) for p in eval_paths]
+        registry = _load_json(args.registry)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"governance: could not load inputs: {e}", file=sys.stderr)
+        return 2
+
+    rules = tuple(args.rule) if args.rule else ALL_RULES
+    report = run_governance(eval_sets, registry, rules)
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+    elif not (report["ok"] and args.quiet):
+        print(_render(report))
+    return 0 if report["ok"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
