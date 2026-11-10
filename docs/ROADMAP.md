@@ -451,47 +451,6 @@ so no crew lands without proof. Both crews pass R1/R2/R4; validated by
 > escalation, never performed. Four-kind + blockered eval set
 > (`evals/insight_to_action_evals.json`), proven by `tests/test_insight_to_action.py`.
 
-> **Theragen agent catalog (shipped):** the real Theragen AI agents (from the Notion
-> **🧠 1) Agents** database) are imported as **offline, typed-contract records** under
-> a dedicated `theragen_agents` registry key — kept separate from ROBOPORT's runnable
-> `agents` so an external production agent is never mistaken for something this repo can
-> execute. Each of the 14 records has a spec under `agents/theragen/` carrying its Notion
-> provenance, data classification (PHI / Confidential / Unclassified), runtime, status,
-> and open issues verbatim. **ROBOPORT never connects to any real Theragen system
-> (Brightree, Snowflake, M365/Graph, Azure, the studio Ollama) — no production data or
-> PHI flows through this repository; the classifications are labels carried from the
-> catalog, not data held here.** Catalogued in `docs/THERAGEN_AGENTS.md`, proven by
-> `tests/test_theragen_catalog.py`; governance stays clean (the catalog is reference,
-> not crew stations).
-
-> **Modeled Theragen crews — read-only reporting flows (shipped):** the first real
-> Theragen workflows land as offline, governance-gated crews that wire a **catalog
-> agent as a crew station** feeding ROBOPORT's `reporting` agent: `brightree_rounds_crew`
-> (PHI — `theragen_brightree_pdf_extraction` → reporting, modeling Brightree PDF → the
-> Rounds report) and `tenant_scan_crew` (Confidential — `theragen_tenant_scan` →
-> reporting, modeling the M365 legacy-site disposition report). Governance R4 now
-> recognizes `theragen_agents` as valid stations (a catalog agent is a first-class
-> registry citizen, still never executed), and the dashboard's diff-flagged `STATION_IDS`
-> unions the catalog too. New typed contracts `ExtractedRecords` (PHI columns **named,
-> never carried**) and `SiteInventory` (metadata only). Both crews are **read-only** and
-> run only against synthetic fixtures — **ROBOPORT never touches real Brightree,
-> Snowflake, or Microsoft Graph, and no PHI value flows through this repository.**
-> Four-kind + blockered eval sets, proven by `tests/test_theragen_crews.py`.
-
-> **Modeled Theragen crews — retrieval + governance loop (shipped):** two more real
-> workflows land. `legacyrag_crew` (PHI — `theragen_legacyrag_retrieval` → reporting)
-> models the legacy-document RAG; its new `RetrievalResult` contract makes
-> anti-hallucination mechanical — **no answer is ever ungrounded or cites a document that
-> does not exist** (a pinned blocker), and the real SQLite catalog / Qdrant index are
-> never opened. `eom_governance_crew` (`eom_governance_auditor` → `eom_decision_backlog`
-> → `eom_catalogue_steward`) models the EOM governance loop as a three-station chain
-> whose **terminal catalogue-steward is a side-effecting Automation agent** — so its
-> catalogue writes reuse the Phase-3 Layer-3 escalation: proposed, audited, escalated,
-> **never performed**. New contracts `RetrievalResult`, `GovernanceFindings`, `DecisionLog`
-> (closed severity/decision enums). Four-kind + blockered eval sets, proven by
-> `tests/test_eom_rag_crews.py`. Five modeled Theragen crews now run under the same gate
-> as JD-Crew and DataOps — all offline, no production system touched.
-
 ---
 
 ## The end-state workflow: localize → explain
