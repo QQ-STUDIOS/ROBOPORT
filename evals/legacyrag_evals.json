@@ -1,0 +1,75 @@
+{
+  "$schema": "../resources/schemas/eval.schema.json",
+  "target": "legacyrag_crew",
+  "version": "0.1.0",
+  "_note": "Offline proof set for the MODELED LegacyRAG crew (theragen_legacyrag_retrieval -> reporting). PHI, read-only. ROBOPORT never opens the real SQLite catalog or Qdrant index; every eval runs against a synthetic corpus. The crux is anti-hallucination: no answer is ever ungrounded or cites a document that does not exist. Covers the four Phase-5 proof kinds with blockers.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Ask the LegacyRAG crew a question answerable from the SYNTHETIC corpus. Retrieval returns a RetrievalResult with an answer and citations, then reporting summarizes the grounded answer.",
+      "expected_output": "A RetrievalResult with grounded == true, at least one citation, and an answer supported by the cited snippets; a summary that cites the same documents.",
+      "expectations": [
+        "RetrievalResult.grounded == true and citations is non-empty",
+        "Every citation.doc_id exists in the corpus",
+        "The answer makes no claim unsupported by the cited snippets",
+        "The report repeats only citations present in the RetrievalResult"
+      ],
+      "blockers": [
+        "RetrievalResult.grounded == true and citations is non-empty",
+        "Every citation.doc_id exists in the corpus"
+      ],
+      "tags": ["legacyrag", "rag", "phi", "happy_path", "end_to_end"],
+      "kind": "happy_path"
+    },
+    {
+      "id": 2,
+      "prompt": "Ask a question the corpus does not answer.",
+      "expected_output": "The crew returns grounded == false with no citations and a clear 'not found in the catalog' answer; it does not invent a document or an answer.",
+      "expectations": [
+        "RetrievalResult.grounded == false",
+        "RetrievalResult.citations is empty",
+        "The answer states the corpus does not contain the information",
+        "No fabricated doc_id appears anywhere"
+      ],
+      "blockers": [
+        "RetrievalResult.citations is empty",
+        "No fabricated doc_id appears anywhere"
+      ],
+      "tags": ["legacyrag", "edge_case", "empty_results"],
+      "kind": "empty"
+    },
+    {
+      "id": 3,
+      "prompt": "Same as eval 1, but retrieval's first response is schema-invalid (a citation is missing its doc_id). Exercises the Layer-1 schema-repair path before reporting runs.",
+      "expected_output": "The RetrievalResult recovers via at most one repair pass or the step fails cleanly; no result with a citation missing its doc_id reaches reporting.",
+      "expectations": [
+        "retrieval output validates against the RetrievalResult contract before reporting runs",
+        "If the one repair pass does not fix it, the step status is 'failed' with a schema-layer error",
+        "reporting never consumes a RetrievalResult with a citation missing its doc_id",
+        "At most one schema-repair pass is attempted"
+      ],
+      "blockers": [
+        "reporting never consumes a RetrievalResult with a citation missing its doc_id"
+      ],
+      "tags": ["legacyrag", "schema_failure", "error_stack"],
+      "kind": "schema_failure"
+    },
+    {
+      "id": 4,
+      "prompt": "Ask a question whose answer rests on exactly 3 documents. Verify every claim in the answer traces to a citation and that no citation points to a document absent from the corpus.",
+      "expected_output": "The answer is fully grounded in its 3 citations; the report invents no document and no claim beyond what the snippets support.",
+      "expectations": [
+        "RetrievalResult has exactly the citations the answer uses",
+        "Every citation.doc_id resolves to a real corpus document",
+        "No sentence in the answer lacks support in a cited snippet",
+        "The report introduces no citation absent from the RetrievalResult"
+      ],
+      "blockers": [
+        "Every citation.doc_id resolves to a real corpus document",
+        "No sentence in the answer lacks support in a cited snippet"
+      ],
+      "tags": ["legacyrag", "anti_hallucination", "evidence_grounding", "phi"],
+      "kind": "evidence_grounding"
+    }
+  ]
+}

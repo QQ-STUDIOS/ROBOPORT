@@ -478,6 +478,20 @@ so no crew lands without proof. Both crews pass R1/R2/R4; validated by
 > Snowflake, or Microsoft Graph, and no PHI value flows through this repository.**
 > Four-kind + blockered eval sets, proven by `tests/test_theragen_crews.py`.
 
+> **Modeled Theragen crews — retrieval + governance loop (shipped):** two more real
+> workflows land. `legacyrag_crew` (PHI — `theragen_legacyrag_retrieval` → reporting)
+> models the legacy-document RAG; its new `RetrievalResult` contract makes
+> anti-hallucination mechanical — **no answer is ever ungrounded or cites a document that
+> does not exist** (a pinned blocker), and the real SQLite catalog / Qdrant index are
+> never opened. `eom_governance_crew` (`eom_governance_auditor` → `eom_decision_backlog`
+> → `eom_catalogue_steward`) models the EOM governance loop as a three-station chain
+> whose **terminal catalogue-steward is a side-effecting Automation agent** — so its
+> catalogue writes reuse the Phase-3 Layer-3 escalation: proposed, audited, escalated,
+> **never performed**. New contracts `RetrievalResult`, `GovernanceFindings`, `DecisionLog`
+> (closed severity/decision enums). Four-kind + blockered eval sets, proven by
+> `tests/test_eom_rag_crews.py`. Five modeled Theragen crews now run under the same gate
+> as JD-Crew and DataOps — all offline, no production system touched.
+
 ---
 
 ## The end-state workflow: localize → explain
