@@ -67,12 +67,16 @@ def validate_registry(path: Path) -> list[str]:
         if not agent_path.exists():
             errors.append(f"[registry] agent {agent_id}: file not found: {meta['path']}")
 
+    # Runnable agents plus offline Theragen catalog records — a modeled crew
+    # can wire a catalog agent as a station (still never executed). Same union
+    # as governance.check_stations and the dashboard STATION_IDS.
+    stations = set(reg.get("agents", {})) | set(reg.get("theragen_agents", {}))
     for crew_id, crew in reg.get("crews", {}).items():
-        if crew["entry"] not in reg["agents"]:
+        if crew["entry"] not in stations:
             errors.append(f"[registry] crew {crew_id}: entry agent not in registry: {crew['entry']}")
         for edge in crew.get("edges", []):
             for end in ("from", "to"):
-                if edge[end] not in reg["agents"]:
+                if edge[end] not in stations:
                     errors.append(f"[registry] crew {crew_id}: edge references unknown agent: {edge[end]}")
     return errors
 
