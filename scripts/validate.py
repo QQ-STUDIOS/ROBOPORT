@@ -62,17 +62,22 @@ def validate_registry(path: Path) -> list[str]:
     reg = load_json(path)
     errors: list[str] = []
 
-    for agent_id, meta in reg.get("agents", {}).items():
-        agent_path = REPO / meta["path"]
-        if not agent_path.exists():
-            errors.append(f"[registry] agent {agent_id}: file not found: {meta['path']}")
+    # A crew station may be a runnable agent or an offline catalog record
+    # (`theragen_agents`), matching the governance gate's R4 rule.
+    catalog = reg.get("theragen_agents", {})
+    for section in ("agents", "theragen_agents"):
+        for agent_id, meta in reg.get(section, {}).items():
+            agent_path = REPO / meta["path"]
+            if not agent_path.exists():
+                errors.append(f"[registry] agent {agent_id}: file not found: {meta['path']}")
 
+    known = set(reg.get("agents", {})) | set(catalog)
     for crew_id, crew in reg.get("crews", {}).items():
-        if crew["entry"] not in reg["agents"]:
+        if crew["entry"] not in known:
             errors.append(f"[registry] crew {crew_id}: entry agent not in registry: {crew['entry']}")
         for edge in crew.get("edges", []):
             for end in ("from", "to"):
-                if edge[end] not in reg["agents"]:
+                if edge[end] not in known:
                     errors.append(f"[registry] crew {crew_id}: edge references unknown agent: {edge[end]}")
     return errors
 

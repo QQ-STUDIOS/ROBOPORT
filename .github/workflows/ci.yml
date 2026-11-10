@@ -76,6 +76,10 @@ jobs:
       - name: Run test suite
         run: python -m pytest tests/ -q
 
+      - name: Validate evals, registry and example output
+        # the same check Setup-Roboport.ps1 runs at install time
+        run: python scripts/validate.py --all
+
       - name: Crew-expansion governance gate
         run: |
           # the repo must satisfy the Phase-5 expansion rules (blockers, proof
