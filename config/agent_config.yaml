@@ -110,6 +110,29 @@ budgets:
     max_tool_calls: 15
 
 # -----------------------------------------------------------------------------
+# Observability-aware routing (Phase 4 task 4). Consulted only when the runtime
+# runs with `--provider routing` (or ROBOPORT_PROVIDER=routing); otherwise inert.
+# Per model_hint, the RoutingProvider picks a concrete {provider, model} candidate.
+# Without telemetry it uses the *static priority* (first candidate). Given a
+# scoreboard (an aggregate.py routing report's by_provider_model block), the
+# `blocker_pass_then_cost` objective ranks candidates by highest blocker pass
+# rate, then lowest per-step cost, after dropping any whose known per-step
+# latency exceeds `max_latency_ms_per_step`.
+# -----------------------------------------------------------------------------
+routing:
+  objective: blocker_pass_then_cost   # or "static" (always first candidate)
+  constraints:
+    max_latency_ms_per_step: 10000
+    max_usd_per_run: 5.00             # advisory; recorded, not yet enforced mid-run
+  candidates:
+    reasoning-strong:
+      - { provider: ollama,    model: qwen3:14b }
+      - { provider: anthropic, model: claude-sonnet-4-6 }
+    tool-use-capable:
+      - { provider: ollama,    model: qwen3:14b }
+      - { provider: anthropic, model: claude-sonnet-4-6 }
+
+# -----------------------------------------------------------------------------
 # Safety policy (Layer 3 of the error stack). `unsafe_actions` is a denylist of
 # categorically unsafe actions — irreversible, outward-facing, or money/code
 # execution. When an agent requests a tool whose name matches one of these

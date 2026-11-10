@@ -351,9 +351,10 @@ def main() -> int:
     ap.add_argument("--live", action="store_true",
                     help="Use the model-backed runtime (scripts/roboport_runtime) "
                          "instead of the stubs.")
-    ap.add_argument("--provider", choices=["ollama", "anthropic"], default=None,
+    ap.add_argument("--provider", choices=["ollama", "anthropic", "routing"], default=None,
                     help="Backend for --live. Default: $ROBOPORT_PROVIDER or "
-                         "'ollama'. Anthropic requires ANTHROPIC_API_KEY.")
+                         "'ollama'. Anthropic requires ANTHROPIC_API_KEY. 'routing' "
+                         "picks per-hint from the routing policy in agent_config.yaml.")
     args = ap.parse_args()
 
     if args.live:

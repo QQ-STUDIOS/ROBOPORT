@@ -49,6 +49,7 @@ class Provider(ABC):
         tools: list[dict] | None,
         force_json: bool,
         model_hint: str,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Returns dict with keys:
           - "tool_calls": list of {"id", "name", "arguments": dict} (may be empty)
@@ -57,6 +58,10 @@ class Provider(ABC):
                           {"provider", "model", "prompt_tokens", "completion_tokens",
                            "cost_usd" (float|None), "latency_ms"}. Callers must
                           tolerate its absence (the fault harness omits it).
+
+        `model` optionally pins the concrete model (used by the RoutingProvider to
+        honor its candidate choice); when None the provider derives it from
+        `model_hint` as before.
         """
         ...
 
@@ -102,9 +107,10 @@ class OllamaProvider(Provider):
         tools: list[dict] | None,
         force_json: bool,
         model_hint: str,
+        model: str | None = None,
     ) -> dict[str, Any]:
         full_messages = [{"role": "system", "content": system}, *messages]
-        model = self.model_for(model_hint)
+        model = model or self.model_for(model_hint)
         payload: dict[str, Any] = {
             "model": model,
             "messages": full_messages,
@@ -190,12 +196,13 @@ class AnthropicProvider(Provider):
         tools: list[dict] | None,
         force_json: bool,
         model_hint: str,
+        model: str | None = None,
     ) -> dict[str, Any]:
         # Convert OpenAI-style tool history to Anthropic shape.
         anth_messages = self._convert_messages(messages)
         anth_tools = self._convert_tools(tools or [])
 
-        model = self.model_for(model_hint)
+        model = model or self.model_for(model_hint)
         kwargs: dict[str, Any] = {
             "model": model,
             "max_tokens": 8000,
@@ -305,7 +312,11 @@ def get_provider(name: str | None = None) -> Provider:
         return OllamaProvider()
     if name == "anthropic":
         return AnthropicProvider()
-    raise ValueError(f"unknown provider: {name!r} (expected: ollama|anthropic)")
+    if name == "routing":
+        # Phase 4 task 4: pick a provider/model per hint from the routing policy.
+        from .routing import build_routing_provider  # lazy — avoids import cycle
+        return build_routing_provider(get_provider)
+    raise ValueError(f"unknown provider: {name!r} (expected: ollama|anthropic|routing)")
 
 
 def _coerce_args(args: Any) -> dict:

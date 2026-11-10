@@ -173,7 +173,14 @@ tokens, `cost_usd` (priced per model; `None` when unknown rather than guessed), 
 `latency_ms` — accumulated per step, written to `run.log`, and rolled up into a per-agent
 `routing` summary in each benchmark's `summary.json`. `aggregate.py` reports cost/latency
 per *passing* run and by provider/model, and `--compare` flags per-agent cost/latency
-regressions. That's the foundation for cost/latency-aware routing (Phase 4).
+regressions.
+
+That telemetry closes a loop: with `--provider routing`, the runtime picks a concrete
+`{provider, model}` per `model_hint` from the `routing:` policy in `agent_config.yaml` —
+static priority by default, or, given an `aggregate.py` scoreboard,
+`blocker_pass_then_cost` (highest blocker pass rate, then cheapest, within a latency
+budget). **Runs emit cost/latency → aggregate scores each provider/model → the router
+picks the winner.**
 
 ---
 
