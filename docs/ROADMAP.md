@@ -451,6 +451,19 @@ so no crew lands without proof. Both crews pass R1/R2/R4; validated by
 > escalation, never performed. Four-kind + blockered eval set
 > (`evals/insight_to_action_evals.json`), proven by `tests/test_insight_to_action.py`.
 
+> **Theragen agent catalog (shipped):** the real Theragen AI agents (from the Notion
+> **🧠 1) Agents** database) are imported as **offline, typed-contract records** under
+> a dedicated `theragen_agents` registry key — kept separate from ROBOPORT's runnable
+> `agents` so an external production agent is never mistaken for something this repo can
+> execute. Each of the 14 records has a spec under `agents/theragen/` carrying its Notion
+> provenance, data classification (PHI / Confidential / Unclassified), runtime, status,
+> and open issues verbatim. **ROBOPORT never connects to any real Theragen system
+> (Brightree, Snowflake, M365/Graph, Azure, the studio Ollama) — no production data or
+> PHI flows through this repository; the classifications are labels carried from the
+> catalog, not data held here.** Catalogued in `docs/THERAGEN_AGENTS.md`, proven by
+> `tests/test_theragen_catalog.py`; governance stays clean (the catalog is reference,
+> not crew stations).
+
 ---
 
 ## The end-state workflow: localize → explain
