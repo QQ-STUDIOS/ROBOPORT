@@ -438,6 +438,19 @@ every eval set under `evals/` and requires each registry crew to have a covering
 so no crew lands without proof. Both crews pass R1/R2/R4; validated by
 `tests/test_governance.py`.
 
+> **Insight-to-Action crew (shipped):** a third crew, `insight_to_action_crew`
+> (`data_engineering` → `reporting` → `automation`), takes the DataOps pipeline one
+> stage further — the terminal `automation` station *proposes* side-effecting actions
+> and exercises the **Phase-3 Layer-3 unsafe-action escalation in a real crew**. It adds
+> a typed `ActionProposal` contract (every action carries `requires_approval`, a
+> `grounded_in` pointer back to the report, and an `audit_event`; `approval.status`
+> defaults to `pending`). Any irreversible or outward-facing proposed tool call is
+> blocked-and-escalated by the executor **before dispatch** (`layer="unsafe_action"`),
+> so an approval bypass fails twice — once at the proposal contract, once at the
+> executor seam. Offline throughout: side effects are represented via policy and
+> escalation, never performed. Four-kind + blockered eval set
+> (`evals/insight_to_action_evals.json`), proven by `tests/test_insight_to_action.py`.
+
 ---
 
 ## The end-state workflow: localize → explain
