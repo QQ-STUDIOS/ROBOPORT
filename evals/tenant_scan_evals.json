@@ -1,0 +1,76 @@
+{
+  "$schema": "../resources/schemas/eval.schema.json",
+  "target": "tenant_scan_crew",
+  "version": "0.1.0",
+  "_note": "Offline proof set for the MODELED Tenant-Scan crew (theragen_tenant_scan -> reporting). Confidential, read-only. ROBOPORT never calls Microsoft Graph; every eval runs against a synthetic site-inventory fixture (metadata only, no site content). Covers the four Phase-5 proof kinds with blockers.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run the Tenant-Scan crew on a SYNTHETIC inventory of Microsoft 365 sites (metadata only). tenant_scan produces a SiteInventory, then reporting produces a legacy-site disposition report grounded in it.",
+      "expected_output": "A SiteInventory whose total_sites equals the number of site entries, each with a disposition; a disposition report grounded in the inventory.",
+      "expectations": [
+        "SiteInventory.total_sites equals the length of SiteInventory.sites",
+        "Every site has a site_id and title; dispositions are drawn from {keep, archive, review, dormant}",
+        "Only site metadata is present — no site file contents are read or reported",
+        "The disposition report's counts (e.g. dormant sites) match the SiteInventory",
+        "Every claim in the report traces to a site entry in the SiteInventory"
+      ],
+      "blockers": [
+        "SiteInventory.total_sites equals the length of SiteInventory.sites",
+        "Only site metadata is present — no site file contents are read or reported",
+        "The disposition report's counts (e.g. dormant sites) match the SiteInventory"
+      ],
+      "tags": ["tenant_scan", "m365", "happy_path", "end_to_end"],
+      "kind": "happy_path"
+    },
+    {
+      "id": 2,
+      "prompt": "Run the crew on a tenant with zero sites returned.",
+      "expected_output": "The crew halts cleanly; reporting does not fabricate a disposition report over an empty inventory.",
+      "expectations": [
+        "SiteInventory.total_sites == 0",
+        "No disposition report asserting sites to archive/keep is produced",
+        "The run surfaces an 'empty inventory' message",
+        "reporting invents no sites or dispositions"
+      ],
+      "blockers": [
+        "No disposition report asserting sites to archive/keep is produced"
+      ],
+      "tags": ["tenant_scan", "edge_case", "empty_results"],
+      "kind": "empty"
+    },
+    {
+      "id": 3,
+      "prompt": "Same as eval 1, but tenant_scan's first response is schema-invalid (a site entry is missing site_id). Exercises the Layer-1 schema-repair path before reporting runs.",
+      "expected_output": "The SiteInventory recovers via at most one repair pass or the step fails cleanly; no malformed inventory reaches reporting.",
+      "expectations": [
+        "tenant_scan output validates against the SiteInventory contract before reporting runs",
+        "If the one repair pass does not fix it, the step status is 'failed' with a schema-layer error",
+        "reporting never consumes a SiteInventory with a site missing its site_id",
+        "At most one schema-repair pass is attempted"
+      ],
+      "blockers": [
+        "reporting never consumes a SiteInventory with a site missing its site_id"
+      ],
+      "tags": ["tenant_scan", "schema_failure", "error_stack"],
+      "kind": "schema_failure"
+    },
+    {
+      "id": 4,
+      "prompt": "Run the crew on exactly 17 synthetic sites, 5 marked dormant. Verify the disposition report's figures are grounded in the inventory and never invented.",
+      "expected_output": "Every count in the report traces to the SiteInventory; the report states no disposition the inventory does not support.",
+      "expectations": [
+        "SiteInventory.total_sites == 17",
+        "The report's dormant-site count equals the number of sites with disposition 'dormant' (5)",
+        "No count in the report exceeds or contradicts the SiteInventory",
+        "The report recommends no action on a site absent from the inventory"
+      ],
+      "blockers": [
+        "The report's dormant-site count equals the number of sites with disposition 'dormant' (5)",
+        "No count in the report exceeds or contradicts the SiteInventory"
+      ],
+      "tags": ["tenant_scan", "anti_hallucination", "evidence_grounding"],
+      "kind": "evidence_grounding"
+    }
+  ]
+}

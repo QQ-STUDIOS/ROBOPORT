@@ -83,8 +83,11 @@ def check_crews_have_evals(registry: dict, eval_sets: list[dict]) -> list[dict]:
 
 def check_stations(registry: dict) -> list[dict]:
     """R4: every crew station maps to a registered agent, and every edge declares
-    its output contract (`type`)."""
-    agents = set(registry.get("agents", {}))
+    its output contract (`type`). A station may be a runnable agent OR an offline
+    Theragen catalog record (`theragen_agents`) — a modeled crew can wire a real
+    external agent as a station, which the catalog makes a first-class registry
+    citizen; it is still never executed."""
+    agents = set(registry.get("agents", {})) | set(registry.get("theragen_agents", {}))
     out = []
     for cname, crew in (registry.get("crews") or {}).items():
         stations = {crew.get("entry")} if crew.get("entry") else set()

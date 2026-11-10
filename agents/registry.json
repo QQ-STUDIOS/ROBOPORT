@@ -54,6 +54,22 @@
         { "from": "data_engineering", "to": "reporting",  "type": "CleanedDataset" },
         { "from": "reporting",         "to": "automation", "type": "DataReport" }
       ]
+    },
+    "brightree_rounds_crew": {
+      "description": "Offline MODEL of the Theragen Brightree->Rounds workflow: brightree_pdf_extraction extracts structured records from source PDFs (PHI columns named, never carried), then reporting produces the Rounds report grounded in them. Read-only; PHI-classified. ROBOPORT never touches real Brightree or Snowflake — the run is proven against a synthetic fixture.",
+      "classification": "PHI",
+      "entry": "theragen_brightree_pdf_extraction",
+      "edges": [
+        { "from": "theragen_brightree_pdf_extraction", "to": "reporting", "type": "ExtractedRecords" }
+      ]
+    },
+    "tenant_scan_crew": {
+      "description": "Offline MODEL of the Theragen Tenant-Scan workflow: tenant_scan takes a read-only inventory of Microsoft 365 sites (metadata only), then reporting produces a legacy-site disposition report grounded in it. Read-only; Confidential. ROBOPORT never calls Microsoft Graph — proven against a synthetic inventory fixture.",
+      "classification": "Confidential",
+      "entry": "theragen_tenant_scan",
+      "edges": [
+        { "from": "theragen_tenant_scan", "to": "reporting", "type": "SiteInventory" }
+      ]
     }
   },
   "theragen_agents": {
