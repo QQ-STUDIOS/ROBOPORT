@@ -311,6 +311,75 @@
           }
         }
       }
+    },
+
+    "RetrievalResult": {
+      "type": "object",
+      "description": "theragen_legacyrag_retrieval output (offline model): a grounded answer over the legacy document catalog. Every answer cites the documents it rests on; an ungrounded answer must say so and cite nothing.",
+      "required": ["query", "answer", "grounded", "citations"],
+      "properties": {
+        "query":    { "type": "string" },
+        "answer":   { "type": "string" },
+        "grounded": { "type": "boolean", "description": "true iff the answer is supported by the citations." },
+        "citations": {
+          "type": "array",
+          "description": "the documents the answer rests on; empty is only valid when grounded is false.",
+          "items": {
+            "type": "object",
+            "required": ["doc_id", "snippet"],
+            "properties": {
+              "doc_id":  { "type": "string" },
+              "snippet": { "type": "string" },
+              "score":   { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        }
+      }
+    },
+
+    "GovernanceFindings": {
+      "type": "object",
+      "description": "theragen_eom_governance_auditor output (offline model): governance gaps found in EOM artifacts, each with a rule, severity and the evidence it rests on.",
+      "required": ["generated_at", "findings"],
+      "properties": {
+        "generated_at": { "type": "string", "format": "date-time" },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "rule", "severity", "subject", "evidence"],
+            "properties": {
+              "id":       { "type": "string" },
+              "rule":     { "type": "string" },
+              "severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"] },
+              "subject":  { "type": "string" },
+              "evidence": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "DecisionLog": {
+      "type": "object",
+      "description": "theragen_eom_decision_backlog output (offline model): a triage decision per governance finding. 'escalate' hands a finding to the catalogue steward, whose side-effecting catalogue writes are then gated by the unsafe-action policy.",
+      "required": ["generated_at", "decisions"],
+      "properties": {
+        "generated_at": { "type": "string", "format": "date-time" },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["finding_id", "decision", "rationale"],
+            "properties": {
+              "finding_id": { "type": "string" },
+              "decision":   { "type": "string", "enum": ["accept", "defer", "reject", "escalate"] },
+              "rationale":  { "type": "string" },
+              "owner":      { "type": "string" }
+            }
+          }
+        }
+      }
     }
   }
 }

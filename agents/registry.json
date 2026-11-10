@@ -70,6 +70,23 @@
       "edges": [
         { "from": "theragen_tenant_scan", "to": "reporting", "type": "SiteInventory" }
       ]
+    },
+    "legacyrag_crew": {
+      "description": "Offline MODEL of the Theragen LegacyRAG workflow: legacyrag_retrieval answers a query over the legacy document catalog with citations (RetrievalResult), then reporting summarizes the grounded answer. Read-only; PHI. ROBOPORT never opens the real SQLite catalog or Qdrant index — proven against a synthetic corpus; the blocker is that no answer is ever ungrounded or cites a document that does not exist.",
+      "classification": "PHI",
+      "entry": "theragen_legacyrag_retrieval",
+      "edges": [
+        { "from": "theragen_legacyrag_retrieval", "to": "reporting", "type": "RetrievalResult" }
+      ]
+    },
+    "eom_governance_crew": {
+      "description": "Offline MODEL of the Theragen EOM governance loop: eom_governance_auditor finds governance gaps (GovernanceFindings) -> eom_decision_backlog triages each into a decision (DecisionLog) -> eom_catalogue_steward acts on the escalated ones. The terminal steward is a side-effecting Automation agent, so its catalogue writes exercise the Phase-3 Layer-3 unsafe-action escalation: they are proposed and escalated, never performed. Offline throughout.",
+      "classification": "Confidential",
+      "entry": "theragen_eom_governance_auditor",
+      "edges": [
+        { "from": "theragen_eom_governance_auditor", "to": "theragen_eom_decision_backlog", "type": "GovernanceFindings" },
+        { "from": "theragen_eom_decision_backlog",   "to": "theragen_eom_catalogue_steward", "type": "DecisionLog" }
+      ]
     }
   },
   "theragen_agents": {
