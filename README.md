@@ -137,7 +137,11 @@ deterministic fault harness the CI Tests job runs — a layer that stops firing
 fails the build. L1 retries transient 5xx, repairs schema-invalid output, and
 guards the quiet-200 empty result; L2 aborts on a per-agent call budget; L3
 escalates a requested unsafe/irreversible action (`policy.unsafe_actions`)
-without ever dispatching it. Full taxonomy and enforcement notes:
+without ever dispatching it. Beyond the unit tests, `scripts/fault_bench.py` runs
+the scenarios in `evals/fault_injection.json` through the **real executor** via a
+scripted `FaultProvider` — no model — grades each outcome against its declared
+expectation, and writes diff_runs-compatible run artifacts (also CI-gated). Full
+taxonomy and enforcement notes:
 [`resources/prompts/error_handling.md`](resources/prompts/error_handling.md).
 
 ---

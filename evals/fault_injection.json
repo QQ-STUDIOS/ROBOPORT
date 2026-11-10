@@ -1,0 +1,116 @@
+{
+  "$note": "Offline fault-injection scenarios run by scripts/fault_bench.py against the real executor via the FaultProvider. Each scenario scripts the provider's responses and declares the error-stack outcome to expect. `content` may be a nested object (serialized to JSON) for readability. Not a crew eval set — not gated by scripts/governance.py.",
+  "target": "fault_injection",
+  "version": "0.1.0",
+  "scenarios": [
+    {
+      "id": "transient_retry",
+      "layer": "L1-call",
+      "description": "A transient 5xx is retried, then the step succeeds.",
+      "step": {"owner": "tester", "output_type": "FinalReport"},
+      "fault_script": [
+        {"transient": true},
+        {"content": {"status": "ok", "output": {"generated_at": "t", "summary": {"total_jobs": 3, "verdicts": {"apply": 2}}, "ranked_matches": []}, "criteria_results": [{"criterion": "ok", "passed": true}], "error": null}}
+      ],
+      "expect": {"status": "ok", "retries": 1}
+    },
+    {
+      "id": "transient_exhausted",
+      "layer": "L1-call",
+      "description": "A persistent 5xx exhausts retries and fails with the call-level layer.",
+      "step": {"owner": "tester", "output_type": "FinalReport"},
+      "fault_script": [{"transient": true}],
+      "expect": {"status": "failed", "layer": "provider_5xx", "error_contains": "transient"}
+    },
+    {
+      "id": "fatal_error",
+      "layer": "L1-call",
+      "description": "A non-retryable provider error fails immediately, not retried.",
+      "step": {"owner": "tester", "output_type": "FinalReport"},
+      "fault_script": [{"fatal": true}],
+      "expect": {"status": "failed", "layer": "provider_error", "calls": 1}
+    },
+    {
+      "id": "schema_repair",
+      "layer": "L1-call",
+      "description": "Schema-invalid output triggers one repair pass that fixes it.",
+      "step": {"owner": "tester", "output_type": "FinalReport"},
+      "fault_script": [
+        {"content": {"status": "ok", "output": {"generated_at": "t", "ranked_matches": []}, "criteria_results": [], "error": null}},
+        {"content": {"status": "ok", "output": {"generated_at": "t", "summary": {"total_jobs": 3, "verdicts": {"apply": 2}}, "ranked_matches": []}, "criteria_results": [{"criterion": "ok", "passed": true}], "error": null}}
+      ],
+      "expect": {"status": "ok", "repaired": true}
+    },
+    {
+      "id": "schema_repair_persists",
+      "layer": "L1-call",
+      "description": "Repair attempted but output still invalid — recorded, not silently passed.",
+      "step": {"owner": "tester", "output_type": "FinalReport"},
+      "fault_script": [
+        {"content": {"status": "ok", "output": {"generated_at": "t", "ranked_matches": []}, "criteria_results": [], "error": null}},
+        {"content": {"status": "ok", "output": {"generated_at": "t", "ranked_matches": []}, "criteria_results": [], "error": null}}
+      ],
+      "expect": {"repaired": true, "failed_criterion_contains": "schema"}
+    },
+    {
+      "id": "quiet_200_guard",
+      "layer": "L1-call",
+      "description": "An empty list result must fail loudly, never silently pass.",
+      "step": {"owner": "tester", "output_type": "list[Job]"},
+      "fault_script": [{"content": {"status": "ok", "output": [], "criteria_results": [], "error": null}}],
+      "expect": {"failed_criterion_contains": "quiet-200"}
+    },
+    {
+      "id": "llm_budget_exceeded",
+      "layer": "L2-budget",
+      "description": "Too many LLM calls aborts loudly with layer=budget_exceeded.",
+      "step": {"owner": "tester", "output_type": "FinalReport"},
+      "config": {"budgets": {"per_agent": {"max_llm_calls": 2, "max_tool_calls": 50}}},
+      "fault_script": [{"tool_calls": [{"id": "c0", "name": "x", "arguments": {}}]}],
+      "expect": {"status": "failed", "layer": "budget_exceeded", "error_contains": "llm calls"}
+    },
+    {
+      "id": "tool_budget_exceeded",
+      "layer": "L2-budget",
+      "description": "Too many tool calls aborts loudly with layer=budget_exceeded.",
+      "step": {"owner": "tester", "output_type": "FinalReport"},
+      "config": {"budgets": {"per_agent": {"max_llm_calls": 10, "max_tool_calls": 1}}},
+      "fault_script": [{"tool_calls": [{"id": "c0", "name": "x", "arguments": {}}]}],
+      "expect": {"status": "failed", "layer": "budget_exceeded", "error_contains": "tool calls"}
+    },
+    {
+      "id": "unsafe_action_escalates",
+      "layer": "L3-unsafe",
+      "description": "A requested unsafe action escalates loudly and is never dispatched.",
+      "step": {"owner": "tester", "output_type": "FinalReport"},
+      "fault_script": [
+        {"tool_calls": [{"id": "u0", "name": "delete_account", "arguments": {"id": 7}}]},
+        {"content": {"status": "ok", "output": {}, "criteria_results": [], "error": null}}
+      ],
+      "expect": {"status": "failed", "layer": "unsafe_action", "escalated_action": "delete_account", "calls": 1}
+    },
+    {
+      "id": "safe_whitelist_miss_recoverable",
+      "layer": "L3-unsafe",
+      "description": "A benign tool outside the whitelist feeds an error back — not an escalation.",
+      "step": {"owner": "tester", "output_type": "FinalReport"},
+      "fault_script": [
+        {"tool_calls": [{"id": "s0", "name": "lookup_comp_band", "arguments": {}}]},
+        {"content": {"status": "ok", "output": {"generated_at": "t", "summary": {"total_jobs": 3, "verdicts": {"apply": 2}}, "ranked_matches": []}, "criteria_results": [{"criterion": "ok", "passed": true}], "error": null}}
+      ],
+      "expect": {"status": "ok", "layer_not": "unsafe_action"}
+    },
+    {
+      "id": "unsafe_policy_opt_out",
+      "layer": "L3-unsafe",
+      "description": "An explicit empty policy.unsafe_actions disables escalation (opt-out).",
+      "step": {"owner": "tester", "output_type": "FinalReport"},
+      "config": {"policy": {"unsafe_actions": []}},
+      "fault_script": [
+        {"tool_calls": [{"id": "u0", "name": "delete_account", "arguments": {"id": 7}}]},
+        {"content": {"status": "ok", "output": {"generated_at": "t", "summary": {"total_jobs": 3, "verdicts": {"apply": 2}}, "ranked_matches": []}, "criteria_results": [{"criterion": "ok", "passed": true}], "error": null}}
+      ],
+      "expect": {"status": "ok", "layer_not": "unsafe_action"}
+    }
+  ]
+}

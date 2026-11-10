@@ -83,6 +83,13 @@ jobs:
           python scripts/governance.py --quiet
           echo "governance gate verified"
 
+      - name: Offline fault-injection suite
+        run: |
+          # the error stack (retry/repair/quiet-200, budget, unsafe-action) must
+          # behave as declared, exercised through the real executor via FaultProvider
+          python scripts/fault_bench.py --quiet --out "$RUNNER_TEMP/fault-injection"
+          echo "fault-injection suite verified"
+
       - name: diff_runs regression-gate smoke
         run: |
           # a clean comparison passes the gate

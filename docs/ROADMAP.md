@@ -298,8 +298,11 @@ behavior.
 > Provider/budget/unsafe failures carry a `layer`; steps report `retries`/`repaired`.
 >
 > The richer `Response{cost,latency,...}` shape (the Phase-4 routing foundation) has
-> since landed on the seam — see Phase 4. Still open: wiring the `FaultProvider` into a
-> `--live` `evals/fault_injection.json` benchmark set.
+> since landed on the seam — see Phase 4. The `FaultProvider` is now also wired into an
+> offline fault-injection benchmark: `evals/fault_injection.json` + `scripts/fault_bench.py`
+> run the error-stack scenarios through the *real executor* (not just unit tests),
+> deterministically grade the outcome against each scenario's declared expectation, and
+> emit diff_runs/aggregate-compatible run artifacts — gated in CI.
 
 Fault-injection evals:
 
@@ -459,7 +462,7 @@ exit-code contract:
 - ~~Add `duration_ms` + config fingerprint to `step_done` in `benchmark.py`.~~ **Done (Phase 1.x).**
 
 ### P1
-- ~~A fake provider / `Provider`-seam fault harness + Layer-1 proof.~~ **Done (Phase 3 v1).** A live `evals/fault_injection.json` benchmark set is still open.
+- ~~A fake provider / `Provider`-seam fault harness + Layer-1 proof; a fault-injection benchmark set.~~ **Done.** `scripts/fault_bench.py` runs `evals/fault_injection.json` through the real executor offline, gated in CI.
 - Dashboard diff event support + `diff_against_baseline.json` file-drop.
 - ~~Provider/model/cost/latency fields on run events.~~ **Done (Phase 4 v1).**
 - ~~Stable-field (`x-roboport`) annotations in `output.schema.json`.~~ **Done (Phase 1.x).**
