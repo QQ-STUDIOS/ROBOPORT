@@ -160,7 +160,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict:
     }
 
 
-def call_grader(expectations: list[str], transcript_path: Path | None, outputs_dir: Path) -> dict:
+def call_grader(expectations: list[str], transcript_path: Path | None, outputs_dir: Path, blockers=None) -> dict:
     """Stub. Marks all expectations PASS with placeholder evidence."""
     return {
         "run_id": outputs_dir.name,
@@ -184,6 +184,12 @@ def jsonl_append(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:
         f.write(json.dumps(obj, default=str) + "\n")
+
+
+def _safe_step_id(sid) -> bool:
+    """Step ids come from the model's plan and name files under steps/."""
+    import re
+    return isinstance(sid, str) and bool(re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}", sid)) and ".." not in sid
 
 
 def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=None,
@@ -210,6 +216,15 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
     plan = call_planner(eval_obj["prompt"], context={**eval_obj.get("context", {}), "target": crew}, registry=registry)
     (run_dir / "plan.json").write_text(json.dumps(plan, indent=2))
     jsonl_append(log, {"event": "plan_emitted", "ts": datetime.now(timezone.utc).isoformat()})
+    unsafe = [s.get("id") if isinstance(s, dict) else s for s in plan.get("steps", [])
+              if not isinstance(s, dict) or not _safe_step_id(s.get("id"))]
+    if unsafe:
+        error = f"plan rejected: unsafe step id(s) {unsafe!r}"
+        if run_log is not None and not defer_completion:
+            run_log.run_complete(_run_summary([], 0, 0, _t_run, _time))
+        (run_dir / "final_output.json").write_text(json.dumps({"status": "failed", "error": error}, indent=2))
+        return {"status": "failed", "step_failed": None, "error": error, "steps": [],
+                "run_summary": _run_summary([], 0, 0, _t_run, _time)}
 
     if feed is not None:
         from roboport_runtime.feed_log import stations_from_plan  # lazy
@@ -349,7 +364,7 @@ def execute_run(ev: dict, run_dir: Path, registry: dict, *, config: dict, live: 
             outcome = run_one(ev, run_dir, registry, config=config, feed=feed, run_log=run_log, defer_completion=True)
             budget.remaining_seconds()
             if grade and outcome['status'] == 'ok':
-                grading = call_grader(ev['expectations'], run_dir / 'run.log', run_dir)
+                grading = call_grader(ev['expectations'], run_dir / 'run.log', run_dir, blockers=ev.get('blockers'))
                 (run_dir / 'grading.json').write_text(json.dumps(grading, indent=2))
                 if grading.get('blocker_failed') or grading.get('pass_rate') != 1.0:
                     outcome['status'] = 'failed'

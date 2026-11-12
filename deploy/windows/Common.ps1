@@ -72,7 +72,9 @@ function Select-HardwareTier($Config, [string]$GpuInfo, [double]$MemoryBytes) {
         foreach ($line in ($GpuInfo -split "`r?`n")) {
             if ($line -match [regex]::Escape([string]$tier.gpu_vendor) -and $line -match ',\s*(\d+)\s*MiB') { $vram = [math]::Max($vram, [int]$Matches[1]) }
         }
-        if ($vram -ge $tier.min_vram_mib -and $MemoryBytes -ge ([double]$tier.min_ram_gib * 1GB)) {
+        # Windows reports installed RAM minus firmware-reserved memory, so a
+        # 64 GiB machine shows slightly less; allow 2% for that.
+        if ($vram -ge $tier.min_vram_mib -and $MemoryBytes -ge ([double]$tier.min_ram_gib * 1GB * 0.98)) {
             $fits += $name
             if (@($tier.models) -contains [string]$Config.model) {
                 $Config | Add-Member -NotePropertyName hardware_tier -NotePropertyValue $name -Force

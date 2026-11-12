@@ -5,7 +5,8 @@ Assert-Windows
 $previousPath = Join-Path $InstallRoot 'state\previous-deployment.json'
 $previous = Read-DeploymentJson $previousPath
 if (-not (Test-Path -LiteralPath (Join-Path $previous.release_root '.venv\Scripts\python.exe'))) { throw 'Previous release is unavailable; nothing changed.' }
-& (Join-Path $PSScriptRoot 'Stop-Roboport.ps1') -InstallRoot $InstallRoot
+# A maintenance stop: keep the sign-in startup task as it is.
+& (Join-Path $PSScriptRoot 'Stop-Roboport.ps1') -InstallRoot $InstallRoot -KeepAutostart
 $activePath = Join-Path $InstallRoot 'state\deployment.json'
 Copy-Item -LiteralPath $activePath -Destination (Join-Path $InstallRoot 'state\rolled-back-deployment.json') -Force
 Write-DeploymentJson $activePath $previous

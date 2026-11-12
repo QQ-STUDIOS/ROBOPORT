@@ -532,13 +532,16 @@ def _reject(cmd: dict, reason: str) -> dict:
 def _load_registry(registry_path: str | Path) -> dict:
     """The core registry gets station packs added; any other path is read as-is."""
     path = Path(registry_path)
-    if path.resolve() == _repo_registry().resolve():
+    repo = path.resolve().parents[1]
+    # Only a checkout with station packs needs the pack loader; the bundled
+    # control-surface image ships the core registry without scripts/.
+    if path.resolve() == _repo_registry().resolve() and (repo / "stations").is_dir():
         import sys
 
-        sys.path.insert(0, str(path.resolve().parents[1] / "scripts"))
+        sys.path.insert(0, str(repo / "scripts"))
         from station_packs import load_registry
 
-        return load_registry(path.resolve().parents[1])
+        return load_registry(repo)
     return json.loads(path.read_text(encoding="utf-8"))
 
 

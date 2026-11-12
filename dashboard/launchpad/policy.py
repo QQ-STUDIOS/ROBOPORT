@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import yaml
 
 from .store import digest
+from .artifacts import is_reparse_point
 
 SUPPORTED_TOOLS = {"rea_analyze_project"}
 SUPPORTED_PROFILES = {"environment_investigation", "jd_crew"}
@@ -73,7 +74,7 @@ def component_inventory(repo: Path):
 def project_inventory(root):
     values, size = {}, 0
     for path in sorted(root.rglob("*")):
-        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+        if path.is_symlink() or is_reparse_point(path):
             raise ValueError("project root contains unsafe link")
         if not path.is_file():
             continue

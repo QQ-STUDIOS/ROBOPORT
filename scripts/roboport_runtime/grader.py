@@ -51,10 +51,25 @@ def _read_json(p: Path) -> str:
         return text
 
 
+def _step_outputs(outputs_dir: Path) -> str:
+    """Each step's typed output, so expectations about intermediate agents
+    (for example the investigator's findings) have evidence to grade."""
+    rows = {}
+    for path in sorted((outputs_dir / "steps").glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            rows[path.stem] = {"status": data.get("status"), "output": data.get("output")}
+    return json.dumps(rows, ensure_ascii=False, separators=(',', ':')) if rows else "(none)"
+
+
 def call_grader(
     expectations: list[str],
     transcript_path: Path | None,
     outputs_dir: Path,
+    blockers: list[str] | None = None,
 ) -> dict[str, Any]:
     final_output_path = outputs_dir / "final_output.json"
     plan_path = outputs_dir / "plan.json"
@@ -66,6 +81,7 @@ def call_grader(
         + "\n".join(f"- {e}" for e in expectations)
         + "\n\nPLAN\n" + _read_json(plan_path)
         + "\n\nFINAL OUTPUT\n" + _read_json(final_output_path)
+        + "\n\nSTEP OUTPUTS (by step id)\n" + _step_outputs(outputs_dir)
         + "\n\nRUN LOG (JSONL)\n" + _read(transcript_path)
         + "\n\nGrade each expectation. PASS only with concrete evidence from "
           "the artifacts. FAIL on contradiction. INCONCLUSIVE when artifacts "
@@ -101,7 +117,7 @@ def call_grader(
                 for ex in expectations
             ],
             "pass_rate": 0.0,
-            "blocker_failed": False,
+            "blocker_failed": True,  # ungraded: fail closed
             "meta_critique": [f"grader exception: {e!r}"],
         }
 
@@ -109,7 +125,12 @@ def call_grader(
     matched = len(rows) == len(expectations) and sorted(r.get('expectation', '') for r in rows) == sorted(expectations)
     passed = sum(r.get('verdict') == 'PASS' and bool(r.get('evidence')) for r in rows)
     result['pass_rate'] = passed / len(expectations) if expectations and matched else 0.0
-    result['blocker_failed'] = not matched or passed != len(expectations) or bool(result.get('blocker_failed'))
+    # Acceptance (every expectation PASS) is pass_rate == 1.0; blocker_failed
+    # reports only blocker-class misses, which aggregate and diff_runs key on.
+    declared = set(blockers or [])
+    blocker_miss = any((r.get('blocker') or r.get('expectation') in declared)
+                       and not (r.get('verdict') == 'PASS' and r.get('evidence')) for r in rows)
+    result['blocker_failed'] = not matched or blocker_miss or bool(result.get('blocker_failed'))
     return {
         "run_id": outputs_dir.name,
         "results": result["results"],

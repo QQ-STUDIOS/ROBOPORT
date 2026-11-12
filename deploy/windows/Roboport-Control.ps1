@@ -276,8 +276,10 @@ function Update-Status {
     }
     Set-Row 'Processes' ("{0} Roboport python process(es)" -f $procs.Count) $(if ($procs.Count) { $ok } else { $idle })
     Set-Row 'Launch Pad' ($(if ($up) { "Up    $launchPad" } else { "Down    $launchPad" })) $(if ($up) { $ok } else { $bad })
-    $ollamaUp = Test-Http 'http://127.0.0.1:11434/api/version'
-    Set-Row 'Ollama' $(if ($ollamaUp) { 'Up    http://127.0.0.1:11434' } else { 'Down (Roboport needs it for runs)' }) $(if ($ollamaUp) { $ok } else { $bad })
+    $ollamaUrl = ([string]$deployment.config.ollama_url).TrimEnd('/')
+    if (-not $ollamaUrl) { $ollamaUrl = 'http://127.0.0.1:11434' }
+    $ollamaUp = Test-Http ($ollamaUrl + '/api/version')
+    Set-Row 'Ollama' $(if ($ollamaUp) { "Up    $ollamaUrl" } else { "Down    $ollamaUrl (Roboport needs it for runs)" }) $(if ($ollamaUp) { $ok } else { $bad })
     $btnLaunch.Enabled = $up -and -not $script:job
     $btnConsole.Enabled = $up -and -not $script:job
     if (-not $script:job) { $stripLeft.Text = 'Status refreshed ' + (Get-Date -Format 'HH:mm:ss') }
@@ -305,7 +307,8 @@ function Start-Action([string]$Name, [string]$Label) {
     $out = [IO.Path]::GetTempFileName(); $err = [IO.Path]::GetTempFileName()
     $argLine = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -InstallRoot "{1}" -Action {2}' -f $PSCommandPath, $InstallRoot, $Name
     Add-Log ("`r`n=== {0}  {1} ===" -f (Get-Date -Format 'HH:mm:ss'), $Label)
-    $p = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $argLine -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+    # Workers run in Windows PowerShell 5.1 even when this window runs in pwsh.
+    $p = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList $argLine -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
     $null = $p.Handle   # cache the handle now; without it .NET reports a blank ExitCode once the process exits
     $script:job =@{ Process = $p; Out = $out; Err = $err; OutPos = [long]0; ErrPos = [long]0; Label = $Label }
     $stripLeft.Text = "Running: $Label ..."; $stripLeft.ForeColor = $gold

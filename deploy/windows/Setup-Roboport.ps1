@@ -54,7 +54,12 @@ Invoke-Checked $python @('-m', 'pip', 'install', '-r', (Join-Path $release 'depl
 Push-Location (Join-Path $release 'integrations\rea')
 try { Invoke-Checked $preflight.npm @('ci', '--ignore-scripts', '--no-audit', '--no-fund') } finally { Pop-Location }
 Invoke-Checked $python @((Join-Path $release 'scripts\windows_deploy.py'), 'configure', '--release', $release, '--data', $data, '--config', ([IO.Path]::GetFullPath($ConfigPath)), '--machine', $preflight.machine, '--hardware-tier', $preflight.hardware_tier)
-if ($PullModel) { Invoke-Checked $preflight.ollama @('pull', [string]$config.model) }
+if ($PullModel) {
+    # Pull into the Ollama service the runtime is configured to use.
+    $savedHost = $env:OLLAMA_HOST
+    $env:OLLAMA_HOST = [string]$config.ollama_url
+    try { Invoke-Checked $preflight.ollama @('pull', [string]$config.model) } finally { $env:OLLAMA_HOST = $savedHost }
+}
 Push-Location $release
 try { Invoke-Checked $python @('scripts\validate.py', '--all') } finally { Pop-Location }
 $active = Join-Path $state 'deployment.json'

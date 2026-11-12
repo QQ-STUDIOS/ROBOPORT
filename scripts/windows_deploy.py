@@ -71,7 +71,8 @@ def gpu_vram_mib(gpu_info: str, vendor: str) -> int:
 
 def tier_fits(spec: dict, gpu_info: str, memory_bytes: int, model: str) -> bool:
     return (gpu_vram_mib(gpu_info, spec['gpu_vendor']) >= spec['min_vram_mib']
-            and memory_bytes >= spec['min_ram_gib'] * 2**30
+            # Same 2% allowance for firmware-reserved memory as Common.ps1.
+            and memory_bytes >= spec['min_ram_gib'] * 2**30 * 0.98
             and model in spec.get('models', []))
 
 
@@ -95,13 +96,26 @@ def configure_release(release: Path, data: Path, config: dict) -> None:
 
 
 def prune_runs(root: Path, *, protected: set[str], max_runs: int, max_bytes: int) -> None:
-    """Delete only complete, owned run batches; unknown directories survive."""
+    """Delete only complete, owned run batches; unknown directories survive.
+
+    A batch is complete once benchmark.py has written its summary.json and
+    nothing in it is newer. Runs are written one at a time, so terminal
+    provenance alone can describe a batch that is still running, and a rerun
+    of an existing label writes new files after the old summary.
+    """
     candidates = []
     for path in root.iterdir() if root.exists() else []:
         if not path.is_dir() or path.is_symlink() or path.name in protected:
             continue
         provenance = list(path.rglob('provenance.json'))
-        if not provenance:
+        summary = path / 'summary.json'
+        if not provenance or not summary.is_file():
+            continue
+        try:
+            finished = summary.stat().st_mtime_ns
+            if any(p.stat().st_mtime_ns > finished for p in path.rglob('*') if p.is_file()):
+                continue
+        except OSError:
             continue
         try:
             if any(read_json(p).get('status') not in ('ok', 'failed') for p in provenance):

@@ -14,9 +14,19 @@
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const iso = () => new Date().toISOString();
+  // The gateway keeps agents in insertion order, oldest first. Show running
+  // agents, then the most recent others, up to the limit, keeping their
+  // original order. The Fleet roster uses the same selection.
+  const visibleAgents = (agents, limit) => {
+    const all = agents || [];
+    if (all.length <= limit) return all.slice();
+    const keep = new Set(all.filter((a) => a.state === "running").slice(-limit));
+    for (let i = all.length - 1; i >= 0 && keep.size < limit; i--) keep.add(all[i]);
+    return all.filter((a) => keep.has(a));
+  };
 
   function model(data) {
-    const observed = (data.agents || []).slice(0, 100);
+    const observed = visibleAgents(data.agents, 100);
     const steps = data.steps || [];
     // Wave = the plan wave the gateway observed on step.start. Steps from
     // older records without one fall back to their position within the
@@ -111,7 +121,7 @@
       task_progress: 0,
       eta_s: state === "dispatched" || state === "returning" ? TRAVEL_S : null,
       completed_total: a.observed === "completed" ? 1 : 0,
-      error: a.error,
+      error: a.error == null ? null : esc(a.error),  // the console renders it as HTML
       rev: ++this.rev,
       specialty: a.station_id,
       tokens_used: 0,
@@ -130,7 +140,7 @@
       enqueued_at: a.started_at,
       started_at: a.started_at,
       finished_at: a.finished_at,
-      error: a.error,
+      error: a.error == null ? null : esc(a.error),  // the console renders it as HTML
       rev: ++this.rev,
     };
   };
@@ -221,6 +231,9 @@
     if (!this.ready) return;
     const m = model(this.data);
     if (m.stations.map((s) => s.station_id).join("|") !== this.signature) return this.snapshot();
+    // An agent left the visible set: rebuild so its drone, task and timer go.
+    const visible = new Set(m.agents.map((a) => a.agent_id));
+    for (const id of this.agents.keys()) if (!visible.has(id)) return this.snapshot();
     const out = [];
     for (const a of m.agents) {
       const prev = this.agents.get(a.agent_id);
@@ -259,6 +272,13 @@
             ts: iso(),
           }),
         );
+      } else if (s.state === "dispatched" || s.state === "working") {
+        // Cancelled or unknown: the work stopped without completing. The
+        // console drops a cancelled task without counting success or failure.
+        s.state = "docked";
+        out.push(this.env("task.cancelled", this.taskDTO(a, "cancelled")));
+        out.push(this.env("agent.updated", this.agentDTO(a, "docked")));
+        out.push(this.env("log.appended", { html: "<b>" + esc(a.agent_id) + "</b> " + esc(a.observed) + " " + esc(a.station_id), ts: iso() }));
       }
     }
     if (out.length) {
@@ -272,5 +292,5 @@
     for (const s of this.agents.values()) clearTimeout(s.timer);
   };
 
-  root.RoboportOpsFeed = { Feed, model, safeId, esc, CHANNEL };
+  root.RoboportOpsFeed = { Feed, model, safeId, esc, visibleAgents, CHANNEL };
 })(window);

@@ -147,12 +147,17 @@ class Store:
                     raise ValueError(
                         "operation ID reuse with different actor or payload"
                     )
+                previous = json.loads(row["outcome"])
+                if previous.get("status") == "pending":
+                    # The earlier attempt never finished; the caller checks
+                    # whether its action committed and completes it.
+                    return {"new": True, "resumed": True, "operation_id": op_id, "outcome": previous}
                 return {
                     "new": False,
                     "operation_id": op_id,
-                    "outcome": json.loads(row["outcome"]),
+                    "outcome": previous,
                 }
-            outcome = {"operation_id": op_id, "status": "accepted"}
+            outcome = {"operation_id": op_id, "status": "pending"}
             db.execute(
                 "INSERT INTO operations VALUES(?,?,?,?)",
                 (op_id, actor_id, fingerprint, canonical(outcome)),
@@ -165,10 +170,9 @@ class Store:
                 "SELECT outcome FROM operations WHERE id=?", (operation_id,)
             ).fetchone()
             previous = json.loads(row["outcome"]) if row else None
-            if (
-                previous
-                and previous.get("status") != "accepted"
-                and outcome.get("status") == "accepted"
+            if previous and (
+                (previous.get("status") not in {"accepted", "pending"} and outcome.get("status") == "accepted")
+                or (previous.get("status") == "accepted" and outcome.get("status") == "rejected")
             ):
                 return previous
             db.execute(

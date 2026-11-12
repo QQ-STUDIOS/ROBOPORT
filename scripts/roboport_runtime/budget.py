@@ -71,6 +71,14 @@ class RunBudget:
             if actual > reserved + 0.000001:
                 raise BudgetExceeded('provider exceeded reserved cost; run stopped')
 
+    def release_model_call(self, reservation_id: str) -> None:
+        """Drop the cost hold of a call that raised before returning usage.
+
+        The attempt still counts against ``max_llm_calls``."""
+        with self.lock:
+            if self.reservations.pop(reservation_id, None) is not None:
+                self._persist()
+
     def consume_tool_call(self) -> None:
         with self.lock:
             self.remaining_seconds()
@@ -117,6 +125,12 @@ def request_timeout(default: float = 60) -> float:
 
 
 def governed_chat(p, **kwargs) -> dict:
+    # A routing wrapper picks its concrete backend and model first, so the
+    # call is reserved and dispatched against the same provider and model.
+    routed = p.select(kwargs['model_hint']) if hasattr(p, 'select') else None
+    if routed is not None:
+        p, model, decision = routed
+        kwargs['model'] = model
     scope = _step_calls.get()
     if scope is not None:
         if scope[0] >= scope[1]:
@@ -126,7 +140,9 @@ def governed_chat(p, **kwargs) -> dict:
     rid = None
     if b:
         b.remaining_seconds()
-        local = p.name == 'ollama'
+        # The offline fault provider is accounted like a local model: zero
+        # cost, with call, context and wall-time limits still enforced.
+        local = p.name in ('ollama', 'fault')
         if not local and p.name != 'anthropic':
             raise BudgetExceeded('provider has no enforceable paid token/price contract')
         config = getattr(p, 'config', {})
@@ -142,8 +158,19 @@ def governed_chat(p, **kwargs) -> dict:
             prompt = p.count_input_tokens(**kwargs)
         if prompt + completion > context:
             raise BudgetExceeded('input exceeds configured context ceiling')
-        rid = b.reserve_model_call(p.model_for(kwargs['model_hint']), prompt, completion, local)
-    result = p.chat_with_tools(**kwargs)
+        model = kwargs.get('model') or (p.model_for(kwargs['model_hint']) if hasattr(p, 'model_for') else p.name)
+        rid = b.reserve_model_call(model, prompt, completion, local)
+    try:
+        result = p.chat_with_tools(**kwargs)
+    except BaseException as exc:
+        # A provider marks errors after which billing is unknown (a timeout or
+        # dropped connection); those keep their hold, like unknown cost does.
+        if b and rid and not getattr(exc, 'billing_unknown', False):
+            b.release_model_call(rid)
+        raise
+    if routed is not None and isinstance(result.get('usage'), dict):
+        result['usage'].update(routed_hint=decision['hint'], routed_provider=decision['chosen']['provider'],
+                               routed_model=model)
     if b and rid:
         b.settle_model_call(rid, result.get('usage'))
         b.remaining_seconds()

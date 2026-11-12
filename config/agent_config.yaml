@@ -91,7 +91,7 @@ agent_overrides:
 defaults:
   temperature: 0.3
   max_tokens: 2048
-  context_tokens: 8192
+  context_tokens: 32768  # sent to Ollama as num_ctx; qwen3:14b at 32k fits tier A VRAM
   top_p: 0.95
   timeout_seconds: 60
   retries: 2  # call-level only — step-level retries are decided by orchestrator

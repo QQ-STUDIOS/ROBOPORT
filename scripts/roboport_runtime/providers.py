@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Protocol
 
 from .budget import request_timeout
-from .config import load_runtime_config, resolved_model
+from .config import load_runtime_config, resolved_model, wrapper_provider
 from .pricing import anthropic_usage_cost, cost_for
 
 
@@ -220,7 +220,7 @@ class AnthropicProvider(Provider):
             kwargs["tools"] = anth_tools
 
         t0 = time.perf_counter()
-        resp = self.client.messages.create(**kwargs, timeout=request_timeout())
+        resp = self._sdk_call(self.client.messages.create, **kwargs)
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
         tool_calls: list[dict] = []
@@ -257,11 +257,27 @@ class AnthropicProvider(Provider):
             },
         }
 
-    def count_input_tokens(self, *, system, messages, tools, force_json, model_hint):
-        kwargs = {"model": self.model_for(model_hint), "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}], "messages": self._convert_messages(messages)}
+    def _sdk_call(self, fn, **kwargs):
+        """Map the SDK's retryable failures (its own retries are off) to
+        TransientProviderError so the executor's bounded, budgeted retry runs."""
+        sdk = self._anthropic
+        try:
+            return fn(**kwargs, timeout=request_timeout())
+        except sdk.APIConnectionError as e:  # includes APITimeoutError
+            # The request may have been processed, so its cost hold is kept.
+            err = TransientProviderError(f"anthropic transport: {type(e).__name__}")
+            err.billing_unknown = True
+            raise err from e
+        except sdk.APIStatusError as e:
+            if e.status_code in (408, 409, 429) or e.status_code >= 500:
+                raise TransientProviderError(f"anthropic HTTP {e.status_code}") from e
+            raise                                 # other 4xx → fatal
+
+    def count_input_tokens(self, *, system, messages, tools, force_json, model_hint, model=None):
+        kwargs = {"model": model or self.model_for(model_hint), "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}], "messages": self._convert_messages(messages)}
         if tools and not force_json:
             kwargs["tools"] = self._convert_tools(tools)
-        count = self.client.messages.count_tokens(**kwargs, timeout=request_timeout()).input_tokens
+        count = self._sdk_call(self.client.messages.count_tokens, **kwargs).input_tokens
         # Covers counted input plus the provider's documented cache-write
         # premium (1.25x input price); cached reads can only reduce this charge.
         return max(1, int(count * 1.25) + 1)
@@ -325,7 +341,7 @@ class AnthropicProvider(Provider):
 # ----- Factory -------------------------------------------------------------
 
 def get_provider(name: str | None = None) -> Provider:
-    name = (name or resolved_model("any", load_runtime_config())["provider"]).lower()
+    name = (name or wrapper_provider() or resolved_model("any", load_runtime_config())["provider"]).lower()
     if name == "ollama":
         return OllamaProvider()
     if name == "anthropic":

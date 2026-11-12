@@ -28,6 +28,7 @@ REQUIRES
 """
 
 import argparse
+import html as _html
 import json
 import os
 import sys
@@ -250,7 +251,20 @@ def hue(sid: str) -> str:
     return STATION_HUES.get(sid, "#8a9da8")
 
 
+def _escape_strings(value):
+    """HTML-escape every string in a run-log event or diff. The console
+    renders log lines as HTML, and run logs and diffs are untrusted input."""
+    if isinstance(value, str):
+        return _html.escape(value, quote=True)
+    if isinstance(value, list):
+        return [_escape_strings(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _escape_strings(v) for k, v in value.items()}
+    return value
+
+
 def translate(ev: dict, state: RunState) -> list[dict]:
+    ev = _escape_strings(ev)
     out = []
     ts = ev.get("ts") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -410,7 +424,6 @@ def translate(ev: dict, state: RunState) -> list[dict]:
     elif etype == "run.complete":
         s = ev.get("run_summary") or {}
         if s.get('status') == 'failed':
-            state.failed_total += 1
             out.append(make_envelope('alert.raised', {'alert_id': f'al_{next_seq()}', 'kind': 'critical',
                 'title': 'Run rejected', 'body': s.get('error') or 'Run failed acceptance', 'target': {'type': 'zone', 'id': 'crew'}}))
         uptime = int(time.time() - state.start_s)
@@ -457,6 +470,7 @@ DIFF_COLOR = {"pass": "#4fd672", "warning": "#f2b134",
 
 def diff_to_envelopes(diff: dict) -> list[dict]:
     """Translate a diff_runs envelope into console envelopes (snapshot first)."""
+    diff = _escape_strings(diff)
     out: list[dict] = []
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -537,6 +551,8 @@ def tail_log(log_path: Path, state: RunState, stop_event: threading.Event):
 
         # Replay existing content
         for line in fh:
+            if stop_event.is_set():
+                return
             line = line.strip()
             if not line:
                 continue
@@ -604,7 +620,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif self.path == "/events" or self.path.startswith("/events?"):
             self._handle_sse()
-        elif self.path in ("/", "/index.html"):
+        elif self.path.split("?", 1)[0] in ("/", "/index.html"):
             self._serve_console()
         elif self.path.split("?", 1)[0] == "/opsconsole":
             self._serve_ops_console()
@@ -665,15 +681,24 @@ class Handler(BaseHTTPRequestHandler):
             backlog = list(_history)
             _subscribers.append(queue)
 
+        # The session was checked before this response started. Re-check it
+        # (which also writes last_seen) at most every 30 s, so a long replay
+        # doesn't hold the store's write lock once per event.
+        checked = [time.monotonic()]
+
+        def recheck():
+            gateway = globals().get('_gateway')
+            if gateway and time.monotonic() - checked[0] >= 30:
+                gateway.auth.authenticate(self.headers.get('Cookie', ''))
+                checked[0] = time.monotonic()
+
         try:
             for data in backlog:          # replay history first
-                if globals().get('_gateway'):
-                    globals()['_gateway'].auth.authenticate(self.headers.get('Cookie', ''))
+                recheck()
                 self.wfile.write(f"data: {data}\n\n".encode())
             self.wfile.flush()
             while True:
-                if globals().get('_gateway'):
-                    globals()['_gateway'].auth.authenticate(self.headers.get('Cookie', ''))
+                recheck()
                 if queue:
                     data = queue.pop(0)
                     msg = f"data: {data}\n\n"
@@ -722,8 +747,8 @@ class Handler(BaseHTTPRequestHandler):
     def _serve_console(self):
         # Try to find the console HTML relative to this script
         here = Path(__file__).parent
-        candidates = [
-            here / "launchpad.html",
+        launchpad = not globals().get('_replay_mode')
+        candidates = [here / "launchpad.html"] if launchpad else [
             here / "Roboport Ops Console.dc.html",
             here.parent / "Roboport Ops Console.dc.html",
         ]
@@ -732,7 +757,8 @@ class Handler(BaseHTTPRequestHandler):
                 body = p.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+                if launchpad:
+                    self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
                 self.send_header("Content-Length", str(len(body)))
                 self._cors()
                 self.end_headers()
@@ -812,17 +838,25 @@ def main():
     parser.add_argument("--data-root", type=Path, default=Path(__file__).resolve().parents[1] / "state/launchpad")
     parser.add_argument("--policy", type=Path)
     args = parser.parse_args()
+    # Replaying one log or diff is a local viewer: it serves the standalone
+    # console and its /events stream without the governed Launch Pad gateway.
+    replay = bool(args.log_file or args.run_id or args.diff or (args.baseline and args.candidate))
     if args.host not in {"127.0.0.1", "localhost"}:
-        parser.error("Launch pad binds to loopback only")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from dashboard.launchpad.store import Store
-    from dashboard.launchpad.auth import Auth
-    from dashboard.launchpad.policy import load_policy
-    from dashboard.launchpad.http import Gateway
-    store = Store(args.data_root / "launchpad/launchpad.sqlite3")
-    policy = load_policy(args.policy or args.data_root / "launchpad/policy.yaml")
-    globals()["_gateway"] = Gateway(store, Auth(store), policy, Path(__file__).resolve().parents[1], args.data_root)
-    globals()["_gateway"].policy_path = args.policy or args.data_root / "launchpad/policy.yaml"
+        # Only a replay viewer inside a container may listen beyond loopback,
+        # so a published container port works; the gateway never does.
+        if not (replay and args.host == "0.0.0.0" and os.environ.get("ROBOPORT_CONTAINER") == "1"):
+            parser.error("Launch pad binds to loopback only")
+    globals()['_replay_mode'] = replay
+    if not replay:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from dashboard.launchpad.store import Store
+        from dashboard.launchpad.auth import Auth
+        from dashboard.launchpad.policy import load_policy
+        from dashboard.launchpad.http import Gateway
+        store = Store(args.data_root / "launchpad/launchpad.sqlite3")
+        policy = load_policy(args.policy or args.data_root / "launchpad/policy.yaml")
+        globals()["_gateway"] = Gateway(store, Auth(store), policy, Path(__file__).resolve().parents[1], args.data_root)
+        globals()["_gateway"].policy_path = args.policy or args.data_root / "launchpad/policy.yaml"
 
 
     # ── Diff overlay mode: render a regression comparison, then serve it. ──
@@ -868,21 +902,23 @@ def main():
         if not log_path:
             print("[bridge] No run logs found. Starting in snapshot-only mode.")
 
-    state = RunState()
     stop = threading.Event()
 
     def follow_runs():
         current = None
         current_stop = None
+        current_thread = None
         while not stop.wait(0.5):
             latest = find_latest_run(Path(args.runs_dir)) if args.runs_dir else log_path
             if latest and latest != current:
                 if current_stop:
                     current_stop.set()
+                    current_thread.join(timeout=5)
                 current = latest
                 globals()['_active_log_path'] = str(latest.resolve())
                 current_stop = threading.Event()
-                threading.Thread(target=tail_log, args=(latest, state, current_stop), daemon=True).start()
+                current_thread = threading.Thread(target=tail_log, args=(latest, RunState(), current_stop), daemon=True)
+                current_thread.start()
         if current_stop:
             current_stop.set()
     threading.Thread(target=follow_runs, daemon=True).start()
