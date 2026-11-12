@@ -6,8 +6,8 @@ benchmark.py to swap stubs for this runtime.
 
 Configuration (env):
   OLLAMA_HOST              base URL (default: http://localhost:11434)
-  OLLAMA_MODEL_REASONING   model for reasoning-strong agents (default: qwen3.5:latest)
-  OLLAMA_MODEL_DEFAULT     model for all other agents (default: gemma4:latest)
+  OLLAMA_MODEL_REASONING   model for reasoning-strong agents (default: qwen3:14b)
+  OLLAMA_MODEL_DEFAULT     model for all other agents (default: qwen3:14b)
 """
 from __future__ import annotations
 

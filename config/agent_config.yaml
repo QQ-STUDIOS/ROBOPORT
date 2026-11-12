@@ -91,6 +91,7 @@ agent_overrides:
 defaults:
   temperature: 0.3
   max_tokens: 2048
+  context_tokens: 8192
   top_p: 0.95
   timeout_seconds: 60
   retries: 2  # call-level only — step-level retries are decided by orchestrator
@@ -185,6 +186,8 @@ policy:
 # refuses to dispatch a tool not whitelisted for the current agent.
 # -----------------------------------------------------------------------------
 tools:
+  environment_investigator: [rea_analyze_project]
+  improvement_proposer: []
   job_scout:        [search_linkedin, search_indeed, search_company_careers, fetch_url, dedupe_jobs, validate_url_active]
   technical_analyst: [fetch_jd_full, fetch_url, parse_jd_skills]
   compliance_risk:  [fetch_jd_full, fetch_url, lookup_jurisdiction]
@@ -213,3 +216,7 @@ output:
   log_level: info       # debug | info | warn | error
   save_intermediate: true   # write each agent's output as runs/<id>/<step>.json
   save_prompts: true        # write the literal prompt sent to each model call
+
+# Bounded static analysis profile; override approved roots locally.
+rea:
+  approved_roots: [tests/fixtures/rea_project, tests/fixtures/rea_empty_project]

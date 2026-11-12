@@ -1,0 +1,13 @@
+{
+  "jobs": [{
+    "id": "deployment-fixture-1",
+    "title": "Senior Python Data Engineer",
+    "company": "Deployment Fixture Organization",
+    "location": "Remote-US",
+    "source": "controlled-deployment-fixture",
+    "source_url": "https://example.invalid/deployment-fixture-1",
+    "posted_at": "2026-10-11",
+    "raw_description": "Build Python and SQL data pipelines on AWS. Work with patient records, access controls, and audit logging. Requires five years of Python and SQL experience. US remote role. No clearance requirement."
+  }],
+  "candidate_profile": {"skills": ["Python", "SQL", "AWS"], "experience_years": 6, "location": "US", "work_authorization": "US authorized", "limitations": ["This is a synthetic candidate profile used only for deployment verification."]}
+}

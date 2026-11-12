@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .providers import Provider, get_provider
+from .budget import governed_chat
 
 REPO = Path(__file__).resolve().parent.parent.parent
 
@@ -42,14 +43,18 @@ def call_model_json(
 ) -> dict[str, Any]:
     """One-shot JSON call with no tools. Used by planner + grader."""
     p = provider()
-    out = p.chat_with_tools(
+    out = governed_chat(p,
         system=system_spec,
         messages=[{"role": "user", "content": user_prompt}],
         tools=None,
         force_json=True,
         model_hint=model_hint,
     )
-    return _parse_json(out["content"])
+    result = _parse_json(out["content"])
+    if schema is not None:
+        import jsonschema
+        jsonschema.validate(result, schema)
+    return result
 
 
 def _parse_json(text: str) -> dict[str, Any]:

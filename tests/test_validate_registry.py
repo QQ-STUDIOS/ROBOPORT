@@ -22,7 +22,7 @@ def test_repo_registry_is_valid():
 def test_catalog_record_can_be_a_station(tmp_path):
     reg = {
         "agents": {"a": {"path": "README.md"}},
-        "theragen_agents": {"ext": {"path": "README.md"}},
+        "catalog_agents": {"ext": {"path": "README.md"}},
         "crews": {"c": {"entry": "ext", "edges": [{"from": "ext", "to": "a", "type": "X"}]}},
     }
     assert validate.validate_registry(_write(tmp_path, reg)) == []
@@ -38,6 +38,6 @@ def test_unknown_station_still_fails(tmp_path):
 
 
 def test_missing_catalog_file_fails(tmp_path):
-    reg = {"agents": {}, "theragen_agents": {"ext": {"path": "nope/missing.md"}}, "crews": {}}
+    reg = {"agents": {}, "catalog_agents": {"ext": {"path": "nope/missing.md"}}, "crews": {}}
     errs = validate.validate_registry(_write(tmp_path, reg))
     assert any("file not found" in e for e in errs)

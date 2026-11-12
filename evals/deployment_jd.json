@@ -1,0 +1,18 @@
+{
+  "target": "jd_crew",
+  "version": "1.0.0",
+  "evals": [{
+    "id": 201,
+    "prompt": "Verify JD-Crew on the controlled deployment fixture. Use real model inference to analyze supplied data and deterministic synthesis. The source URL is intentionally a fixture and does not represent an active job posting.",
+    "context": {"deployment_fixture": true},
+    "expectations": [
+      "FinalReport contains exactly the supplied job deployment-fixture-1 and preserves its fixture source",
+      "The ranked entry contains schema-valid technical, compliance, and match analyses",
+      "Compliance mentions patient-record exposure using literal evidence from the supplied job description",
+      "The deterministic report verdict counts match the ranked entries",
+      "The candidate recommendation does not invent experience or claim a live job was sourced"
+    ],
+    "blockers": ["FinalReport contains exactly the supplied job deployment-fixture-1 and preserves its fixture source", "The candidate recommendation does not invent experience or claim a live job was sourced"],
+    "tags": ["deployment", "controlled-fixture", "jd_crew"]
+  }]
+}

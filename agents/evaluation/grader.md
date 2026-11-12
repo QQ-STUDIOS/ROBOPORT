@@ -57,6 +57,9 @@ Surface these in `meta_critique`. They are how the eval set itself improves.
 
 Conforms to `resources/schemas/grading.schema.json`:
 
+Always include `blocker_failed` as a boolean, including `false` when no
+blocker failed. Every result must name the exact expectation and its evidence.
+
 ```json
 {
   "run_id": "...",
@@ -67,7 +70,8 @@ Conforms to `resources/schemas/grading.schema.json`:
       "evidence": "outputs/FinalReport.json line 42: salary_band: {min: 140000, max: 180000}"
     }
   ],
-  "pass_rate": 0.83,
+  "pass_rate": 1.0,
+  "blocker_failed": false,
   "meta_critique": [
     "Expectation 'output is JSON' is trivially satisfied — every step output is JSON. Replace with a structural check.",
     "No expectation checks compliance_risk findings; this is the whole point of the Compliance agent."

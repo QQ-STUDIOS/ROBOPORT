@@ -39,6 +39,12 @@ PLAN_SCHEMA = {
 
 
 def call_planner(goal: str, context: dict, registry: dict) -> dict[str, Any]:
+    if context.get("target") == "environment_investigation":
+        from .investigation import build_plan
+        return build_plan({**context, "operator_objective": context.get("operator_objective", goal)})
+    if context.get("target") == "jd_crew" and context.get("deployment_fixture") is True:
+        from deployment_smoke import build_plan
+        return build_plan()
     planner_meta = registry["agents"]["planner"]
     system_spec = load_agent_spec(planner_meta["path"])
 

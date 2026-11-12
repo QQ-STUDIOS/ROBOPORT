@@ -107,8 +107,8 @@ class FeedLog:
         self._write("task_end", task_id=task_id, agent_id=agent_id,
                     status=status, error=error, **meta)
 
-    def crew_end(self, status: str = "ok") -> None:
-        self._write("crew_end", status=status)
+    def crew_end(self, status: str = "ok", error: str | None = None) -> None:
+        self._write("crew_end", status=status, error=error)
 
     def close(self) -> None:
         with self._lock:

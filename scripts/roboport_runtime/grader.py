@@ -1,6 +1,7 @@
 """Grader: evaluate a run's expectations against the produced artifacts."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,16 @@ def _read(p: Path | None) -> str:
         return f"(read error: {e})"
 
 
+def _read_json(p: Path) -> str:
+    """Lossless whitespace compaction; never truncate evidence to fit a budget."""
+    text = _read(p)
+    try:
+        return json.dumps(json.loads(text), ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+    except (ValueError, TypeError):
+        # Keep malformed evidence visible; the normal context limit still applies.
+        return text
+
+
 def call_grader(
     expectations: list[str],
     transcript_path: Path | None,
@@ -53,8 +64,8 @@ def call_grader(
     user = (
         "EXPECTATIONS\n"
         + "\n".join(f"- {e}" for e in expectations)
-        + "\n\nPLAN\n" + _read(plan_path)
-        + "\n\nFINAL OUTPUT\n" + _read(final_output_path)
+        + "\n\nPLAN\n" + _read_json(plan_path)
+        + "\n\nFINAL OUTPUT\n" + _read_json(final_output_path)
         + "\n\nRUN LOG (JSONL)\n" + _read(transcript_path)
         + "\n\nGrade each expectation. PASS only with concrete evidence from "
           "the artifacts. FAIL on contradiction. INCONCLUSIVE when artifacts "
@@ -63,6 +74,19 @@ def call_grader(
     )
 
     try:
+        try:
+            final = json.loads(_read(final_output_path))
+        except ValueError:
+            final = None
+        if isinstance(final, dict) and isinstance(final.get('evidence'), dict) and final['evidence'].get('rea_version'):
+            from .investigation import source_handoff
+            source = source_handoff(final['evidence'], outputs_dir)
+            user += '\n\nINSPECTED SOURCE DATA\n' + json.dumps(source, ensure_ascii=False) + '\n\n'
+            user += ('Verify factual claims against these static samples, not upstream interpretations. '
+                     'Check loop-dependent counts, operation complexity and return values, behavior preservation, '
+                     'and, for performance proposals, at least three matched before/after runs in the proposed validation. '
+                     'FAIL on contradiction or omitted requirements; INCONCLUSIVE if needed source is missing. '
+                     'Do not treat a proposed benchmark as an executed measurement.')
         result = call_model_json(
             system_spec=system_spec,
             user_prompt=user,
@@ -81,6 +105,11 @@ def call_grader(
             "meta_critique": [f"grader exception: {e!r}"],
         }
 
+    rows = result.get('results') or []
+    matched = len(rows) == len(expectations) and sorted(r.get('expectation', '') for r in rows) == sorted(expectations)
+    passed = sum(r.get('verdict') == 'PASS' and bool(r.get('evidence')) for r in rows)
+    result['pass_rate'] = passed / len(expectations) if expectations and matched else 0.0
+    result['blocker_failed'] = not matched or passed != len(expectations) or bool(result.get('blocker_failed'))
     return {
         "run_id": outputs_dir.name,
         "results": result["results"],
