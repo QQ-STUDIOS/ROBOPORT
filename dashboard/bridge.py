@@ -410,7 +410,8 @@ def translate(ev: dict, state: RunState) -> list[dict]:
     elif etype == "run.complete":
         s = ev.get("run_summary") or {}
         if s.get('status') == 'failed':
-            state.failed_total += 1
+            # failed_total counts step outcomes. step.failed already incremented
+            # it; a rejected run only raises an alert so the KPI is not doubled.
             out.append(make_envelope('alert.raised', {'alert_id': f'al_{next_seq()}', 'kind': 'critical',
                 'title': 'Run rejected', 'body': s.get('error') or 'Run failed acceptance', 'target': {'type': 'zone', 'id': 'crew'}}))
         uptime = int(time.time() - state.start_s)
@@ -530,13 +531,18 @@ def tail_log(log_path: Path, state: RunState, stop_event: threading.Event):
     """Tail a JSONL run log and broadcast translated envelopes."""
     print(f"[bridge] Tailing {log_path}", flush=True)
     with open(log_path, "r") as fh:
+        if stop_event.is_set():
+            return
         # Send snapshot first
         snap = make_snapshot(log_path.parent.name, state)
         broadcast(make_envelope("snapshot", snap))
         state.snapshot_sent = True
 
-        # Replay existing content
+        # Replay existing content. Honor stop here too: the live loop below
+        # is not reached until the whole file has been broadcast.
         for line in fh:
+            if stop_event.is_set():
+                return
             line = line.strip()
             if not line:
                 continue
@@ -666,9 +672,10 @@ class Handler(BaseHTTPRequestHandler):
             _subscribers.append(queue)
 
         try:
+            # Session was checked once in do_GET. Re-check on the live loop
+            # below; doing it per backlog line rewrites the session row for
+            # every replayed envelope.
             for data in backlog:          # replay history first
-                if globals().get('_gateway'):
-                    globals()['_gateway'].auth.authenticate(self.headers.get('Cookie', ''))
                 self.wfile.write(f"data: {data}\n\n".encode())
             self.wfile.flush()
             while True:
@@ -868,23 +875,31 @@ def main():
         if not log_path:
             print("[bridge] No run logs found. Starting in snapshot-only mode.")
 
-    state = RunState()
     stop = threading.Event()
 
     def follow_runs():
         current = None
         current_stop = None
+        current_thread = None
         while not stop.wait(0.5):
             latest = find_latest_run(Path(args.runs_dir)) if args.runs_dir else log_path
             if latest and latest != current:
                 if current_stop:
                     current_stop.set()
+                # Wait until the previous tailer exits. It may still be
+                # replaying, and a second tailer would mix envelopes on /events.
+                if current_thread is not None:
+                    current_thread.join()
                 current = latest
                 globals()['_active_log_path'] = str(latest.resolve())
                 current_stop = threading.Event()
-                threading.Thread(target=tail_log, args=(latest, state, current_stop), daemon=True).start()
+                current_thread = threading.Thread(
+                    target=tail_log, args=(latest, RunState(), current_stop), daemon=True)
+                current_thread.start()
         if current_stop:
             current_stop.set()
+        if current_thread is not None:
+            current_thread.join()
     threading.Thread(target=follow_runs, daemon=True).start()
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)

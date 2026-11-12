@@ -3,10 +3,31 @@
 import hashlib
 import json
 import os
+import stat
 from pathlib import Path
 from urllib.parse import unquote
 
 from .store import canonical
+
+# IO_REPARSE_TAG_MOUNT_POINT. Present as stat.IO_REPARSE_TAG_MOUNT_POINT on
+# Windows since 3.8; Path.is_junction() itself is 3.12+ only.
+_IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
+
+
+def _is_junction(path):
+    """True for an NTFS directory junction on Python 3.11 and newer.
+
+    Junctions are not symlinks: is_symlink() is false, and Path.is_junction
+    does not exist on the supported 3.11 interpreter.
+    """
+    try:
+        info = path.lstat()
+    except (OSError, ValueError):
+        return False
+    tag = getattr(info, "st_reparse_tag", None)
+    if tag is None:
+        return False
+    return tag == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", _IO_REPARSE_TAG_MOUNT_POINT)
 
 
 def authorize(mission, actor):
@@ -24,7 +45,7 @@ def read_evidence(mission, relative_path, data_root, actor):
         raise ValueError("artifact path must be relative to this mission")
     original_root = Path(data_root) / "missions" / mission["id"]
     if any(
-        p.is_symlink() or getattr(p, "is_junction", lambda: False)()
+        p.is_symlink() or _is_junction(p)
         for p in [original_root, *original_root.parents]
         if p.exists()
     ):
@@ -36,7 +57,7 @@ def read_evidence(mission, relative_path, data_root, actor):
     if not path.resolve().is_relative_to(root):
         raise ValueError("artifact root escape")
     if any(
-        p.is_symlink() or getattr(p, "is_junction", lambda: False)()
+        p.is_symlink() or _is_junction(p)
         for p in [path, *path.parents]
         if p.exists()
     ):
@@ -84,7 +105,7 @@ def build_review_context(manifest, directory):
         if not path.resolve().is_relative_to(directory.resolve()):
             raise ValueError("review evidence outside mission artifacts")
         if any(
-            p.is_symlink() or getattr(p, "is_junction", lambda: False)()
+            p.is_symlink() or _is_junction(p)
             for p in [path, *path.parents]
             if p.exists()
         ):
