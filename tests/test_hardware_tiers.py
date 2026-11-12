@@ -76,3 +76,13 @@ def test_configure_rejects_a_pin_to_another_machine(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="different machine"):
         windows_deploy.main()
 
+
+
+def test_gateway_defaults_name_the_running_machine(tmp_path, monkeypatch):
+    sys.path.insert(0, str(REPO / "dashboard"))
+    from launchpad import policy
+
+    monkeypatch.setattr(policy.socket, "gethostname", lambda: "NEW-BOX")
+    assert policy.load_policy(tmp_path / "missing.yaml")["environment_id"] == "NEW-BOX"
+    example = yaml.safe_load((REPO / "config/launchpad.example.yaml").read_text(encoding="utf-8"))
+    assert example["profiles"] == {}
