@@ -140,7 +140,9 @@ def governed_chat(p, **kwargs) -> dict:
     rid = None
     if b:
         b.remaining_seconds()
-        local = p.name == 'ollama'
+        # The offline fault provider is accounted like a local model: zero
+        # cost, with call, context and wall-time limits still enforced.
+        local = p.name in ('ollama', 'fault')
         if not local and p.name != 'anthropic':
             raise BudgetExceeded('provider has no enforceable paid token/price contract')
         config = getattr(p, 'config', {})
@@ -156,7 +158,8 @@ def governed_chat(p, **kwargs) -> dict:
             prompt = p.count_input_tokens(**kwargs)
         if prompt + completion > context:
             raise BudgetExceeded('input exceeds configured context ceiling')
-        rid = b.reserve_model_call(kwargs.get('model') or p.model_for(kwargs['model_hint']), prompt, completion, local)
+        model = kwargs.get('model') or (p.model_for(kwargs['model_hint']) if hasattr(p, 'model_for') else p.name)
+        rid = b.reserve_model_call(model, prompt, completion, local)
     try:
         result = p.chat_with_tools(**kwargs)
     except BaseException as exc:

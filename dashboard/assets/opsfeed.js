@@ -231,6 +231,9 @@
     if (!this.ready) return;
     const m = model(this.data);
     if (m.stations.map((s) => s.station_id).join("|") !== this.signature) return this.snapshot();
+    // An agent left the visible set: rebuild so its drone, task and timer go.
+    const visible = new Set(m.agents.map((a) => a.agent_id));
+    for (const id of this.agents.keys()) if (!visible.has(id)) return this.snapshot();
     const out = [];
     for (const a of m.agents) {
       const prev = this.agents.get(a.agent_id);
@@ -270,8 +273,10 @@
           }),
         );
       } else if (s.state === "dispatched" || s.state === "working") {
-        // Cancelled or unknown: the work stopped without completing.
+        // Cancelled or unknown: the work stopped without completing. The
+        // console drops a cancelled task without counting success or failure.
         s.state = "docked";
+        out.push(this.env("task.cancelled", this.taskDTO(a, "cancelled")));
         out.push(this.env("agent.updated", this.agentDTO(a, "docked")));
         out.push(this.env("log.appended", { html: "<b>" + esc(a.agent_id) + "</b> " + esc(a.observed) + " " + esc(a.station_id), ts: iso() }));
       }

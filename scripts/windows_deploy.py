@@ -71,7 +71,8 @@ def gpu_vram_mib(gpu_info: str, vendor: str) -> int:
 
 def tier_fits(spec: dict, gpu_info: str, memory_bytes: int, model: str) -> bool:
     return (gpu_vram_mib(gpu_info, spec['gpu_vendor']) >= spec['min_vram_mib']
-            and memory_bytes >= spec['min_ram_gib'] * 2**30
+            # Same 2% allowance for firmware-reserved memory as Common.ps1.
+            and memory_bytes >= spec['min_ram_gib'] * 2**30 * 0.98
             and model in spec.get('models', []))
 
 

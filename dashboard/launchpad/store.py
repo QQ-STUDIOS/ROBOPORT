@@ -170,10 +170,9 @@ class Store:
                 "SELECT outcome FROM operations WHERE id=?", (operation_id,)
             ).fetchone()
             previous = json.loads(row["outcome"]) if row else None
-            if (
-                previous
-                and previous.get("status") not in {"accepted", "pending"}
-                and outcome.get("status") == "accepted"
+            if previous and (
+                (previous.get("status") not in {"accepted", "pending"} and outcome.get("status") == "accepted")
+                or (previous.get("status") == "accepted" and outcome.get("status") == "rejected")
             ):
                 return previous
             db.execute(

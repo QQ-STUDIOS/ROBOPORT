@@ -69,6 +69,7 @@ def call_grader(
     expectations: list[str],
     transcript_path: Path | None,
     outputs_dir: Path,
+    blockers: list[str] | None = None,
 ) -> dict[str, Any]:
     final_output_path = outputs_dir / "final_output.json"
     plan_path = outputs_dir / "plan.json"
@@ -126,7 +127,9 @@ def call_grader(
     result['pass_rate'] = passed / len(expectations) if expectations and matched else 0.0
     # Acceptance (every expectation PASS) is pass_rate == 1.0; blocker_failed
     # reports only blocker-class misses, which aggregate and diff_runs key on.
-    blocker_miss = any(r.get('blocker') and not (r.get('verdict') == 'PASS' and r.get('evidence')) for r in rows)
+    declared = set(blockers or [])
+    blocker_miss = any((r.get('blocker') or r.get('expectation') in declared)
+                       and not (r.get('verdict') == 'PASS' and r.get('evidence')) for r in rows)
     result['blocker_failed'] = not matched or blocker_miss or bool(result.get('blocker_failed'))
     return {
         "run_id": outputs_dir.name,

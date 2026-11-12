@@ -190,3 +190,58 @@ def test_the_core_registry_loads_without_the_pack_loader(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime_feed, "_repo_registry", lambda: tmp_path / "agents/registry.json")
     monkeypatch.setitem(sys.modules, "station_packs", None)  # importing it would fail
     assert runtime_feed._load_registry(tmp_path / "agents/registry.json") == {"agents": {}, "crews": {}}
+
+
+# ---- second review round (#69) ----
+
+def test_a_rejection_never_replaces_an_acceptance(tmp_path):
+    from dashboard.launchpad.store import Store
+    store = Store(tmp_path / "s.sqlite3")
+    store.claim_operation("u", {"operation_id": "op", "intent": "start"})
+    store.finish_operation("op", {"operation_id": "op", "status": "accepted"})
+    out = store.finish_operation("op", {"operation_id": "op", "status": "rejected"})
+    assert out["status"] == "accepted"
+
+
+def test_a_retry_while_the_operation_runs_stays_pending():
+    import threading
+    from dashboard.launchpad.missions import MissionManager
+    manager = object.__new__(MissionManager)
+    manager.inflight, manager.lock = set(), threading.RLock()
+    command = {"operation_id": "op", "mission_id": "m"}
+    inner = manager._exclusive(command, lambda: manager._exclusive(command, lambda: "ran twice"))
+    assert inner == {"operation_id": "op", "status": "pending", "mission_id": "m"}
+    assert manager.inflight == set()
+
+
+def test_replayed_event_text_is_escaped():
+    sys.path.insert(0, str(REPO / "dashboard"))
+    import bridge
+    out = bridge.translate({"event": "step.failed", "step_id": "s1", "agent": "a1",
+                            "error": '<img src=x onerror="alert(1)">'}, bridge.RunState())
+    text = json.dumps(out)
+    assert "<img" not in text and "&lt;img" in text
+
+
+def test_the_ram_allowance_matches_setup():
+    from windows_deploy import tier_fits
+    spec = {"gpu_vendor": "NVIDIA", "min_vram_mib": 1, "min_ram_gib": 64, "models": ["m"]}
+    assert tier_fits(spec, "NVIDIA RTX, 32000 MiB", int(63.5 * 2**30), "m")
+    assert not tier_fits(spec, "NVIDIA RTX, 32000 MiB", 60 * 2**30, "m")
+
+
+def test_declared_blockers_decide_blocker_failed(tmp_path, monkeypatch):
+    from roboport_runtime import grader
+    rows = [{"expectation": "a", "verdict": "FAIL", "evidence": "e"}]
+    monkeypatch.setattr(grader, "load_agent_spec", lambda p: "")
+    monkeypatch.setattr(grader, "call_model_json", lambda **k: {"results": rows, "pass_rate": 0, "blocker_failed": False})
+    assert grader.call_grader(["a"], None, tmp_path)["blocker_failed"] is False
+    assert grader.call_grader(["a"], None, tmp_path, blockers=["a"])["blocker_failed"] is True
+
+
+def test_the_fault_provider_runs_under_a_budget():
+    from roboport_runtime.fault_provider import FaultProvider
+    b = run_budget()
+    with budget_mod.run_budget(b):
+        out = chat(FaultProvider([{"content": "{}"}]))
+    assert out["content"] == "{}" and b.llm_calls == 1 and b.spent == 0

@@ -160,7 +160,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict:
     }
 
 
-def call_grader(expectations: list[str], transcript_path: Path | None, outputs_dir: Path) -> dict:
+def call_grader(expectations: list[str], transcript_path: Path | None, outputs_dir: Path, blockers=None) -> dict:
     """Stub. Marks all expectations PASS with placeholder evidence."""
     return {
         "run_id": outputs_dir.name,
@@ -364,7 +364,7 @@ def execute_run(ev: dict, run_dir: Path, registry: dict, *, config: dict, live: 
             outcome = run_one(ev, run_dir, registry, config=config, feed=feed, run_log=run_log, defer_completion=True)
             budget.remaining_seconds()
             if grade and outcome['status'] == 'ok':
-                grading = call_grader(ev['expectations'], run_dir / 'run.log', run_dir)
+                grading = call_grader(ev['expectations'], run_dir / 'run.log', run_dir, blockers=ev.get('blockers'))
                 (run_dir / 'grading.json').write_text(json.dumps(grading, indent=2))
                 if grading.get('blocker_failed') or grading.get('pass_rate') != 1.0:
                     outcome['status'] = 'failed'

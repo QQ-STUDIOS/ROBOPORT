@@ -89,6 +89,7 @@ class MissionManager:
 
         self.runtime_config = runtime_config or load_runtime_config(self.repo)
         self.cancellations = {}
+        self.inflight = set()  # operation ids executing in this process
         self.lock = threading.RLock()
 
     def _check_actor(self, actor, mission):
@@ -97,7 +98,27 @@ class MissionManager:
         ):
             raise ValueError("mission owner/operator required")
 
+    def _exclusive(self, command, action):
+        """Run one operation at a time per operation id. A retry that arrives
+        while the first attempt is still executing gets its pending state;
+        only an attempt abandoned by an earlier gateway process is resumed."""
+        op = command.get("operation_id")
+        if not isinstance(op, str):
+            return action()
+        with self.lock:
+            if op in self.inflight:
+                return {"operation_id": op, "status": "pending", "mission_id": command.get("mission_id")}
+            self.inflight.add(op)
+        try:
+            return action()
+        finally:
+            with self.lock:
+                self.inflight.discard(op)
+
     def dispatch(self, actor, command):
+        return self._exclusive(command, lambda: self._dispatch(actor, command))
+
+    def _dispatch(self, actor, command):
         if command.get("intent") != "start":
             raise ValueError("Unsupported command")
         claim = self.store.claim_operation(actor["id"], command)
@@ -304,6 +325,9 @@ class MissionManager:
                 self.cancellations.pop(mission["id"], None)
 
     def cancel(self, actor, command):
+        return self._exclusive(command, lambda: self._cancel(actor, command))
+
+    def _cancel(self, actor, command):
         if command.get("intent") != "cancel":
             raise ValueError("Unsupported command")
         claim = self.store.claim_operation(actor["id"], command)

@@ -28,6 +28,7 @@ REQUIRES
 """
 
 import argparse
+import html as _html
 import json
 import os
 import sys
@@ -250,7 +251,20 @@ def hue(sid: str) -> str:
     return STATION_HUES.get(sid, "#8a9da8")
 
 
+def _escape_strings(value):
+    """HTML-escape every string in a run-log event or diff. The console
+    renders log lines as HTML, and run logs and diffs are untrusted input."""
+    if isinstance(value, str):
+        return _html.escape(value, quote=True)
+    if isinstance(value, list):
+        return [_escape_strings(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _escape_strings(v) for k, v in value.items()}
+    return value
+
+
 def translate(ev: dict, state: RunState) -> list[dict]:
+    ev = _escape_strings(ev)
     out = []
     ts = ev.get("ts") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -456,6 +470,7 @@ DIFF_COLOR = {"pass": "#4fd672", "warning": "#f2b134",
 
 def diff_to_envelopes(diff: dict) -> list[dict]:
     """Translate a diff_runs envelope into console envelopes (snapshot first)."""
+    diff = _escape_strings(diff)
     out: list[dict] = []
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -605,7 +620,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif self.path == "/events" or self.path.startswith("/events?"):
             self._handle_sse()
-        elif self.path in ("/", "/index.html"):
+        elif self.path.split("?", 1)[0] in ("/", "/index.html"):
             self._serve_console()
         elif self.path.split("?", 1)[0] == "/opsconsole":
             self._serve_ops_console()
