@@ -33,7 +33,7 @@ import os
 import sys
 import time
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Optional
 
@@ -106,7 +106,10 @@ _JD_FALLBACK = [
 
 def load_registry() -> dict:
     try:
-        return json.loads((REPO / "agents" / "registry.json").read_text(encoding="utf-8"))
+        sys.path.insert(0, str(REPO / "scripts"))
+        from station_packs import load_registry as _load_with_packs
+
+        return _load_with_packs(REPO)
     except Exception:  # noqa: BLE001 — the console must render without a registry
         return {"agents": {}, "crews": {}}
 
@@ -406,6 +409,10 @@ def translate(ev: dict, state: RunState) -> list[dict]:
 
     elif etype == "run.complete":
         s = ev.get("run_summary") or {}
+        if s.get('status') == 'failed':
+            state.failed_total += 1
+            out.append(make_envelope('alert.raised', {'alert_id': f'al_{next_seq()}', 'kind': 'critical',
+                'title': 'Run rejected', 'body': s.get('error') or 'Run failed acceptance', 'target': {'type': 'zone', 'id': 'crew'}}))
         uptime = int(time.time() - state.start_s)
         total = state.completed_total + state.failed_total
         out.append(make_envelope("metrics.tick", {
@@ -418,7 +425,10 @@ def translate(ev: dict, state: RunState) -> list[dict]:
             "uptime_s": uptime, "ts": ts,
         }))
         wall = f" · {s['wall_ms']}ms" if s.get("wall_ms") is not None else ""
-        log(f'<b style="color:#4fd672">RUN COMPLETE</b> · {s.get("steps","?")} steps · {s.get("llm_calls","?")} LLM{wall}')
+        if s.get('status') == 'failed':
+            log('<b style="color:#ff5a52">RUN FAILED</b> · acceptance rejected')
+        else:
+            log(f'<b style="color:#4fd672">RUN COMPLETE</b> · {s.get("steps","?")} steps · {s.get("llm_calls","?")} LLM{wall}')
 
     else:
         if etype:
@@ -434,7 +444,11 @@ def translate(ev: dict, state: RunState) -> list[dict]:
 # station-targeted alert (red = regression, amber = warning/inconclusive) — the
 # same ring mechanism step.failed uses — plus a readable log of every signal.
 # Any registered agent can be a diff-flagged station — crew-agnostic.
-STATION_IDS = set(load_registry().get("agents", {})) or {s["station_id"] for s in STATIONS}
+_REG = load_registry()
+# runnable agents plus offline catalog records from station packs — a modeled crew
+# can wire a catalog agent as a station, so both are valid diff-flagged station ids.
+STATION_IDS = (set(_REG.get("agents", {})) | set(_REG.get("catalog_agents", {}))) \
+    or {s["station_id"] for s in STATIONS}
 DIFF_KIND = {"regression": "critical", "warning": "warning",
              "inconclusive": "warning", "info": "warning"}
 DIFF_COLOR = {"pass": "#4fd672", "warning": "#f2b134",
@@ -571,24 +585,48 @@ class Handler(BaseHTTPRequestHandler):
         pass  # silence default access log
 
     def do_GET(self):
-        if self.path == "/events" or self.path.startswith("/events?"):
+        gateway = globals().get('_gateway')
+        if gateway and gateway.handle(self):
+            return
+        if gateway and self.path.startswith('/events'):
+            try:
+                gateway.check_origin(self)
+                gateway.session(self)
+            except ValueError as exc:
+                gateway.reply(self, getattr(exc, 'status', 401), {'error': str(exc)})
+                return
+        if self.path == '/health':
+            body = json.dumps({'status': 'ok', 'source': 'runtime', 'active_log_path': globals().get('_active_log_path'), 'events': len(_history)}).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/events" or self.path.startswith("/events?"):
             self._handle_sse()
         elif self.path in ("/", "/index.html"):
             self._serve_console()
+        elif self.path.split("?", 1)[0] == "/opsconsole":
+            self._serve_ops_console()
         elif self._serve_static(self.path.split("?", 1)[0]):
             pass
         else:
             self.send_response(404)
             self.end_headers()
 
+    def do_POST(self):
+        gateway = globals().get('_gateway')
+        if not gateway or not gateway.handle(self):
+            self.send_error(404)
+
     def do_OPTIONS(self):
-        self.send_response(200)
+        self.send_response(405)
         self._cors()
         self.end_headers()
 
     def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # Same-origin only; no cross-origin credential or command access.
+        self.send_header("X-Content-Type-Options", "nosniff")
 
     def _serve_static(self, url_path: str) -> bool:
         """Serve sibling assets (support.js, feed_adapter.js, …) from this
@@ -598,6 +636,8 @@ class Handler(BaseHTTPRequestHandler):
         from urllib.parse import unquote
         here = Path(__file__).resolve().parent
         name = unquote(url_path.lstrip("/"))
+        if name not in {"support.js", "feed_adapter.js", "assets/launchpad.js", "assets/launchpad.css", "assets/state.js", "assets/fleet.js", "assets/review.js", "assets/qq-logo.png", "assets/opsfeed.js", "assets/opsconsole.js", "assets/opsconsole.css"}:
+            return False
         target = (here / name).resolve()
         if here not in target.parents or not target.is_file():   # no traversal
             return False
@@ -627,9 +667,13 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             for data in backlog:          # replay history first
+                if globals().get('_gateway'):
+                    globals()['_gateway'].auth.authenticate(self.headers.get('Cookie', ''))
                 self.wfile.write(f"data: {data}\n\n".encode())
             self.wfile.flush()
             while True:
+                if globals().get('_gateway'):
+                    globals()['_gateway'].auth.authenticate(self.headers.get('Cookie', ''))
                 if queue:
                     data = queue.pop(0)
                     msg = f"data: {data}\n\n"
@@ -640,17 +684,46 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.write(b": heartbeat\n\n")
                     self.wfile.flush()
                     time.sleep(0.5)
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ValueError):
             pass
         finally:
             with _subscribers_lock:
                 if queue in _subscribers:
                     _subscribers.remove(queue)
 
+    # The embedded Ops Console renders a canvas and design markup with inline
+    # style attributes, so this one page allows inline styles. Scripts stay
+    # 'self' only, it has no network access (connect-src 'none'), only the
+    # Launch Pad may frame it, and the Launch Pad frames it sandboxed.
+    OPS_CONSOLE_CSP = (
+        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; connect-src 'none'; frame-ancestors 'self'; "
+        "base-uri 'none'; form-action 'none'"
+    )
+
+    def _serve_ops_console(self):
+        page = Path(__file__).resolve().parent / "opsconsole.html"
+        if not page.is_file():
+            self.send_response(404)
+            self.end_headers()
+            return
+        body = page.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Security-Policy", self.OPS_CONSOLE_CSP)
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self._cors()
+        self.end_headers()
+        self.wfile.write(body)
+
     def _serve_console(self):
         # Try to find the console HTML relative to this script
         here = Path(__file__).parent
         candidates = [
+            here / "launchpad.html",
             here / "Roboport Ops Console.dc.html",
             here.parent / "Roboport Ops Console.dc.html",
         ]
@@ -659,6 +732,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = p.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
                 self.send_header("Content-Length", str(len(body)))
                 self._cors()
                 self.end_headers()
@@ -732,9 +806,24 @@ def main():
     group.add_argument("--diff", help="Render a precomputed diff_runs JSON as a regression overlay")
     parser.add_argument("--baseline", help="Baseline run dir (with --candidate: compute + render a diff)")
     parser.add_argument("--candidate", help="Candidate run dir (with --baseline: compute + render a diff)")
+    parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: loopback)")
     parser.add_argument("--port", type=int, default=4242, help="HTTP port (default 4242)")
     parser.add_argument("--runs-base", default="runs", help="Base runs directory (default: runs)")
+    parser.add_argument("--data-root", type=Path, default=Path(__file__).resolve().parents[1] / "state/launchpad")
+    parser.add_argument("--policy", type=Path)
     args = parser.parse_args()
+    if args.host not in {"127.0.0.1", "localhost"}:
+        parser.error("Launch pad binds to loopback only")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from dashboard.launchpad.store import Store
+    from dashboard.launchpad.auth import Auth
+    from dashboard.launchpad.policy import load_policy
+    from dashboard.launchpad.http import Gateway
+    store = Store(args.data_root / "launchpad/launchpad.sqlite3")
+    policy = load_policy(args.policy or args.data_root / "launchpad/policy.yaml")
+    globals()["_gateway"] = Gateway(store, Auth(store), policy, Path(__file__).resolve().parents[1], args.data_root)
+    globals()["_gateway"].policy_path = args.policy or args.data_root / "launchpad/policy.yaml"
+
 
     # ── Diff overlay mode: render a regression comparison, then serve it. ──
     if args.diff or (args.baseline and args.candidate):
@@ -744,7 +833,7 @@ def main():
             sys.exit(f"[bridge] could not load diff: {e}")
         for env in diff_to_envelopes(diff):
             broadcast(env)
-        server = HTTPServer(("0.0.0.0", args.port), Handler)
+        server = ThreadingHTTPServer((args.host, args.port), Handler)
         print(f"[bridge] Diff overlay · verdict={diff.get('verdict')} · "
               f"{len(diff.get('agent_diffs', []))} agent diff(s)", flush=True)
         print(f"[bridge] Listening on http://localhost:{args.port}", flush=True)
@@ -770,8 +859,7 @@ def main():
             sys.exit(f"[bridge] No log found for run {args.run_id} in {args.runs_base}/")
     elif args.runs_dir:
         log_path = find_latest_run(Path(args.runs_dir))
-        if not log_path:
-            sys.exit(f"[bridge] No run logs found in {args.runs_dir}")
+        # Start before the first real run; never fall back to sample logs.
     else:
         # Default: look for runs/ next to this script
         runs = Path(__file__).parent.parent / "runs"
@@ -783,11 +871,23 @@ def main():
     state = RunState()
     stop = threading.Event()
 
-    if log_path:
-        t = threading.Thread(target=tail_log, args=(log_path, state, stop), daemon=True)
-        t.start()
+    def follow_runs():
+        current = None
+        current_stop = None
+        while not stop.wait(0.5):
+            latest = find_latest_run(Path(args.runs_dir)) if args.runs_dir else log_path
+            if latest and latest != current:
+                if current_stop:
+                    current_stop.set()
+                current = latest
+                globals()['_active_log_path'] = str(latest.resolve())
+                current_stop = threading.Event()
+                threading.Thread(target=tail_log, args=(latest, state, current_stop), daemon=True).start()
+        if current_stop:
+            current_stop.set()
+    threading.Thread(target=follow_runs, daemon=True).start()
 
-    server = HTTPServer(("0.0.0.0", args.port), Handler)
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"[bridge] Listening on http://localhost:{args.port}", flush=True)
     print(f"[bridge] Open: Roboport Ops Console.dc.html?api=http://localhost:{args.port}", flush=True)
     if log_path:

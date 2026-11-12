@@ -11,8 +11,8 @@ for any crew.
 By design, ROBOPORT runs live on a **workstation against a local Ollama** and you watch it
 through its **two operator surfaces**. This is the default: `get_provider()` returns the
 `ollama` provider unless told otherwise (`scripts/roboport_runtime/providers.py`), and
-onboarding's "run for real" hits local Ollama (`docs/onboarding.md`). This is how the real
-Roboport runs on THERAGEN-STUDIO (`qwen3:14b`).
+onboarding's "run for real" hits local Ollama (`docs/onboarding.md`). This is how a hardware
+tier A station runs (`qwen3:14b`, see `deploy/windows/hardware-tiers.json`).
 
 **1. Bring up the model** (one-time pull, then serve):
 ```bash
@@ -87,6 +87,6 @@ It swaps the default provider for Anthropic; note the cloud container **cannot h
 
 ## Scope / safety
 
-Run this against the **synthetic fixture only**. Do not point `--live` at real Brightree,
-Snowflake, Microsoft 365, or any PHI/production source — the modeled Theragen crews
-(`docs/THERAGEN_AGENTS.md`) are offline records and must stay that way.
+Run this against the **synthetic fixture only**. Do not point `--live` at a real line-of-business
+system, data warehouse, Microsoft 365, or any sensitive or production source. Crews modeled in a
+station pack (`stations/<id>/`) are offline records and must stay that way.
