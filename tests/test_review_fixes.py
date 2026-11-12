@@ -245,3 +245,17 @@ def test_the_fault_provider_runs_under_a_budget():
     with budget_mod.run_budget(b):
         out = chat(FaultProvider([{"content": "{}"}]))
     assert out["content"] == "{}" and b.llm_calls == 1 and b.spent == 0
+
+
+def test_step_outputs_never_push_grading_past_the_context_ceiling(tmp_path, monkeypatch):
+    from roboport_runtime import grader
+    (tmp_path / "steps").mkdir()
+    (tmp_path / "steps/big.json").write_text(json.dumps({"status": "ok", "output": {"text": "x" * 40000}}))
+    seen = {}
+    monkeypatch.setattr(grader, "load_agent_spec", lambda p: "")
+    monkeypatch.setattr(grader, "call_model_json", lambda **k: seen.update(k) or {"results": [], "pass_rate": 0, "blocker_failed": False})
+    with config_mod.runtime_config_scope({"defaults": {"context_tokens": 32768, "max_tokens": 2048}}):
+        grader.call_grader([], None, tmp_path)
+        assert "omitted" in seen["user_prompt"] and "x" * 100 not in seen["user_prompt"]
+        assert budget_mod.fits_local_context(system="", messages=[{"role": "user", "content": seen["user_prompt"]}],
+                                             tools=None, force_json=True, model_hint="reasoning-strong")

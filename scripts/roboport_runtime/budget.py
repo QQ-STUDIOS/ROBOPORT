@@ -124,6 +124,21 @@ def request_timeout(default: float = 60) -> float:
     return min(default, b.remaining_seconds()) if b else default
 
 
+def local_prompt_ceiling(kwargs: dict) -> int:
+    """Conservative input size of a local call: UTF-8 bytes of the request
+    (an upper bound for the deployed byte-fallback tokenizer) plus a chat and
+    tool template allowance."""
+    return len(json.dumps(kwargs, ensure_ascii=False).encode('utf-8')) + 1024
+
+
+def fits_local_context(**kwargs) -> bool:
+    """Whether a call would pass governed_chat's local context check."""
+    from .config import load_runtime_config
+    defaults = load_runtime_config().get('defaults') or {}
+    completion = int(defaults.get('max_tokens', 2048))
+    return local_prompt_ceiling(kwargs) + completion <= int(defaults.get('context_tokens', 8192))
+
+
 def governed_chat(p, **kwargs) -> dict:
     # A routing wrapper picks its concrete backend and model first, so the
     # call is reserved and dispatched against the same provider and model.
@@ -150,10 +165,8 @@ def governed_chat(p, **kwargs) -> dict:
         completion = int(defaults.get('max_tokens', 2048))
         context = int(defaults.get('context_tokens', 8192))
         if local:
-            # UTF-8 byte count is conservative for the deployed byte-fallback
-            # tokenizer. Include chat/tool template allowance; reject oversized
-            # context rather than silently truncating evidence.
-            prompt = len(json.dumps(kwargs, ensure_ascii=False).encode('utf-8')) + 1024
+            # Reject oversized context rather than silently truncating evidence.
+            prompt = local_prompt_ceiling(kwargs)
         else:
             prompt = p.count_input_tokens(**kwargs)
         if prompt + completion > context:
