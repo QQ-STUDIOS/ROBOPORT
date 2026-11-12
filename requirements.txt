@@ -2,5 +2,6 @@
 requests>=2.34.2         # Ollama HTTP client (scripts/roboport_runtime/providers.py)
 jsonschema>=4.26.0        # validate.py — schema + registry validation
 pyyaml>=6.0.3            # config/ loaders
+psutil>=7.2.2            # process ownership and host readings (scripts/windows_deploy.py, Launch Pad readiness)
 anthropic>=2.6.0,<3.0   # Anthropic provider (only used when ROBOPORT_PROVIDER=anthropic)
 watchdog>=7.1.0          # filesystem watcher for scripts/skill_daemon.py (M2+)

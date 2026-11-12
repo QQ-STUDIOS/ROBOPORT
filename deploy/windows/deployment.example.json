@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "hardware_tier": "A",
+  "model": "qwen3:14b",
+  "ollama_url": "http://127.0.0.1:11434",
+  "ops_port": 4242,
+  "feed_port": 8000,
+  "context_tokens": 32768,
+  "completion_tokens": 2048,
+  "max_completed_runs": 20,
+  "max_artifact_bytes": 2147483648
+}
