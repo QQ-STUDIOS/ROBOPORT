@@ -48,12 +48,12 @@ pip install jsonschema pyyaml
 python scripts/validate.py --all
 
 # Dry-run the JD crew (no LLM calls — synthetic schema-valid stubs)
-python scripts/benchmark.py --target jd_crew --dry-run
+python scripts/benchmark.py --target jd_crew
 
 # Real run
 python scripts/benchmark.py \
   --target jd_crew \
-  --input "Senior backend engineer roles at health-tech companies, remote, US"
+  --live --runs 1 --grade
 
 # See the artifacts
 ls runs/<run_id>/

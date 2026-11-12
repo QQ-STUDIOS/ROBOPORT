@@ -111,6 +111,38 @@
         {"content": {"status": "ok", "output": {"generated_at": "t", "summary": {"total_jobs": 3, "verdicts": {"apply": 2}}, "ranked_matches": []}, "criteria_results": [{"criterion": "ok", "passed": true}], "error": null}}
       ],
       "expect": {"status": "ok", "layer_not": "unsafe_action"}
+    },
+    {
+      "id": "ei203_repair_persists",
+      "layer": "L1-call",
+      "description": "203: invalid investigation stays invalid after one repair",
+      "step": {"owner": "environment_investigator", "output_type": "EnvironmentInvestigation", "success_criteria": ["Use genuine REA evidence and preserve its exact reference"]},
+      "fault_script": [
+        {"content": {"status": "ok", "output": {"evidence": {"artifact_path": "runs/rea/x/evidence.json", "evidence_id": "ev-1", "rea_version": "6.4.0"}, "findings": [], "limitations": []}, "criteria_results": [{"criterion": "ok", "passed": true}], "error": null}},
+        {"content": {"status": "ok", "output": {"evidence": {"artifact_path": "runs/rea/x/evidence.json", "evidence_id": "ev-1", "rea_version": "6.4.0"}, "findings": [], "limitations": []}, "criteria_results": [{"criterion": "ok", "passed": true}], "error": null}}
+      ],
+      "expect": {"status": "failed", "layer": "evidence_invalid", "error_contains": "missing evidence reference", "calls": 2}
+    },
+    {
+      "id": "ei203_repair_invented_hash",
+      "layer": "L1-call",
+      "description": "203: repair yields a schema-valid investigation whose hash is invented (no REA call was made)",
+      "step": {"owner": "environment_investigator", "output_type": "EnvironmentInvestigation", "success_criteria": ["Use genuine REA evidence and preserve its exact reference"]},
+      "fault_script": [
+        {"content": {"status": "ok", "output": {"evidence": {"artifact_path": "runs/rea/x/evidence.json", "evidence_id": "ev-1", "rea_version": "6.4.0"}, "findings": [], "limitations": []}, "criteria_results": [{"criterion": "ok", "passed": true}], "error": null}},
+        {"content": {"status": "ok", "output": {"evidence": {"artifact_path": "runs/rea/x/evidence.json", "artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "evidence_id": "ev-1", "rea_version": "6.4.0"}, "findings": [{"statement": "add(a, b) returns a + b", "evidence_id": "ev-1"}], "limitations": ["static only"]}, "criteria_results": [{"criterion": "ok", "passed": true}], "error": null}}
+      ],
+      "expect": {"status": "failed", "layer": "evidence_invalid", "error_contains": "does not match", "calls": 2}
+    },
+    {
+      "id": "ei203_invented_hash_first",
+      "layer": "L1-call",
+      "description": "203: schema-valid investigation with an invented hash and no REA call",
+      "step": {"owner": "environment_investigator", "output_type": "EnvironmentInvestigation", "success_criteria": ["Use genuine REA evidence and preserve its exact reference"]},
+      "fault_script": [
+        {"content": {"status": "ok", "output": {"evidence": {"artifact_path": "runs/rea/x/evidence.json", "artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "evidence_id": "ev-1", "rea_version": "6.4.0"}, "findings": [{"statement": "add(a, b) returns a + b", "evidence_id": "ev-1"}], "limitations": ["static only"]}, "criteria_results": [{"criterion": "ok", "passed": true}], "error": null}}
+      ],
+      "expect": {"status": "failed", "layer": "evidence_invalid", "error_contains": "does not match"}
     }
   ]
 }

@@ -184,6 +184,11 @@ async def feed(ws: WebSocket) -> None:
         _clients.discard(c)
 
 
+@app.get('/health')
+def health():
+    return {'status': 'ok', 'source': _SOURCE, 'last_run_id': getattr(collector, 'last_run_id', None)}
+
+
 # ---- optionally serve the dashboards from this same origin --------------
 # Set ROBOPORT_SERVE_WEB=1 so the UI and the feed share one origin (one URL to
 # open, one thing to put behind a tunnel/deploy). Mounted last so /api/* wins.
@@ -195,5 +200,5 @@ if os.environ.get("ROBOPORT_SERVE_WEB"):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")),
+    uvicorn.run(app, host=os.environ.get("ROBOPORT_BIND_HOST", "127.0.0.1"), port=int(os.environ.get("PORT", "8000")),
                 log_level="info")

@@ -135,3 +135,10 @@ def test_both_crews_are_covered():
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_kind_coverage_is_judged_across_a_targets_eval_sets():
+    full = {"target": "c", "evals": [{"id": i, "kind": k, "blockers": ["x"]} for i, k in enumerate(governance.REQUIRED_EVAL_KINDS)]}
+    smoke = {"target": "c", "evals": [{"id": 9, "blockers": ["x"]}]}
+    report = governance.run_governance([full, smoke], {"crews": {}}, rules=("R2",))
+    assert report["ok"], report["violations"]

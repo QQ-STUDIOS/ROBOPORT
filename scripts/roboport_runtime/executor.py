@@ -9,6 +9,7 @@ from typing import Any
 
 from .client import REPO, _parse_json, load_agent_spec, provider
 from .providers import TransientProviderError
+from .budget import BudgetExceeded, current_budget, governed_chat, model_call_scope
 from .tools import dispatch, load_agent_tool_map, schemas_for
 
 MAX_TOOL_ROUNDS = 6
@@ -33,12 +34,8 @@ DEFAULT_UNSAFE_ACTIONS = [
 
 @functools.lru_cache(maxsize=1)
 def _agent_config() -> dict:
-    try:
-        import yaml  # noqa: PLC0415
-        return yaml.safe_load(
-            (REPO / "config" / "agent_config.yaml").read_text(encoding="utf-8")) or {}
-    except Exception:  # noqa: BLE001 — budgets fall back to defaults without config
-        return {}
+    from .config import load_runtime_config
+    return load_runtime_config(REPO)
 
 
 def _budget_for(owner: str, config: dict) -> dict:
@@ -75,7 +72,7 @@ def _chat_retry(p, **kw) -> tuple[dict, int]:
     retries = 0
     while True:
         try:
-            return p.chat_with_tools(**kw), retries
+            return governed_chat(p, **kw), retries
         except TransientProviderError:
             if retries >= MAX_PROVIDER_RETRIES:
                 raise
@@ -139,26 +136,57 @@ def _repair_schema(p, system: str, history: list, bad_content: str,
 
 @functools.lru_cache(maxsize=1)
 def _output_schema_doc() -> dict:
-    return json.loads((REPO / "resources" / "schemas" / "output.schema.json")
-                      .read_text(encoding="utf-8"))
+    # Core contracts plus any station pack's (scripts/station_packs.py).
+    import sys
+
+    sys.path.insert(0, str(REPO / "scripts"))
+    from station_packs import load_output_schema
+
+    return load_output_schema(REPO)
+
+
+def _referenced_definitions(name: str, definitions: dict) -> dict:
+    """Keep the complete transitive local-ref closure; never prune constraints."""
+    pending = [name]
+    needed = set()
+    while pending:
+        current = pending.pop()
+        if current in needed:
+            continue
+        if current not in definitions:
+            # Keep the old resolver behavior for malformed/unsupported refs.
+            return definitions
+        needed.add(current)
+        nodes = [definitions[current]]
+        while nodes:
+            node = nodes.pop()
+            if isinstance(node, dict):
+                reference = node.get('$ref')
+                if reference is not None:
+                    if not isinstance(reference, str) or not reference.startswith('#/definitions/'):
+                        return definitions
+                    target = reference[len('#/definitions/'):].split('/', 1)[0]
+                    pending.append(target.replace('~1', '/').replace('~0', '~'))
+                nodes.extend(node.values())
+            elif isinstance(node, list):
+                nodes.extend(node)
+    return {key: value for key, value in definitions.items() if key in needed}
 
 
 def _resolve_output_schema(output_type: str | None) -> dict | None:
-    """Map step.output_type (e.g. 'TechnicalAnalysis', 'list[Job]') to an
-    inlined JSON schema fragment from output.schema.json. Returns None for
-    unknown / freeform types."""
+    """Resolve the requested output contract with all referenced definitions."""
     if not output_type:
         return None
-    doc = _output_schema_doc()
-    defs = doc.get("definitions", {})
-    # list[X] -> array of X
-    m = re.match(r"\s*list\[(\w+)\]\s*", output_type)
-    if m and m.group(1) in defs:
-        return {"type": "array", "items": {"$ref": f"#/definitions/{m.group(1)}"},
-                "definitions": defs}
-    if output_type in defs:
-        return {"$ref": f"#/definitions/{output_type}", "definitions": defs}
-    return None
+    definitions = _output_schema_doc().get('definitions', {})
+    match = re.match(r"\s*list\[(\w+)\]\s*", output_type)
+    name = match.group(1) if match else output_type
+    if name not in definitions:
+        return None
+    selected = _referenced_definitions(name, definitions)
+    if match:
+        return {'type': 'array', 'items': {'$ref': f'#/definitions/{name}'},
+                'definitions': selected}
+    return {'$ref': f'#/definitions/{name}', 'definitions': selected}
 
 
 def _validate_against(schema: dict, value: Any) -> list[str]:
@@ -184,26 +212,66 @@ def _agent_tools_for(owner: str) -> list[str]:
         return []
 
 
-def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, Any]:
+def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, Any]:
     owner = step["owner"]
     agent_meta = registry["agents"].get(owner)
     if agent_meta is None:
         return _failed(step, f"unknown agent: {owner}")
 
     if agent_meta.get("deterministic") and agent_meta.get("model_hint") == "none":
-        return _ok(step, owner, {"deterministic_stub": True, "owner": owner,
-                                  "input": step["input"]}, llm_calls=0)
+        if owner != 'synthesizer':
+            return _failed(step, f'deterministic implementation missing: {owner}')
+        try:
+            from synthesize import from_accumulated
+            output = from_accumulated(accumulated)
+            issues = _validate_against(_resolve_output_schema('FinalReport'), output)
+            if issues:
+                return _failed(step, '; '.join(issues), layer='schema_invalid')
+            return _ok(step, owner, output, llm_calls=0)
+        except (ValueError, KeyError, TypeError) as exc:
+            return _failed(step, str(exc), layer='synthesis_failed')
 
     p = provider()
     system_spec = load_agent_spec(agent_meta["path"])
     allowed_tools = _agent_tools_for(owner)
+    if "allowed_tools" in step:
+        allowed_tools = [name for name in allowed_tools if name in step["allowed_tools"]]
+    scope = _agent_config().get('launchpad_scope')
+    if scope is not None:
+        allowed_tools = [name for name in allowed_tools if name in scope.get('tools', [])]
     tool_schemas = schemas_for(allowed_tools)
     model_hint = agent_meta.get("model_hint", "any")
     output_type = step.get("output_type", "object")
     output_schema = _resolve_output_schema(output_type)
+    catalog = None
+    if output_type == 'CandidateMatch' and 'strategy_catalog' in step.get('input', {}):
+        from .strategy_catalog import bound_catalog, selection_issues, selection_schema
+        try:
+            catalog = bound_catalog(step['input'])
+            output_schema = selection_schema(catalog)
+        except (ValueError, KeyError, TypeError) as exc:
+            return _failed(step, str(exc), layer='grounding_invalid')
+    if owner == 'improvement_proposer' and output_schema:
+        upstream = accumulated.get(step.get('input', {}).get('investigation_step', 'investigate'), {})
+        reference = upstream.get('evidence') if isinstance(upstream, dict) else None
+        if isinstance(reference, dict) and all(reference.get(k) for k in ('artifact_path', 'artifact_sha256', 'evidence_id', 'rea_version')):
+            # Keep the authority in the trusted handoff. The existing bounded
+            # schema repair can correct a copied reference; the semantic guard
+            # below still rejects anything not matching genuine upstream data.
+            output_schema = {'definitions': output_schema['definitions'], 'allOf': [
+                {'$ref': output_schema['$ref']},
+                {'type': 'object', 'properties': {'evidence': {'const': reference}}}]}
     config = _agent_config()
     budget = _budget_for(owner, config)
     unsafe_actions = _unsafe_actions(config)
+    inspected_source = ''
+    if owner == 'improvement_proposer' and getattr(current_budget(), 'artifact_dir', None) is not None:
+        from .investigation import source_handoff
+        try:
+            data = source_handoff(reference, current_budget().artifact_dir)
+            inspected_source = 'INSPECTED SOURCE DATA\n' + json.dumps(data, ensure_ascii=False) + '\n\n'
+        except ValueError as exc:
+            return _failed(step, str(exc), layer='evidence_invalid')
 
     user_prompt = (
         f"STEP\nid: {step['id']}\nwave: {step.get('wave', 0)}\n"
@@ -213,6 +281,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
         + "\n".join(f"- {c}" for c in step.get("success_criteria", []))
         + "\n\n"
         f"PRIOR STEP OUTPUTS (by step id)\n{json.dumps(accumulated) if accumulated else '(none)'}\n\n"
+        + inspected_source
         + (
             "AVAILABLE TOOLS\n"
             + ", ".join(allowed_tools)
@@ -240,6 +309,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
     tool_calls_total = 0
     retries_total = 0
     tele = _new_telemetry()
+    rea_results = []
 
     for round_idx in range(MAX_TOOL_ROUNDS):
         is_final_round = round_idx == MAX_TOOL_ROUNDS - 1
@@ -269,7 +339,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
         except Exception as e:  # noqa: BLE001
             return _failed(step, f"{p.name} request failed (round {round_idx}): {e!r}",
                            llm_calls=llm_calls, tool_calls=tool_calls_total,
-                           layer="provider_error", retries=retries_total)
+                           layer="budget_exceeded" if isinstance(e, BudgetExceeded) else "provider_error", retries=retries_total)
 
         llm_calls += 1
         content = out["content"]
@@ -287,6 +357,13 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
                 ],
             })
             for tc in tcs:
+                if tool_calls_total >= budget['max_tool_calls']:
+                    return _failed(step, 'per-agent tool calls budget exhausted before dispatch', llm_calls=llm_calls, tool_calls=tool_calls_total, layer='budget_exceeded')
+                try:
+                    if current_budget() is not None:
+                        current_budget().consume_tool_call()
+                except BudgetExceeded as exc:
+                    return _failed(step, str(exc), llm_calls=llm_calls, tool_calls=tool_calls_total, layer='budget_exceeded')
                 # Layer 3: an unsafe/irreversible action is escalated to the
                 # operator and never executed — deny overrides any whitelist,
                 # and we return BEFORE dispatch so there is no side effect.
@@ -303,7 +380,14 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
                     result: Any = {"error": f"tool {tc['name']!r} not allowed for agent {owner!r}"}
                 else:
                     result = dispatch(tc["name"], tc["arguments"])
+                if tc["name"] == "rea_analyze_project" and isinstance(result, dict):
+                    rea_results.append(result)
                 tool_calls_total += 1
+                active_budget = current_budget()
+                artifact_dir = getattr(active_budget, 'artifact_dir', None)
+                if artifact_dir:
+                    with (artifact_dir / 'tool-results.jsonl').open('a', encoding='utf-8') as audit:
+                        audit.write(json.dumps({'step_id': step['id'], 'agent': owner, 'tool': tc['name'], 'result': result}, default=str) + '\n')
                 messages.append({
                     "role": "tool",
                     "name": tc["name"],
@@ -345,7 +429,11 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
         criteria_results = list(result.get("criteria_results", []) or [])
         repaired = False
         if output_schema is not None:
-            issues = _validate_against(output_schema, result.get("output", {}))
+            issues = selection_issues(catalog, result.get("output", {})) if catalog is not None else _validate_against(output_schema, result.get("output", {}))
+            candidate = step.get('input', {}).get('candidate_profile')
+            if output_type == 'CandidateMatch' and candidate is not None and catalog is None:
+                from .candidate_grounding import validate_recommendations
+                issues += validate_recommendations(result.get('output') or {}, candidate, accumulated, step.get('input', {}))
             if issues:
                 # one repair pass — but only if the budget still allows a call
                 fixed, repair_usage = (
@@ -358,7 +446,9 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
                     result = fixed
                     repaired = True
                     criteria_results = list(result.get("criteria_results", []) or [])
-                    issues = _validate_against(output_schema, result.get("output", {}))
+                    issues = selection_issues(catalog, result.get("output", {})) if catalog is not None else _validate_against(output_schema, result.get("output", {}))
+                    if output_type == 'CandidateMatch' and candidate is not None and catalog is None:
+                        issues += validate_recommendations(result.get('output') or {}, candidate, accumulated, step.get('input', {}))
                 if issues:
                     criteria_results.append({
                         "criterion": f"output conforms to `{output_type}` schema",
@@ -366,6 +456,26 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
                         "evidence": "; ".join(issues),
                     })
 
+        grounding = {}
+        if catalog is not None:
+            if issues:
+                failed = _failed(step, '; '.join(issues), llm_calls=llm_calls, tool_calls=tool_calls_total, layer='grounding_invalid')
+                return {**failed, **_telemetry_fields(tele), 'repaired': repaired, 'grounding_selection': {'selection': result.get('output'), 'source_sha256': catalog['source_sha256'], 'catalog_sha256': catalog['catalog_sha256']}}
+            from .strategy_catalog import compile_selection
+            result['output'], evidence = compile_selection(step['input'], result['output'])
+            grounding = {'grounding_selection': evidence}
+
+        if owner in ('environment_investigator', 'improvement_proposer'):
+            from .investigation import validate_reference
+            sources = rea_results if owner == 'environment_investigator' else [dict(status='ok', **v.get('evidence', {})) for v in accumulated.values() if isinstance(v, dict)]
+            issues = validate_reference((result.get('output') or {}).get('evidence'), sources)
+            if issues:
+                return _failed(step, '; '.join(issues), llm_calls=llm_calls, tool_calls=tool_calls_total, layer='evidence_invalid')
+        if output_type == 'CandidateMatch' and catalog is None and step.get('input', {}).get('candidate_profile') is not None:
+            from .candidate_grounding import validate_recommendations
+            issues = validate_recommendations(result.get('output') or {}, step['input']['candidate_profile'], accumulated, step['input'])
+            if issues:
+                return _failed(step, '; '.join(issues), llm_calls=llm_calls, tool_calls=tool_calls_total, layer='grounding_invalid')
         # Quiet-200 guard: an empty array out of a search-shaped step means the
         # search broke, not "zero results". Fail loudly rather than pass it on.
         out_val = result.get("output", {})
@@ -379,7 +489,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
 
         return {
             "step_id": step["id"],
-            "status": result.get("status", "ok"),
+            "status": "failed" if any(not c.get("passed") for c in criteria_results) else result.get("status", "failed"),
             "output": result.get("output", {}),
             "criteria_results": criteria_results,
             "tool_calls": tool_calls_total,
@@ -387,8 +497,9 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, An
             "retries": retries_total,
             "repaired": repaired,
             **_telemetry_fields(tele),
+            **grounding,
             "transcript_path": None,
-            "error": result.get("error"),
+            "error": result.get("error") or ("criterion or output contract failed" if any(not c.get("passed") for c in criteria_results) else None),
         }
 
     return _failed(step, f"exhausted {MAX_TOOL_ROUNDS} tool rounds without a final answer",
@@ -433,3 +544,9 @@ def _failed(step: dict, msg: str, *, llm_calls: int = 0, tool_calls: int = 0,
         "transcript_path": None,
         "error": msg,
     }
+
+
+def call_executor(step: dict, accumulated: dict, registry: dict) -> dict:
+    limits = _budget_for(step['owner'], _agent_config())
+    with model_call_scope(limits['max_llm_calls']):
+        return _call_executor(step, accumulated, registry)

@@ -29,6 +29,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from station_packs import eval_dirs, load_registry  # noqa: E402
 
 REQUIRED_EVAL_KINDS = ("happy_path", "empty", "schema_failure", "evidence_grounding")
 ALL_RULES = ("R1", "R2", "R4")
@@ -83,8 +85,11 @@ def check_crews_have_evals(registry: dict, eval_sets: list[dict]) -> list[dict]:
 
 def check_stations(registry: dict) -> list[dict]:
     """R4: every crew station maps to a registered agent, and every edge declares
-    its output contract (`type`)."""
-    agents = set(registry.get("agents", {}))
+    its output contract (`type`). A station may be a runnable agent OR an offline
+    catalog record (`catalog_agents`, added by a station pack) — a modeled crew can
+    wire a real external agent as a station, which the catalog makes a first-class
+    registry citizen; it is still never executed."""
+    agents = set(registry.get("agents", {})) | set(registry.get("catalog_agents", {}))
     out = []
     for cname, crew in (registry.get("crews") or {}).items():
         stations = {crew.get("entry")} if crew.get("entry") else set()
@@ -126,7 +131,15 @@ def run_governance(eval_sets: list[dict], registry: dict,
         for es in eval_sets:
             violations.extend(check_blockers(es))
     if "R2" in rules:
+        # A crew may spread its proof set over several files (e.g. the station's
+        # deployment smoke set beside the main evals), so coverage is judged per
+        # target across all of that target's eval sets.
+        by_target: dict[str, dict] = {}
         for es in eval_sets:
+            merged = by_target.setdefault(es.get("target", "?"),
+                                          {"target": es.get("target", "?"), "evals": []})
+            merged["evals"].extend(es.get("evals", []))
+        for es in by_target.values():
             violations.extend(check_kind_coverage(es))
         violations.extend(check_crews_have_evals(registry, eval_sets))
     if "R4" in rules:
@@ -157,7 +170,7 @@ def _load_json(path: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Enforce ROBOPORT crew-expansion governance.")
     ap.add_argument("--eval-set", type=Path, action="append", default=None,
-                    help="Eval set JSON (repeatable). Default: every eval set under evals/.")
+                    help="Eval set JSON (repeatable). Default: every eval set under evals/ and station packs.")
     ap.add_argument("--registry", type=Path, default=REPO / "agents" / "registry.json",
                     help="Agent/crew registry JSON.")
     ap.add_argument("--rule", action="append", choices=list(ALL_RULES), default=None,
@@ -168,9 +181,9 @@ def main() -> int:
 
     try:
         eval_sets = ([_load_json(p) for p in args.eval_set] if args.eval_set
-                     else discover_eval_sets(REPO / "evals"))
-        registry = _load_json(args.registry)
-    except (OSError, json.JSONDecodeError) as e:
+                     else [s for d in eval_dirs(REPO) for s in discover_eval_sets(d)])
+        registry = load_registry(REPO, args.registry)
+    except (OSError, ValueError) as e:  # JSONDecodeError is a ValueError
         print(f"governance: could not load inputs: {e}", file=sys.stderr)
         return 2
 

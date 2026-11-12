@@ -63,3 +63,9 @@ Pipfile.lock        text -diff
 package-lock.json   text -diff
 pnpm-lock.yaml      text -diff
 yarn.lock           text -diff
+
+# Authenticode-signed scripts: keep exact bytes or the signatures break
+deploy/windows/*.ps1 -text
+deploy/windows/**/*.ps1 -text
+*.ico binary
+*.png binary

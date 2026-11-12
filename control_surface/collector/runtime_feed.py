@@ -100,7 +100,7 @@ class RuntimeCrewCollector:
         self.crew = crew
         self.simulate = simulate
         self.feed_glob = feed_glob
-        registry = json.loads(Path(registry_path).read_text(encoding="utf-8"))
+        registry = _load_registry(registry_path)
         self._station_cfg = stations_from_registry(registry, crew)
         self._waves: Dict[int, List[dict]] = {}
         for s in self._station_cfg:
@@ -385,9 +385,13 @@ class RuntimeCrewCollector:
             r = json.loads(line)
         except json.JSONDecodeError:
             return
+        self.last_run_id = r.get("run_id")
         ev = r.get("event")
         if ev == "crew_start":
             self._reconcile_stations(r.get("stations") or [])
+        elif ev == 'crew_end' and r.get('status') == 'failed':
+            self._emit('alert.raised', {'alert_id': f'run-failed-{r.get("run_id", "unknown")}', 'kind': 'critical',
+                'title': 'Run rejected', 'body': r.get('error') or 'Run failed acceptance', 'target': {'type': 'zone', 'id': 'crew'}})
         elif ev == "task_enqueue":
             self.enqueue(r["task_id"], r["station_id"], r["agent_id"],
                          wave=int(r.get("wave", 0)),
@@ -457,6 +461,8 @@ class RuntimeCrewCollector:
 
     # ---- commands (operator intents on the live surface) ---------------
     def handle_command(self, cmd: dict) -> dict:
+        if not self.simulate:
+            return _reject(cmd, "Live telemetry is read-only; use the authenticated launch pad for supported mission commands")
         t = cmd.get("type")
         target = cmd.get("target") or {}
         tid = target.get("id")
@@ -521,6 +527,19 @@ def _ok(cmd: dict) -> dict:
 
 def _reject(cmd: dict, reason: str) -> dict:
     return {"command_id": cmd.get("command_id"), "status": "rejected", "reason": reason}
+
+
+def _load_registry(registry_path: str | Path) -> dict:
+    """The core registry gets station packs added; any other path is read as-is."""
+    path = Path(registry_path)
+    if path.resolve() == _repo_registry().resolve():
+        import sys
+
+        sys.path.insert(0, str(path.resolve().parents[1] / "scripts"))
+        from station_packs import load_registry
+
+        return load_registry(path.resolve().parents[1])
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 # ---- stand-alone: print envelopes (verify without a browser/server) -----
