@@ -33,9 +33,13 @@ def test_tier_a_is_measured_capacity_not_a_product_name():
     # The current workstation and any other card with the same capacity fit.
     assert windows_deploy.tier_fits(spec, "NVIDIA GeForce RTX 5090, 32607 MiB, 617.42", 127 * GIB, "qwen3:14b")
     assert windows_deploy.tier_fits(spec, "NVIDIA RTX 6000 Ada Generation, 49140 MiB, 560.1", 64 * GIB, "qwen3:14b")
+    # Usable RAM on a labeled 64 GiB host is under the binary threshold.
+    assert windows_deploy.tier_fits(spec, "NVIDIA GeForce RTX 5090, 32607 MiB, 617.42", int(63.8 * GIB), "qwen3:14b")
+    assert windows_deploy.tier_fits(spec, "NVIDIA GeForce RTX 5090, 32607 MiB, 617.42", 63 * GIB, "qwen3:14b")
     # Too little VRAM or RAM, or a model not approved for the tier, does not.
     assert not windows_deploy.tier_fits(spec, "NVIDIA GeForce RTX 4090, 24564 MiB, 560.1", 128 * GIB, "qwen3:14b")
     assert not windows_deploy.tier_fits(spec, "NVIDIA GeForce RTX 5090, 32607 MiB, 617.42", 32 * GIB, "qwen3:14b")
+    assert not windows_deploy.tier_fits(spec, "NVIDIA GeForce RTX 5090, 32607 MiB, 617.42", 63 * GIB - 1, "qwen3:14b")
     assert not windows_deploy.tier_fits(spec, "NVIDIA GeForce RTX 5090, 32607 MiB, 617.42", 128 * GIB, "unreviewed:70b")
 
 

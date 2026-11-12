@@ -72,7 +72,11 @@ function Select-HardwareTier($Config, [string]$GpuInfo, [double]$MemoryBytes) {
         foreach ($line in ($GpuInfo -split "`r?`n")) {
             if ($line -match [regex]::Escape([string]$tier.gpu_vendor) -and $line -match ',\s*(\d+)\s*MiB') { $vram = [math]::Max($vram, [int]$Matches[1]) }
         }
-        if ($vram -ge $tier.min_vram_mib -and $MemoryBytes -ge ([double]$tier.min_ram_gib * 1GB)) {
+        # TotalPhysicalMemory is usable RAM. Firmware reserves part of the labeled
+        # size, so a 64 GiB host often reports about 63.8 GiB. Allow that 1 GiB.
+        $ramFloor = ([double]$tier.min_ram_gib * 1GB) - 1GB
+        if ($ramFloor -lt 0) { $ramFloor = [double]0 }
+        if ($vram -ge $tier.min_vram_mib -and $MemoryBytes -ge $ramFloor) {
             $fits += $name
             if (@($tier.models) -contains [string]$Config.model) {
                 $Config | Add-Member -NotePropertyName hardware_tier -NotePropertyValue $name -Force

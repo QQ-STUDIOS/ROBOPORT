@@ -28,7 +28,10 @@ $config = New-TestConfig
 if ((Select-HardwareTier $config $gpuA (127GB)).name -ne 'A' -or $config.hardware_tier -ne 'A') { throw 'Tier A workstation was not matched.' }
 $config = New-TestConfig
 if ((Select-HardwareTier $config 'NVIDIA RTX 6000 Ada Generation, 49140 MiB, 560.1' (64GB)).name -ne 'A') { throw 'Equal-capacity GPU was not matched.' }
+$config = New-TestConfig
+if ((Select-HardwareTier $config $gpuA (63.8GB)).name -ne 'A') { throw 'Usable RAM just under 64 GiB was rejected.' }
 Assert-Throws { Select-HardwareTier (New-TestConfig) 'NVIDIA GeForce RTX 4090, 24564 MiB, 560.1' (128GB) } 'does not meet hardware tier' 'Low-VRAM GPU'
+Assert-Throws { Select-HardwareTier (New-TestConfig) $gpuA (62GB) } 'does not meet hardware tier' 'RAM more than 1 GiB under the tier'
 Assert-Throws { Select-HardwareTier (New-TestConfig) $gpuA (32GB) } 'does not meet hardware tier' 'Low-RAM machine'
 $config = New-TestConfig; $config.model = 'unreviewed:70b'
 Assert-Throws { Select-HardwareTier $config $gpuA (128GB) } 'not approved for hardware tier' 'Unapproved model'

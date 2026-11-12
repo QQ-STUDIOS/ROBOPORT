@@ -733,7 +733,11 @@ def main():
     parser.add_argument("--baseline", help="Baseline run dir (with --candidate: compute + render a diff)")
     parser.add_argument("--candidate", help="Candidate run dir (with --baseline: compute + render a diff)")
     parser.add_argument("--port", type=int, default=4242, help="HTTP port (default 4242)")
+    parser.add_argument("--host", default="0.0.0.0", help="Bind address (default 0.0.0.0)")
     parser.add_argument("--runs-base", default="runs", help="Base runs directory (default: runs)")
+    # The Windows supervisor always passes these. Unknown flags exit before bind.
+    parser.add_argument("--data-root", help="Deployment data root for the Launch Pad")
+    parser.add_argument("--policy", help="Launch pad policy file")
     args = parser.parse_args()
 
     # ── Diff overlay mode: render a regression comparison, then serve it. ──
@@ -744,7 +748,7 @@ def main():
             sys.exit(f"[bridge] could not load diff: {e}")
         for env in diff_to_envelopes(diff):
             broadcast(env)
-        server = HTTPServer(("0.0.0.0", args.port), Handler)
+        server = HTTPServer((args.host, args.port), Handler)
         print(f"[bridge] Diff overlay · verdict={diff.get('verdict')} · "
               f"{len(diff.get('agent_diffs', []))} agent diff(s)", flush=True)
         print(f"[bridge] Listening on http://localhost:{args.port}", flush=True)
@@ -769,9 +773,13 @@ def main():
         if not log_path:
             sys.exit(f"[bridge] No log found for run {args.run_id} in {args.runs_base}/")
     elif args.runs_dir:
-        log_path = find_latest_run(Path(args.runs_dir))
+        runs = Path(args.runs_dir)
+        # A fresh install points this at an empty telemetry directory. That is
+        # snapshot-only, the same as omitting --runs-dir, not a hard exit.
+        if runs.is_dir():
+            log_path = find_latest_run(runs)
         if not log_path:
-            sys.exit(f"[bridge] No run logs found in {args.runs_dir}")
+            print("[bridge] No run logs found. Starting in snapshot-only mode.")
     else:
         # Default: look for runs/ next to this script
         runs = Path(__file__).parent.parent / "runs"
@@ -787,7 +795,7 @@ def main():
         t = threading.Thread(target=tail_log, args=(log_path, state, stop), daemon=True)
         t.start()
 
-    server = HTTPServer(("0.0.0.0", args.port), Handler)
+    server = HTTPServer((args.host, args.port), Handler)
     print(f"[bridge] Listening on http://localhost:{args.port}", flush=True)
     print(f"[bridge] Open: Roboport Ops Console.dc.html?api=http://localhost:{args.port}", flush=True)
     if log_path:

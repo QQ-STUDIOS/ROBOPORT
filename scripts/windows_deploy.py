@@ -70,8 +70,13 @@ def gpu_vram_mib(gpu_info: str, vendor: str) -> int:
 
 
 def tier_fits(spec: dict, gpu_info: str, memory_bytes: int, model: str) -> bool:
+    # Usable RAM (Win32_ComputerSystem.TotalPhysicalMemory) is short of the
+    # labeled size by firmware reservation. Match Select-HardwareTier: a 64 GiB
+    # host that reports ~63.8 GiB still fits. The published floor stays 64 GiB.
+    required = spec['min_ram_gib'] * 2**30
+    ram_floor = max(0, required - 2**30)
     return (gpu_vram_mib(gpu_info, spec['gpu_vendor']) >= spec['min_vram_mib']
-            and memory_bytes >= spec['min_ram_gib'] * 2**30
+            and memory_bytes >= ram_floor
             and model in spec.get('models', []))
 
 
