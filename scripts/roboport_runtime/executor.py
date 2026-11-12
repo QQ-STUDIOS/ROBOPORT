@@ -32,8 +32,18 @@ DEFAULT_UNSAFE_ACTIONS = [
 ]
 
 
-@functools.lru_cache(maxsize=1)
 def _agent_config() -> dict:
+    from .config import load_runtime_config, scope_cache
+    cache = scope_cache()
+    if cache is None:
+        return _file_agent_config()
+    if 'agent_config' not in cache:
+        cache['agent_config'] = load_runtime_config(REPO)
+    return cache['agent_config']
+
+
+@functools.lru_cache(maxsize=1)
+def _file_agent_config() -> dict:
     from .config import load_runtime_config
     return load_runtime_config(REPO)
 
@@ -251,6 +261,7 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
             output_schema = selection_schema(catalog)
         except (ValueError, KeyError, TypeError) as exc:
             return _failed(step, str(exc), layer='grounding_invalid')
+    reference = None
     if owner == 'improvement_proposer' and output_schema:
         upstream = accumulated.get(step.get('input', {}).get('investigation_step', 'investigate'), {})
         reference = upstream.get('evidence') if isinstance(upstream, dict) else None
@@ -267,6 +278,8 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
     inspected_source = ''
     if owner == 'improvement_proposer' and getattr(current_budget(), 'artifact_dir', None) is not None:
         from .investigation import source_handoff
+        if not isinstance(reference, dict):
+            return _failed(step, 'No verified investigation evidence reference for the proposer', layer='evidence_invalid')
         try:
             data = source_handoff(reference, current_budget().artifact_dir)
             inspected_source = 'INSPECTED SOURCE DATA\n' + json.dumps(data, ensure_ascii=False) + '\n\n'

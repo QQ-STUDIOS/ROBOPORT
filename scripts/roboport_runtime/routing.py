@@ -141,14 +141,23 @@ class RoutingProvider(Provider):
             self._instances[name] = self._factory(name)
         return self._instances[name]
 
-    def chat_with_tools(self, *, system, messages, tools, force_json, model_hint,
-                        model: str | None = None) -> dict[str, Any]:
+    def select(self, model_hint: str) -> tuple[Provider, str | None, dict]:
+        """Choose and record a backend for one call: (provider, model, decision).
+
+        ``governed_chat`` calls this first so the budget reserves against the
+        same concrete provider and model that serve the call."""
         decision = select_candidate(model_hint, self.policy, self.scoreboard)
         self.decisions.append(decision)
         chosen = decision["chosen"]
         if not chosen:
             raise RuntimeError(f"routing: {decision['reason']}")
-        out = self._provider(chosen["provider"]).chat_with_tools(
+        return self._provider(chosen["provider"]), chosen["model"], decision
+
+    def chat_with_tools(self, *, system, messages, tools, force_json, model_hint,
+                        model: str | None = None) -> dict[str, Any]:
+        backend, _, decision = self.select(model_hint)
+        chosen = decision["chosen"]
+        out = backend.chat_with_tools(
             system=system, messages=messages, tools=tools, force_json=force_json,
             model_hint=model_hint, model=chosen["model"])
         usage = out.get("usage")

@@ -21,15 +21,31 @@ def _merge(base: dict, override: dict) -> dict:
 
 
 _scoped_config = ContextVar('roboport_scoped_config', default=None)
+_scope_cache = ContextVar('roboport_scope_cache', default=None)
+
+# Provider selectors that wrap concrete backends rather than name one.
+WRAPPER_PROVIDERS = ('routing', 'fault')
 
 
 @contextmanager
 def runtime_config_scope(config: dict):
     token = _scoped_config.set(deepcopy(config))
+    cache_token = _scope_cache.set({})
     try:
         yield
     finally:
+        _scope_cache.reset(cache_token)
         _scoped_config.reset(token)
+
+
+def scope_cache() -> dict | None:
+    """Per-scope cache for objects built from configuration (None when unscoped)."""
+    return _scope_cache.get()
+
+
+def wrapper_provider() -> str | None:
+    selected = os.environ.get('ROBOPORT_PROVIDER')
+    return selected if selected in WRAPPER_PROVIDERS else None
 
 
 def load_runtime_config(repo: Path = REPO) -> dict:
@@ -60,7 +76,8 @@ def load_runtime_config(repo: Path = REPO) -> dict:
             continue
         if not isinstance(route, dict):
             raise ValueError(f'invalid model configuration: {hint}')  # noqa: TRY004
-        prov = os.environ.get('ROBOPORT_PROVIDER') or route.get('provider', 'ollama')
+        # A wrapper selector keeps the configured concrete routes.
+        prov = (None if wrapper_provider() else os.environ.get('ROBOPORT_PROVIDER')) or route.get('provider', 'ollama')
         if prov not in ('ollama', 'anthropic'):
             raise ValueError(f'unsupported provider: {prov}')
         switched = prov != route.get('provider')

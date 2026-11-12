@@ -361,7 +361,14 @@ def main() -> int:
     try:
         report = verify_target(args.install, restart=args.restart_check, recovery=args.recovery_check, rollback=args.rollback_check)
     except Exception as exc:  # noqa: BLE001 — persist a failed report on any target verification failure
-        report = {'status': 'failed', 'error': str(exc), 'created_at': datetime.now(UTC).isoformat()}
+        # Keep the release identity, boot baseline and recovery observations,
+        # so a transient failure doesn't reset the reboot-recovery baseline.
+        try:
+            previous = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            previous = {}
+        kept = {k: previous[k] for k in ('release_root', 'verified_boot_time', 'checks') if isinstance(previous, dict) and k in previous}
+        report = {**kept, 'status': 'failed', 'error': str(exc), 'created_at': datetime.now(UTC).isoformat()}
         atomic_json(path, report)
     print(json.dumps(report, indent=2))
     return 0 if report['status'] == 'passed' else 2 if report['status'] == 'incomplete' else 1

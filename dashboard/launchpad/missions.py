@@ -103,6 +103,27 @@ class MissionManager:
         claim = self.store.claim_operation(actor["id"], command)
         if not claim["new"]:
             return claim["outcome"]
+        accepted = {
+            "operation_id": command["operation_id"],
+            "status": "accepted",
+            "mission_id": command.get("mission_id"),
+        }
+        if claim.get("resumed"):
+            # Queuing records the operation on the mission in one transaction,
+            # so a mission that left draft under this operation was dispatched.
+            mission = self.store.get_mission(command["mission_id"])
+            if mission.get("operation_id") == command["operation_id"] and mission["state"] != "draft":
+                return self.store.finish_operation(command["operation_id"], accepted)
+        # Register the cancellation handle before the mission becomes queued,
+        # so reconcile() never sees a queued mission it doesn't own.
+        cancel = threading.Event()
+        with self.lock:
+            if command.get("mission_id") in self.cancellations:
+                self.store.finish_operation(command["operation_id"], {
+                    "operation_id": command["operation_id"], "status": "rejected",
+                    "error": "mission launch already in progress"})
+                raise ValueError("mission launch already in progress")
+            self.cancellations[command.get("mission_id")] = cancel
         try:
             with self.store.transaction() as db:
                 mission = self.store._get(db, command["mission_id"])
@@ -162,16 +183,12 @@ class MissionManager:
                         "operation_id": command["operation_id"],
                     },
                 )
-            self._launch(mission)
-            return self.store.finish_operation(
-                command["operation_id"],
-                {
-                    "operation_id": command["operation_id"],
-                    "status": "accepted",
-                    "mission_id": mission["id"],
-                },
-            )
+            self._launch(mission, cancel)
+            return self.store.finish_operation(command["operation_id"], accepted)
         except (ValueError, KeyError, OSError) as exc:
+            with self.lock:
+                if self.cancellations.get(command.get("mission_id")) is cancel:
+                    self.cancellations.pop(command.get("mission_id"), None)
             self.store.finish_operation(
                 command["operation_id"],
                 {
@@ -182,15 +199,12 @@ class MissionManager:
             )
             raise
 
-    def _launch(self, mission):
+    def _launch(self, mission, cancel):
         from windows_deploy import atomic_json
 
         directory = Path(mission["run_dir"])
         directory.mkdir(parents=True, exist_ok=True)
         atomic_json(directory / "manifest.json", mission["manifest"])
-        cancel = threading.Event()
-        with self.lock:
-            self.cancellations[mission["id"]] = cancel
         threading.Thread(target=self._run, args=(mission, cancel), daemon=True).start()
 
     def _run(self, mission, cancel):
@@ -295,6 +309,12 @@ class MissionManager:
         claim = self.store.claim_operation(actor["id"], command)
         if not claim["new"]:
             return claim["outcome"]
+        if claim.get("resumed"):
+            mission = self.store.get_mission(command["mission_id"])
+            if mission["state"] in {"cancelling", "cancelled"}:
+                return self.store.finish_operation(command["operation_id"], {
+                    "operation_id": command["operation_id"], "status": "accepted",
+                    "mission_id": mission["id"]})
         try:
             with self.lock:
                 mission = self.store.get_mission(command["mission_id"])
@@ -367,20 +387,29 @@ class MissionManager:
         # A lost native Job Object kills owned Windows children. POSIX workers
         # may remain; retain identity and block another run until resolution.
         for mission in self.store.list_missions():
-            if mission["state"] in ACTIVE and mission["id"] not in self.cancellations:
-                from windows_deploy import _owned_process
+            with self.lock:
+                self._reconcile_one(mission)
 
+    def _reconcile_one(self, mission):
+        # Called under self.lock, which dispatch holds while registering a
+        # launch; the revision check below catches a worker's own update.
+        if mission["state"] in ACTIVE and mission["id"] not in self.cancellations:
+            from windows_deploy import _owned_process
+
+            try:
+                if mission.get("process") and _owned_process(mission["process"]):
+                    raise ValueError("owned worker remains active")
+                outcome = self._terminal_evidence(mission)
+                state, fields = outcome["status"], {"outcome": outcome}
+            except (ValueError, OSError, KeyError):
+                state, fields = (
+                    "unknown",
+                    {
+                        "error": "Gateway restarted; reconcile process and terminal evidence before another launch"
+                    },
+                )
+            if state != mission["state"]:
                 try:
-                    if mission.get("process") and _owned_process(mission["process"]):
-                        raise ValueError("owned worker remains active")
-                    outcome = self._terminal_evidence(mission)
-                    state, fields = outcome["status"], {"outcome": outcome}
-                except (ValueError, OSError, KeyError):
-                    state, fields = (
-                        "unknown",
-                        {
-                            "error": "Gateway restarted; reconcile process and terminal evidence before another launch"
-                        },
-                    )
-                if state != mission["state"]:
-                    self.store.lifecycle_transition(mission["id"], state, fields)
+                    self.store.transition(mission["id"], mission["revision"], state, fields)
+                except ValueError:
+                    pass  # changed since it was read; the next pass looks again

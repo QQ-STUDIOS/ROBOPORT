@@ -15,6 +15,10 @@ from .store import digest
 TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})")
 
 
+
+# Mission states after which no step is still running.
+ENDED = {"cancelled", "failed", "completed", "rejected", "unknown"}
+
 class Subscription:
     def __init__(self, events, environment, scope, actor):
         self.events, self.environment, self.scope, self.actor = (
@@ -100,10 +104,17 @@ class EventStore:
         elif scope != "network":
             raise ValueError("unsupported event scope")
         ids = {m["id"] for m in missions}
+        ended = {m["id"]: m["state"] for m in missions if m["state"] in ENDED}
+
+        def settle(row):
+            if row["mission_id"] in ended and row["state"] == "running":
+                return {**row, "state": ended[row["mission_id"]] if ended[row["mission_id"]] == "cancelled" else "unknown"}
+            return row
+
         return {
             "missions": missions,
-            "steps": [v for v in self.steps.values() if v["mission_id"] in ids],
-            "agents": [v for v in self.agents.values() if v["mission_id"] in ids],
+            "steps": [settle(v) for v in self.steps.values() if v["mission_id"] in ids],
+            "agents": [settle(v) for v in self.agents.values() if v["mission_id"] in ids],
             "runtime": {k: v for k, v in self.runtime.items() if k in ids},
             "budgets": {k: v for k, v in self.budgets.items() if k in ids},
             "source": "runtime",

@@ -22,7 +22,15 @@ def _provider_cached() -> Provider:
 
 
 def provider() -> Provider:
-    return _provider_cached()
+    # Providers capture configuration when built, so a runtime config scope
+    # gets its own instance instead of the process-wide one.
+    from .config import scope_cache
+    cache = scope_cache()
+    if cache is None:
+        return _provider_cached()
+    if 'provider' not in cache:
+        cache['provider'] = get_provider()
+    return cache['provider']
 
 
 def health_check() -> None:

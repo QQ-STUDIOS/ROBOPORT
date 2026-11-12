@@ -9,6 +9,18 @@ from urllib.parse import unquote
 from .store import canonical
 
 
+
+def is_reparse_point(path) -> bool:
+    """True for NTFS junctions and other reparse points (any Python version).
+
+    ``Path.is_junction`` exists only on Python 3.12+, and the bridge supports 3.11.
+    """
+    try:
+        attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+    except OSError:
+        return False
+    return bool(attributes & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+
 def authorize(mission, actor):
     manifest = mission["manifest"]
     if manifest.get("classification") not in actor.get("classifications", []) or (
@@ -24,7 +36,7 @@ def read_evidence(mission, relative_path, data_root, actor):
         raise ValueError("artifact path must be relative to this mission")
     original_root = Path(data_root) / "missions" / mission["id"]
     if any(
-        p.is_symlink() or getattr(p, "is_junction", lambda: False)()
+        p.is_symlink() or is_reparse_point(p)
         for p in [original_root, *original_root.parents]
         if p.exists()
     ):
@@ -36,7 +48,7 @@ def read_evidence(mission, relative_path, data_root, actor):
     if not path.resolve().is_relative_to(root):
         raise ValueError("artifact root escape")
     if any(
-        p.is_symlink() or getattr(p, "is_junction", lambda: False)()
+        p.is_symlink() or is_reparse_point(p)
         for p in [path, *path.parents]
         if p.exists()
     ):
@@ -84,7 +96,7 @@ def build_review_context(manifest, directory):
         if not path.resolve().is_relative_to(directory.resolve()):
             raise ValueError("review evidence outside mission artifacts")
         if any(
-            p.is_symlink() or getattr(p, "is_junction", lambda: False)()
+            p.is_symlink() or is_reparse_point(p)
             for p in [path, *path.parents]
             if p.exists()
         ):

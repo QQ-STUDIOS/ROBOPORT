@@ -9,7 +9,10 @@ param(
 Assert-Windows
 $manifest = Get-Deployment $InstallRoot
 $python = Join-Path $manifest.release_root '.venv\Scripts\python.exe'
-$arguments = @((Join-Path $manifest.release_root 'scripts\deployment_report.py'), '--install', [IO.Path]::GetFullPath($InstallRoot))
+$report = Join-Path $manifest.release_root 'scripts\deployment_report.py'
+# Exit code 2 means "checks pending", so a missing script must not reach Python.
+if (-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $report)) { throw "Release is incomplete: $report or its Python environment is missing." }
+$arguments = @($report, '--install', [IO.Path]::GetFullPath($InstallRoot))
 if ($RestartCheck) { $arguments += '--restart-check' }
 if ($RecoveryCheck) { $arguments += '--recovery-check' }
 if ($RollbackCheck) { $arguments += '--rollback-check' }

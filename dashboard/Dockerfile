@@ -16,6 +16,7 @@ COPY evals     /app/evals
 COPY dashboard /app/dashboard
 
 ENV PYTHONUNBUFFERED=1 \
+    ROBOPORT_CONTAINER=1 \
     ROBOPORT_PROVIDER=anthropic \
     ROBOPORT_RUNS=1
 

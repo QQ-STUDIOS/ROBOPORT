@@ -13,10 +13,15 @@ if [ -n "$ANTHROPIC_API_KEY" ]; then
     --target jd_crew --live --provider anthropic \
     --runs "${ROBOPORT_RUNS:-1}" --run-log "$RUNS" \
     || echo "[entrypoint] benchmark exited non-zero — serving whatever was produced"
-  echo "[entrypoint] serving Ops Console + bridge on :4242 (tailing $RUNS)"
-  exec python dashboard/bridge.py --runs-dir "$RUNS" --port 4242
+  LOG=$(ls -t "$RUNS"/*/run.log 2>/dev/null | head -n 1)
+  if [ -n "$LOG" ]; then
+    echo "[entrypoint] serving the Ops Console replay of $LOG on :4242"
+    exec python dashboard/bridge.py --log-file "$LOG" --host 0.0.0.0 --port 4242
+  fi
+  echo "[entrypoint] the run produced no log — serving the bundled sample run"
+  exec python dashboard/bridge.py --log-file dashboard/sample_run.jsonl --host 0.0.0.0 --port 4242
 else
   echo "[entrypoint] No ANTHROPIC_API_KEY — serving the bundled sample run (keyless demo)"
   echo "[entrypoint] set a key in dashboard/.env to run a real crew instead"
-  exec python dashboard/bridge.py --log-file dashboard/sample_run.jsonl --port 4242
+  exec python dashboard/bridge.py --log-file dashboard/sample_run.jsonl --host 0.0.0.0 --port 4242
 fi

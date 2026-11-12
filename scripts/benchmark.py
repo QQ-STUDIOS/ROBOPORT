@@ -186,6 +186,12 @@ def jsonl_append(path: Path, obj: dict) -> None:
         f.write(json.dumps(obj, default=str) + "\n")
 
 
+def _safe_step_id(sid) -> bool:
+    """Step ids come from the model's plan and name files under steps/."""
+    import re
+    return isinstance(sid, str) and bool(re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}", sid)) and ".." not in sid
+
+
 def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=None,
             config: dict | None = None, defer_completion: bool = False) -> dict:
     """Execute a single (eval × run) pair. Returns a small summary.
@@ -210,6 +216,15 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
     plan = call_planner(eval_obj["prompt"], context={**eval_obj.get("context", {}), "target": crew}, registry=registry)
     (run_dir / "plan.json").write_text(json.dumps(plan, indent=2))
     jsonl_append(log, {"event": "plan_emitted", "ts": datetime.now(timezone.utc).isoformat()})
+    unsafe = [s.get("id") if isinstance(s, dict) else s for s in plan.get("steps", [])
+              if not isinstance(s, dict) or not _safe_step_id(s.get("id"))]
+    if unsafe:
+        error = f"plan rejected: unsafe step id(s) {unsafe!r}"
+        if run_log is not None and not defer_completion:
+            run_log.run_complete(_run_summary([], 0, 0, _t_run, _time))
+        (run_dir / "final_output.json").write_text(json.dumps({"status": "failed", "error": error}, indent=2))
+        return {"status": "failed", "step_failed": None, "error": error, "steps": [],
+                "run_summary": _run_summary([], 0, 0, _t_run, _time)}
 
     if feed is not None:
         from roboport_runtime.feed_log import stations_from_plan  # lazy

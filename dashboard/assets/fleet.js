@@ -9,11 +9,13 @@
     running: ["amber", "⚙", "working"],
     completed: ["green", "✓", "completed"],
     failed: ["red", "✕", "failed"],
+    cancelled: ["steel", "■", "cancelled"],
+    unknown: ["amber", "?", "unknown"],
   };
   function render(main, data, helpers, opts) {
     const { node, button, card, glyph, toned } = helpers;
     const all = data.agents || [],
-      agents = all.slice(0, 100),
+      agents = root.RoboportOpsFeed ? root.RoboportOpsFeed.visibleAgents(all, 100) : all.slice(-100),
       steps = data.steps || [];
     const stepOf = (agent) =>
       steps.find((s) => s.id === agent.mission_id + ":" + agent.step_id);

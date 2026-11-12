@@ -4,7 +4,9 @@ param([string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Roboport'))
 Assert-Windows
 $manifest = Get-Deployment $InstallRoot
 $script = Join-Path $InstallRoot 'operator\Start-Roboport.ps1'
-$arguments = '-NoProfile -File ' + (Quote-WindowsArgument $script) + ' -InstallRoot ' + (Quote-WindowsArgument ([IO.Path]::GetFullPath($InstallRoot))) + ' -Foreground'
+# Process-scope override only: Task Scheduler doesn't inherit the registering
+# session's, and machine or user policy is never changed.
+$arguments = '-NoProfile -ExecutionPolicy Bypass -File ' + (Quote-WindowsArgument $script) + ' -InstallRoot ' + (Quote-WindowsArgument ([IO.Path]::GetFullPath($InstallRoot))) + ' -Foreground'
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 $suffix = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($InstallRoot))).Replace('/', '_').Replace('+', '-').TrimEnd('=')
 $name = 'Roboport-' + $suffix.Substring(0, [Math]::Min(100, $suffix.Length))
