@@ -1259,7 +1259,9 @@ class Component extends DCLogic {
   D.inspActions.addEventListener("click",e=>{const b=e.target.closest("[data-cmd]");if(b&&!b.disabled)command(b.dataset.cmd);});
   el("insp-close").addEventListener("click",clearSelection);
 
-  function onKey(e){if(e.key==="Tab"&&window.parent!==window)return;if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT")return;
+  function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.isContentEditable)return;
+    if(e.key==="Tab"&&window.parent!==window)return;
+    if(window.parent!==window&&["r","h"].includes(e.key.toLowerCase())){e.preventDefault();D.sr.textContent="Commands are unavailable in the read-only demo";return;}
     if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
     if(e.key==="Tab"){e.preventDefault();showSummary=!showSummary;return;}
     if(e.key==="Escape"){if(showSummary){showSummary=false;return;}clearSelection();return;}
@@ -1352,14 +1354,14 @@ class Component extends DCLogic {
     const disableCommands=()=>{for(const button of root.querySelectorAll('#btn-agent,#btn-queue,[data-cmd]:not([data-cmd="follow"]):not([data-cmd="focus"]):not([data-cmd="home"])')){
       if(!button.disabled)button.disabled=true;
       button.title="Commands are unavailable in the read-only demo";
-    }};
+    }for(const boost of root.querySelectorAll('.qboost')){boost.hidden=true;boost.style.display="none";boost.title="Priority commands are unavailable in the read-only demo";}};
     disableCommands();
     new MutationObserver(disableCommands).observe(root,{subtree:true,childList:true,attributes:true,attributeFilter:["disabled"]});
   }
   // END standalone-readonly
   layout();feed.onEnvelope(route);feed.connect();
 
-  let last=performance.now(),lastPanel=0,lastRec=0;
+  let last=performance.now(),lastPanel=0,lastRec=0,readySent=false;
   function step(now){
     if(replay)return;let dt=(now-last)/1000;last=now;if(dt>0.05)dt=0.05;
     const sdt=running?dt*simSpeed:0;
@@ -1368,7 +1370,7 @@ class Component extends DCLogic {
     if(now-lastPanel>110){refreshPanels();lastPanel=now;}
     if(now-lastRec>500){recordFrame();lastRec=now;}
   }
-  function rafLoop(now){step(now);requestAnimationFrame(rafLoop);}
+  function rafLoop(now){step(now);if(!readySent&&window.parent!==window){readySent=true;window.parent.postMessage({type:"roboport-demo-ready"},"*");}requestAnimationFrame(rafLoop);}
   requestAnimationFrame(rafLoop);
   setInterval(()=>{if(document.hidden)step(performance.now());},80);
 
