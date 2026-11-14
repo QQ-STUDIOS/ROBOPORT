@@ -49,12 +49,18 @@ const status={};net.el=()=>status;
 vm.runInNewContext(fn('feedLabel')+'\n'+fn('updateSourceLabel')+'\n'+src.slice(start,end)+'\nwindow.__feed=feed;',net);
 assert.equal(adapters,1);assert.equal(sse,0);assert.equal(fetches,0);
 assert.equal(status.textContent,'feed · live');
+const unavailable={...net,window:{},document:{getElementById:()=>status}};unavailable.window.parent=unavailable.window;
+assert.throws(()=>vm.runInNewContext(fn('feedLabel')+'\n'+fn('updateSourceLabel')+'\n'+src.slice(start,end),unavailable),/adapter unavailable/);
+assert(status.textContent.includes('No demo data has been substituted'));
 const posted=[];
 const ready={readySent:false,step(){throw Error('render failed');},requestAnimationFrame(){},window:{parent:{postMessage:m=>posted.push(m)}}};
-vm.createContext(ready);vm.runInContext(src.match(/function rafLoop\(now\)\{[^\n]+/)[0],ready);
+vm.createContext(ready);vm.runInContext(src.match(/function signalReady\(\)\{[^\n]+/)[0]+'\n'+src.match(/function rafLoop\(now\)\{[^\n]+/)[0],ready);
 assert.throws(()=>ready.rafLoop(0));assert.equal(posted.length,0);
 ready.step=()=>{};ready.rafLoop(1);ready.rafLoop(2);
 assert.equal(posted.length,1);assert.equal(posted[0].type,'roboport-demo-ready');
+ready.readySent=false;posted.length=0;ready.performance={now:()=>0};ready.feed={};
+vm.runInContext(src.slice(src.indexOf('    window.__feed=feed;'),src.indexOf('\n  }\n}',src.indexOf('    window.__feed=feed;'))),ready);
+assert.equal(posted.length,1,'readiness must not depend on a foreground animation callback');
 ''', encoding='utf-8')
     result = subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],
                             capture_output=True, text=True)

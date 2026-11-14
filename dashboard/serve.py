@@ -75,12 +75,14 @@ DEFAULT_PORT = 7474
 
 _clients: list[Any] = []   # list of wfile handles
 _clients_lock = threading.Lock()
+_watch_history: list[bytes] = []
 
 
 def _broadcast(event: dict) -> None:
     payload = f"data: {json.dumps(event, default=str)}\n\n"
     dead = []
     with _clients_lock:
+        _watch_history.append(payload.encode())
         for wf in list(_clients):
             try:
                 wf.write(payload.encode())
@@ -93,6 +95,11 @@ def _broadcast(event: dict) -> None:
 
 def _add_client(wf: Any) -> None:
     with _clients_lock:
+        # Replay and registration share the broadcast lock: a late watcher
+        # receives authoritative history once, before any new live envelopes.
+        for payload in _watch_history:
+            wf.write(payload)
+        wf.flush()
         _clients.append(wf)
 
 

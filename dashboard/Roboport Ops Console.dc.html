@@ -1928,7 +1928,8 @@ class Component extends DCLogic {
   el("insp-close").addEventListener("click",clearSelection);
 
   function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.isContentEditable)return;
-    if(window.parent!==window&&["r","h"].includes(e.key.toLowerCase())){e.preventDefault();D.sr.textContent="Commands are unavailable in the read-only demo";return;}
+    if(e.ctrlKey||e.metaKey||e.altKey)return;
+    if(window.parent!==window&&selected?.type==="agent"&&["r","h"].includes(e.key.toLowerCase())){e.preventDefault();D.sr.textContent="Commands are unavailable in the read-only console";return;}
     if(PROPS.embedded){const r0=document.getElementById("rbp");if(!r0||r0.offsetParent===null)return;if(e.key==="Tab")return;}
     if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
     if(e.key==="Tab"){e.preventDefault();showSummary=!showSummary;return;}
@@ -2012,6 +2013,7 @@ class Component extends DCLogic {
        ?drop (or ?live)       → file-drop a run.log onto the canvas (no server)
        default                → in-page mock backend (interactive) */
   const _q=new URLSearchParams(location.search),_api=_q.get("api");
+  if((_api||_q.has("live")||_q.has("drop"))&&!window.ROBOPORT_ADAPTER){document.getElementById("rbp").textContent="Requested feed is unavailable: feed_adapter.js did not load. No demo data has been substituted.";throw new Error("Requested feed adapter unavailable");}
   sourceMode=_api?"live":(_q.has("drop")||_q.has("live"))?"file":"demo";
   const backend=(window.ROBOPORT_ADAPTER&&(_api||_q.has("live")||_q.has("drop")))
     ? window.ROBOPORT_ADAPTER({apiUrl:_api||undefined})
@@ -2022,6 +2024,7 @@ class Component extends DCLogic {
   if(window.parent!==window){
     backend.handleCommand=cmd=>({command_id:cmd.command_id,status:"rejected",reason:"Read-only demo embedding; commands are unavailable"});
     const root=document.getElementById("rbp");
+    const readonlyHint=root.querySelector('.hint');if(readonlyHint)readonlyHint.textContent="Read-only console · commands are unavailable · Tab moves focus · click to inspect";
     const disableCommands=()=>{for(const button of root.querySelectorAll('#btn-agent,#btn-queue,[data-cmd]:not([data-cmd="follow"]):not([data-cmd="focus"]):not([data-cmd="home"])')){
       if(!button.disabled)button.disabled=true;
       button.title="Commands are unavailable in the read-only demo";
@@ -2041,7 +2044,8 @@ class Component extends DCLogic {
     if(now-lastPanel>110){refreshPanels();lastPanel=now;}
     if(now-lastRec>500){recordFrame();lastRec=now;}
   }
-  function rafLoop(now){step(now);if(!readySent&&window.parent!==window){readySent=true;window.parent.postMessage({type:"roboport-demo-ready"},"*");}requestAnimationFrame(rafLoop);}
+  function signalReady(){if(!readySent&&window.parent!==window){readySent=true;window.parent.postMessage({type:"roboport-demo-ready"},"*");}}
+  function rafLoop(now){step(now);signalReady();requestAnimationFrame(rafLoop);}
   requestAnimationFrame(rafLoop);
   setInterval(()=>{if(document.hidden)step(performance.now());},80);
 
@@ -2122,6 +2126,7 @@ class Component extends DCLogic {
   canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
   
     window.__feed=feed;
+    step(performance.now());signalReady();
   }
 }
 </script>
