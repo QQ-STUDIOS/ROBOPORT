@@ -400,6 +400,7 @@ function render() {
 
 function go(section) {
   if (!SECTIONS.includes(section)) section = "launch";
+  if (section === state.section && section === "fleet") return;
   if (location.hash !== "#" + section) history.pushState(null, "", "#" + section);
   state.section = section;
   render();
@@ -474,7 +475,12 @@ const ACTIONS = {
     $("plan-card").querySelector('[data-action="toggle-plan"]').focus();
   },
   "save-draft": saveDraft,
-  "fleet-mode": el => { state.fleetMode = el.dataset.mode; render(); },
+  "fleet-mode": el => {
+    if (state.fleetMode === el.dataset.mode) return;
+    state.fleetMode = el.dataset.mode;
+    render();
+    document.querySelector(`[data-action="fleet-mode"][data-mode="${state.fleetMode}"]`)?.focus();
+  },
 };
 
 function init() {
