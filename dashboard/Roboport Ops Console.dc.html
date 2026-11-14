@@ -1094,6 +1094,20 @@ class Component extends DCLogic {
     D.stnLoad.innerHTML=M.config.stations.map(s=>'<div class="stnrow" data-sid="'+s.station_id+'"><div class="nm"><span class="sd" style="color:'+s.hue+'"></span>'+s.name+'</div><div class="track"><i id="ld-'+s.station_id.replace(/\./g,"-")+'" style="width:0%;background:'+s.hue+';box-shadow:0 0 6px '+s.hue+'"></i></div><div class="q" id="q-'+s.station_id.replace(/\./g,"-")+'">—</div></div>').join("");
     el("stn-count").textContent=M.config.stations.length+" steps";
   }
+  function replaceRoster(html){
+    const roster=D.roster,scroll=roster.scrollTop,template=document.createElement('template');
+    template.innerHTML=html;
+    const existing=new Map([...roster.children].map(row=>[row.dataset.aid,row])),wanted=new Set();
+    let cursor=roster.firstElementChild;
+    for(const fresh of [...template.content.children]){
+      const id=fresh.dataset.aid,row=existing.get(id)||fresh;wanted.add(id);
+      if(row!==fresh){if(row.innerHTML!==fresh.innerHTML)row.innerHTML=fresh.innerHTML;row.className=fresh.className;row.setAttribute('aria-selected',fresh.getAttribute('aria-selected'));}
+      if(row!==cursor)roster.insertBefore(row,cursor);
+      cursor=row.nextElementSibling;
+    }
+    for(const row of existing.values())if(!wanted.has(row.dataset.aid))row.remove();
+    roster.scrollTop=scroll;
+  }
   function refreshPanels(){
     const m=M.metrics;
     D.rate.textContent=m.tasks_per_min;D.done.textContent=m.completed_total;D.active.textContent=m.active_agents+"/"+m.total_agents;
@@ -1101,11 +1115,11 @@ class Component extends DCLogic {
     D.dDone.textContent=(doneDelta>0?"▲ +"+doneDelta:"· steady")+"/min";D.dDone.className="delta"+(doneDelta>0?" up":"");
     const s=m.uptime_s;D.up.textContent=String((s/60)|0).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
     D.rosterCount.textContent=M.agents.size;
-    D.roster.innerHTML=[...M.agents.values()].map(a=>{
+    replaceRoster([...M.agents.values()].map(a=>{
       const col=stateColor(a),sc=(selected&&selected.type==="agent"&&selected.id===a.agent_id)?" sel":"";
       const tokPct=Math.round((a.tokens_used||0)/(a.token_budget||60000)*100),tokWarn=tokPct>85;
       return'<div class="agent'+sc+'" role="option" tabindex="0" data-aid="'+a.agent_id+'" aria-selected="'+(sc?"true":"false")+'"><span class="pip" style="color:'+col+';background:'+col+'"></span><div class="who"><div class="name">'+a.agent_id+(a.hold?'<span class="lock">⏸</span>':'')+'</div><div class="act">'+actLabel(a)+'</div></div><div class="cell"><div class="bar"><i style="width:'+a.energy+'%;background:'+ecolor(a.energy)+';box-shadow:0 0 6px '+ecolor(a.energy)+'"></i></div><div class="pct">'+Math.round(a.energy)+'%</div><div class="bar" style="margin-top:2px"><i style="width:'+tokPct+'%;background:'+(tokWarn?T.alert:T.steelDim)+'"></i></div></div></div>';
-    }).join("");
+    }).join(""));
     if(logDirty){D.log.innerHTML=logEntries.map(e=>'<div class="logline"><span class="t">'+e.t+'</span><span class="m">'+e.html+'</span></div>').join("");logDirty=false;}
     renderQueue();renderTelemetry();if(incDirty)renderIncidents();if(selected)renderInspector();
     el("btn-agent").disabled=M.config&&M.agents.size>=M.config.max_agents;
@@ -1259,7 +1273,11 @@ class Component extends DCLogic {
   D.inspActions.addEventListener("click",e=>{const b=e.target.closest("[data-cmd]");if(b&&!b.disabled)command(b.dataset.cmd);});
   el("insp-close").addEventListener("click",clearSelection);
 
-  function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT")return;
+  function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.isContentEditable)return;
+    if(e.key==="Tab"&&window.parent!==window)return;
+    if(e.ctrlKey||e.metaKey||e.altKey)return;
+    if(e.code==="Space"&&e.target.closest?.("button,a,[role=button],[role=option]"))return;
+    if(window.parent!==window&&selected?.type==="agent"&&["r","h"].includes(e.key.toLowerCase())){e.preventDefault();D.sr.textContent="Commands are unavailable in the read-only console";return;}
     if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
     if(e.key==="Tab"){e.preventDefault();showSummary=!showSummary;return;}
     if(e.key==="Escape"){if(showSummary){showSummary=false;return;}clearSelection();return;}
@@ -1345,9 +1363,24 @@ class Component extends DCLogic {
     ? window.ROBOPORT_ADAPTER({apiUrl:_api||undefined})
     : createMockBackend();
   const feed=createFeed(backend);
+  // BEGIN standalone-readonly
+  if(window.parent!==window){
+    backend.handleCommand=cmd=>({command_id:cmd.command_id,status:"rejected",reason:"Read-only demo embedding; commands are unavailable"});
+    const root=document.getElementById("rbp");
+    document.addEventListener('drop',e=>{if(rejectEmbeddedImport(e))e.stopImmediatePropagation();},true);
+    const readonlyHint=root.querySelector('.hint');if(readonlyHint)readonlyHint.textContent="Read-only demo · commands and run imports are unavailable · Tab moves focus · click to inspect";
+    const fileInput=root.querySelector('#run-file-input');if(fileInput){fileInput.disabled=true;const label=fileInput.closest?.('label');if(label){label.hidden=true;label.style.display="none";}}
+    const disableCommands=()=>{for(const button of root.querySelectorAll('#btn-agent,#btn-queue,[data-cmd]:not([data-cmd="follow"]):not([data-cmd="focus"]):not([data-cmd="home"])')){
+      if(!button.disabled)button.disabled=true;
+      button.title="Commands are unavailable in the read-only demo";
+    }for(const boost of root.querySelectorAll('.qboost')){boost.hidden=true;boost.style.display="none";boost.title="Priority commands are unavailable in the read-only demo";}};
+    disableCommands();
+    new MutationObserver(disableCommands).observe(root,{subtree:true,childList:true,attributes:true,attributeFilter:["disabled"]});
+  }
+  // END standalone-readonly
   layout();feed.onEnvelope(route);feed.connect();
 
-  let last=performance.now(),lastPanel=0,lastRec=0;
+  let last=performance.now(),lastPanel=0,lastRec=0,readySent=false;
   function step(now){
     if(replay)return;let dt=(now-last)/1000;last=now;if(dt>0.05)dt=0.05;
     const sdt=running?dt*simSpeed:0;
@@ -1356,7 +1389,8 @@ class Component extends DCLogic {
     if(now-lastPanel>110){refreshPanels();lastPanel=now;}
     if(now-lastRec>500){recordFrame();lastRec=now;}
   }
-  function rafLoop(now){step(now);requestAnimationFrame(rafLoop);}
+  function signalReady(){if(!readySent&&window.parent!==window){readySent=true;window.parent.postMessage({type:"roboport-demo-ready"},"*");}}
+  function rafLoop(now){step(now);signalReady();requestAnimationFrame(rafLoop);}
   requestAnimationFrame(rafLoop);
   setInterval(()=>{if(document.hidden)step(performance.now());},80);
 
@@ -1430,11 +1464,18 @@ class Component extends DCLogic {
     }
     if(!files.length)pushLog('<span style="color:var(--work)">no files selected</span>');
   }
-  document.getElementById('run-file-input').addEventListener('change',e=>{loadRunFiles([...e.target.files]);e.target.value='';});
+  function rejectEmbeddedImport(e){
+    if(window.parent===window)return false;
+    e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='none';canvas.style.outline='';
+    const notice="Run imports are unavailable in embedded consoles; open the standalone viewer.";
+    if(D.sr.textContent!==notice)D.sr.textContent=notice;const hint=root.querySelector('.hint');if(hint&&hint.textContent!==notice)hint.textContent=notice;
+    return true;
+  }
+  document.getElementById('run-file-input').addEventListener('change',e=>{if(rejectEmbeddedImport(e)){e.target.value='';return;}loadRunFiles([...e.target.files]);e.target.value='';});
   // Canvas drop zone for run files
-  canvas.addEventListener('dragover',e=>{e.preventDefault();canvas.style.outline='2px dashed #4fd672';});
+  canvas.addEventListener('dragover',e=>{if(rejectEmbeddedImport(e))return;e.preventDefault();canvas.style.outline='2px dashed #4fd672';});
   canvas.addEventListener('dragleave',()=>{canvas.style.outline='';});
-  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
+  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';if(rejectEmbeddedImport(e))return;const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
   // SSE live mode: ?api=http://localhost:7474
   const API_BASE=new URLSearchParams(location.search).get('api')||null;
   if(API_BASE){
@@ -1448,6 +1489,7 @@ class Component extends DCLogic {
   }
   
     window.__feed=feed;
+    step(performance.now());signalReady();
   }
 }
 </script>
