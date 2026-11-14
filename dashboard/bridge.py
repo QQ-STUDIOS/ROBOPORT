@@ -43,7 +43,10 @@ _subscribers: list = []
 _subscribers_lock = threading.Lock()
 _history: list = []            # every broadcast envelope, replayed to new clients
 _HISTORY_CAP = 8000
-from feed_state import SnapshotStore
+try:
+    from .feed_state import SnapshotStore
+except ImportError:  # Direct execution: python dashboard/bridge.py
+    from feed_state import SnapshotStore
 _snapshot_store = SnapshotStore(_HISTORY_CAP)
 _seq = 0
 _seq_lock = threading.Lock()
