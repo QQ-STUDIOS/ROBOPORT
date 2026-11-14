@@ -81,11 +81,11 @@ def call_grader(
         + "\n".join(f"- {e}" for e in expectations)
         + "\n\nPLAN\n" + _read_json(plan_path)
         + "\n\nFINAL OUTPUT\n" + _read_json(final_output_path)
-        + "\n\nSTEP OUTPUTS (by step id)\n" + _step_outputs(outputs_dir)
         + "\n\nRUN LOG (JSONL)\n" + _read(transcript_path)
         + "\n\nGrade each expectation. PASS only with concrete evidence from "
           "the artifacts. FAIL on contradiction. INCONCLUSIVE when artifacts "
-          "are insufficient. pass_rate = PASS / total. blocker_failed=true "
+          "are insufficient. If STEP OUTPUTS are absent, do not PASS expectations "
+          "requiring them. pass_rate = PASS / total. blocker_failed=true "
           "if any FAIL is on a blocker-class expectation. JSON ONLY."
     )
 
@@ -103,9 +103,18 @@ def call_grader(
                      'and, for performance proposals, at least three matched before/after runs in the proposed validation. '
                      'FAIL on contradiction or omitted requirements; INCONCLUSIVE if needed source is missing. '
                      'Do not treat a proposed benchmark as an executed measurement.')
+        # Step outputs are supporting evidence for expectations about
+        # intermediate agents. Add them only when the prompt still fits the
+        # context ceiling, so they never make an otherwise gradable run fail;
+        # without them, such an expectation is INCONCLUSIVE, never a PASS.
+        with_steps = user + "\n\nSTEP OUTPUTS (by step id)\n" + _step_outputs(outputs_dir)
+        omitted = user + "\n\nSTEP OUTPUTS\n(omitted: they would exceed the context ceiling)"
         result = call_model_json(
             system_spec=system_spec,
-            user_prompt=user,
+            user_prompt=with_steps,
+            # The notice is optional too: a fitting base must not overflow
+            # just because the notice cannot fit. Required evidence stays intact.
+            user_prompt_fallbacks=[omitted, user],
             model_hint="reasoning-strong",
             schema=GRADING_SCHEMA,
         )

@@ -124,13 +124,48 @@ def request_timeout(default: float = 60) -> float:
     return min(default, b.remaining_seconds()) if b else default
 
 
-def governed_chat(p, **kwargs) -> dict:
+def local_prompt_ceiling(kwargs: dict) -> int:
+    """Conservative input size of a local call: UTF-8 bytes of the request
+    (an upper bound for the deployed byte-fallback tokenizer) plus a chat and
+    tool template allowance."""
+    return len(json.dumps(kwargs, ensure_ascii=False).encode('utf-8')) + 1024
+
+
+def fits_local_context(*, config: dict | None = None, **kwargs) -> bool:
+    """Whether a call would pass governed_chat's local context check."""
+    from .config import load_runtime_config
+    defaults = (load_runtime_config() if config is None else config).get('defaults') or {}
+    completion = int(defaults.get('max_tokens', 2048))
+    return local_prompt_ceiling(kwargs) + completion <= int(defaults.get('context_tokens', 8192))
+
+
+def governed_chat(p, *, message_fallbacks: list[list[dict]] | None = None, **kwargs) -> dict:
     # A routing wrapper picks its concrete backend and model first, so the
     # call is reserved and dispatched against the same provider and model.
     routed = p.select(kwargs['model_hint']) if hasattr(p, 'select') else None
     if routed is not None:
         p, model, decision = routed
         kwargs['model'] = model
+    selected_prompt = None
+    if message_fallbacks is not None:
+        # Pick evidence at the dispatch boundary, after routing pins the model.
+        # Every candidate includes all required evidence; only supporting
+        # evidence/notices may be omitted. Never truncate artifacts to fit.
+        defaults = (getattr(p, 'config', {}).get('defaults') or {})
+        completion = int(defaults.get('max_tokens', 2048))
+        context = int(defaults.get('context_tokens', 8192))
+        for messages in [kwargs['messages'], *message_fallbacks]:
+            kwargs['messages'] = messages
+            if p.name in ('ollama', 'fault'):
+                selected_prompt = local_prompt_ceiling(kwargs)
+            elif p.name == 'anthropic':
+                selected_prompt = p.count_input_tokens(**kwargs)
+            else:
+                raise BudgetExceeded('provider has no enforceable paid token/price contract')
+            if selected_prompt + completion <= context:
+                break
+        else:
+            raise BudgetExceeded('input exceeds configured context ceiling')
     scope = _step_calls.get()
     if scope is not None:
         if scope[0] >= scope[1]:
@@ -149,11 +184,13 @@ def governed_chat(p, **kwargs) -> dict:
         defaults = config.get('defaults') or {}
         completion = int(defaults.get('max_tokens', 2048))
         context = int(defaults.get('context_tokens', 8192))
-        if local:
-            # UTF-8 byte count is conservative for the deployed byte-fallback
-            # tokenizer. Include chat/tool template allowance; reject oversized
-            # context rather than silently truncating evidence.
-            prompt = len(json.dumps(kwargs, ensure_ascii=False).encode('utf-8')) + 1024
+        if selected_prompt is not None:
+            # Reuse the count for the exact selected request, including paid
+            # token counts, rather than calling the token-count endpoint twice.
+            prompt = selected_prompt
+        elif local:
+            # Reject oversized context rather than silently truncating evidence.
+            prompt = local_prompt_ceiling(kwargs)
         else:
             prompt = p.count_input_tokens(**kwargs)
         if prompt + completion > context:
