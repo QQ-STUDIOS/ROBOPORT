@@ -169,3 +169,37 @@ def test_pointer_evidence_preserves_escaped_keys_and_false_values(tmp_path, monk
         result = grader.call_grader(['The supplied boolean is false.'], None, tmp_path)
     assert result['pass_rate'] == 1 and not result['review_required']
     assert result['results'][0]['citations'][0]['quote'] == 'false'
+
+
+@pytest.mark.parametrize('records', [1, 2])
+def test_jsonl_log_pointers_always_address_an_array(tmp_path, monkeypatch, records):
+    log = tmp_path / 'run.log'
+    log.write_text('\n'.join(json.dumps({'event': 'step_done'}) for _ in range(records)))
+    response = {'results': [{'expectation_id': 0, 'finding': 'SUPPORTED',
+                             'citations': [{'source': 'run_log', 'pointer': '/0/event'}]}]}
+    backend = AssessmentBackend([response, response])
+    monkeypatch.setattr(client, 'provider', lambda: backend)
+    with budget.run_budget(budget.RunBudget({})):
+        result = grader.call_grader(['A step completed'], log, tmp_path)
+    assert result['pass_rate'] == 1 and not result['review_required']
+
+
+def test_schema_rejected_provider_response_is_retained(tmp_path, monkeypatch):
+    response = assessment(expectation_id=9)
+    result, _ = run_grade(tmp_path, monkeypatch, [response])
+    attempts = result['verification']['attempts']
+    assert result['review_required'] and len(attempts) == 1
+    assert json.loads(attempts[0]['raw_response']) == response
+    assert attempts[0]['validated'] is False and attempts[0]['error']
+
+
+@pytest.mark.parametrize('raw', ['not JSON', '{"results":[]}'])
+def test_unparseable_or_wrong_count_response_keeps_raw_audit(tmp_path, monkeypatch, raw):
+    backend = AssessmentBackend([])
+    backend.chat_with_tools = lambda **kwargs: {'content': raw, 'usage': {'cost_usd': 0}}
+    monkeypatch.setattr(client, 'provider', lambda: backend)
+    with budget.run_budget(budget.RunBudget({})):
+        result = grader.call_grader(['Required work completed'], None, tmp_path)
+    assert result['review_required'] and result['blocker_failed']
+    assert result['verification']['attempts'][0]['raw_response'] == raw
+    assert result['verification']['attempts'][0]['error']

@@ -21,8 +21,9 @@ class ArtifactProvider(Provider):
     name = 'fault'
     config = {'defaults': {'context_tokens': 65536, 'max_tokens': 4096}}
 
-    def __init__(self, *, tamper=False, bad_repair=False, bad_timestamp=False):
+    def __init__(self, *, tamper=False, bad_repair=False, bad_timestamp=False, step_ids=None):
         self.requests = []
+        self.step_ids = step_ids
         self.tamper = tamper
         self.bad_timestamp = bad_timestamp
         self.bad_repair = bad_repair
@@ -38,6 +39,9 @@ class ArtifactProvider(Provider):
                                 for i, (sid, owner, kind) in enumerate([
                                     ('clean', 'data_engineering', 'CleanedDataset'),
                                     ('report', 'reporting', 'DataReport')])]}
+            if self.step_ids:
+                for step, sid in zip(output['steps'], self.step_ids):
+                    step['id'] = sid
         else:
             source_line = next(line for line in prompt.splitlines() if line.startswith('input: '))
             grounds = json.loads(source_line.removeprefix('input: '))['dataops_grounding']
@@ -137,3 +141,19 @@ def test_failed_timestamp_repair_cannot_be_overwritten_by_grounding_pass(tmp_pat
     assert outcome['status'] == 'failed'
     assert outcome['step_failed'] == 'report'
 
+
+
+@pytest.mark.parametrize('ids', [('same', 'same'), ('schema_failure_probe', 'report')])
+def test_colliding_plan_ids_rejected_before_any_execution(tmp_path, monkeypatch, ids):
+    outcome, provider = execute(tmp_path, monkeypatch, 3, step_ids=ids)
+    assert outcome['status'] == 'failed'
+    assert len(provider.requests) == 1
+    assert not (tmp_path / 'steps').exists()
+
+
+def test_offline_dataops_preserves_synthetic_mode(tmp_path):
+    import subprocess
+    result = subprocess.run([sys.executable, 'scripts/benchmark.py', '--target', 'dataops_crew',
+                             '--eval-set', 'evals/dataops_evals.json', '--runs', '1', '--grade',
+                             '--out', str(tmp_path / 'offline')], cwd=REPO, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr

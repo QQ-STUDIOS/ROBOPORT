@@ -109,13 +109,15 @@ def call_grader(
             # IO errors must fail closed, not become apparent artifact evidence.
             try:
                 text = path.read_text(encoding='utf-8')
-                if name != 'run_log':
+                if name == 'run_log':
+                    text = json.dumps([json.loads(line) for line in text.splitlines() if line.strip()], ensure_ascii=False, separators=(',', ':'))
+                else:
                     try:
                         text = json.dumps(json.loads(text), ensure_ascii=False, separators=(',', ':'), allow_nan=False)
                     except (ValueError, TypeError):
                         pass
                 sources[name] = text
-            except (OSError, UnicodeError):
+            except (OSError, UnicodeError, ValueError):
                 pass
     sources['steps'] = _step_outputs(outputs_dir)
     assessments = []
@@ -159,11 +161,19 @@ def call_grader(
                 delivered_sources.update({name: text for name, text in sources.items()
                                           if name != 'steps' or prompt == with_steps})
 
+            attempt = {'validated': False}
+
+            def response_observer(content):
+                attempt['raw_response'] = content
+                attempts.append(attempt)
+
             result = call_model_json(system_spec=system_spec, user_prompt=with_steps,
                                      user_prompt_fallbacks=[omitted, user],
                                      model_hint='reasoning-strong', schema=response_schema,
-                                     prompt_selected=prompt_selected)
-            attempts.append({'response': result, 'validated': False})
+                                     prompt_selected=prompt_selected, response_observer=response_observer)
+            if not attempts or attempts[-1] is not attempt:
+                attempts.append(attempt)
+            attempt['response'] = result
             indexed = _validate_assessment(result, expectations, delivered_sources)
             attempts[-1]['validated'] = True
             assessments.append(indexed)
@@ -182,6 +192,8 @@ def call_grader(
                          'citations': citations, 'assessments': [first, second]})
     except Exception as exc:  # provider/schema/context failures never retain a provisional PASS
         review_required = True
+        if attempts and not attempts[-1]['validated']:
+            attempts[-1]['error'] = repr(exc)
         critiques.append(f'grader error: {exc!r}')
         rows = [{'expectation': ex, 'verdict': 'INCONCLUSIVE',
                  'evidence': f'Grading could not be verified: {exc!r}', 'citations': [],

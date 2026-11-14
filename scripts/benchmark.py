@@ -193,7 +193,7 @@ def _safe_step_id(sid) -> bool:
 
 
 def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=None,
-            config: dict | None = None, defer_completion: bool = False) -> dict:
+            config: dict | None = None, defer_completion: bool = False, live: bool = False) -> dict:
     """Execute a single (eval × run) pair. Returns a small summary.
 
     If `feed` (a roboport_runtime.feed_log.FeedLog) is provided, the run also
@@ -215,12 +215,25 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
 
     context = {**eval_obj.get("context", {}), "target": crew}
     dataops = None
-    if crew == 'dataops_crew':
+    if crew == 'dataops_crew' and live:
         from roboport_runtime.dataops import prepare_context
         context['data_source'] = eval_obj.get('data_source', context.get('data_source'))
         dataops = prepare_context(context, run_dir / 'artifacts')
         context['artifact_facts'] = dataops['facts']
     plan = call_planner(eval_obj["prompt"], context=context, registry=registry)
+    unsafe = [s.get("id") if isinstance(s, dict) else s for s in plan.get("steps", [])
+              if not isinstance(s, dict) or not _safe_step_id(s.get("id"))]
+    ids = [step.get('id') for step in plan.get('steps', []) if isinstance(step, dict)]
+    if not unsafe and (len(ids) != len(set(ids)) or (dataops is not None and 'schema_failure_probe' in ids)):
+        unsafe = ['duplicate or reserved step IDs']
+    if unsafe:
+        error = f"plan rejected: unsafe step id(s) {unsafe!r}"
+        if run_log is not None and not defer_completion:
+            run_log.run_complete(_run_summary([], 0, 0, _t_run, _time))
+        (run_dir / "final_output.json").write_text(json.dumps({"status": "failed", "error": error}, indent=2))
+        return {"status": "failed", "step_failed": None, "error": error, "steps": [],
+                "run_summary": _run_summary([], 0, 0, _t_run, _time)}
+
     if dataops is not None:
         expected = [('data_engineering', 'CleanedDataset'), ('reporting', 'DataReport')]
         if [(s.get('owner'), s.get('output_type')) for s in plan['steps']] != expected:
@@ -240,15 +253,6 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
                            'expected_failure': True, 'report_produced': False,
                            'repair_attempts': probe['repair_attempts'], 'llm_calls': probe['llm_calls']})
 
-    unsafe = [s.get("id") if isinstance(s, dict) else s for s in plan.get("steps", [])
-              if not isinstance(s, dict) or not _safe_step_id(s.get("id"))]
-    if unsafe:
-        error = f"plan rejected: unsafe step id(s) {unsafe!r}"
-        if run_log is not None and not defer_completion:
-            run_log.run_complete(_run_summary([], 0, 0, _t_run, _time))
-        (run_dir / "final_output.json").write_text(json.dumps({"status": "failed", "error": error}, indent=2))
-        return {"status": "failed", "step_failed": None, "error": error, "steps": [],
-                "run_summary": _run_summary([], 0, 0, _t_run, _time)}
 
     if feed is not None:
         from roboport_runtime.feed_log import stations_from_plan  # lazy
@@ -385,7 +389,7 @@ def execute_run(ev: dict, run_dir: Path, registry: dict, *, config: dict, live: 
     grading = None
     with run_budget(budget):
         try:
-            outcome = run_one(ev, run_dir, registry, config=config, feed=feed, run_log=run_log, defer_completion=True)
+            outcome = run_one(ev, run_dir, registry, config=config, feed=feed, run_log=run_log, defer_completion=True, live=live)
             budget.remaining_seconds()
             if grade and outcome['status'] == 'ok':
                 grading = call_grader(ev['expectations'], run_dir / 'run.log', run_dir, blockers=ev.get('blockers'))
