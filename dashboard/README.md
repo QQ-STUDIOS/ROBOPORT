@@ -20,6 +20,14 @@ Orchestrator ──► run_log.jsonl ──► bridge.py (SSE) ──► feed_ad
 > wired (`feed_adapter.js` is loaded in `<head>`, and the backend line selects
 > live-vs-mock from the URL), so no edits are needed to run it.
 
+> **Launch Pad console.** `launchpad.html` + `assets/launchpad.{css,js}`,
+> `assets/state.js`, `assets/fleet.js` and `assets/review.js` are the governed
+> operator console served by `bridge.py` on 127.0.0.1:4242 (the Windows
+> deployment). Its layout implements the Claude Design document *Roboport
+> Launch Pad*, adapted to the gateway's strict CSP (no inline script or style,
+> no remote assets). `opsconsole.html` is generated from the *Ops Console*
+> design by `scripts/build_opsconsole.py`; rerun it instead of editing the output.
+
 ## One command (Docker)
 
 ```bash

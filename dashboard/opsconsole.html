@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Roboport · Ops Console</title>
+<link rel="stylesheet" href="/assets/opsconsole.css" />
+<script src="/assets/opsconsole.js" defer></script>
+</head>
+<body>
+<div id="rbp">
+<div class="app">
+  <header class="hud">
+    <div class="brand">
+      <div class="mark"></div>
+      <div class="tt"><h1>ROBOPORT</h1><div class="sub">fleet operations console</div></div>
+      <span class="feedbadge"><span class="d"></span><span id="feed-status">feed · gateway</span></span>
+    </div>
+    <div class="viewtog" role="tablist" aria-label="Stage view"><button class="vt on" data-view="port" role="tab">◎ Port</button><button class="vt" data-view="flow" role="tab">⇶ Flow</button><button class="vt" data-view="dag" role="tab">⬡ DAG</button><button class="vt" data-view="apg" role="tab">◈ APG</button></div>
+    <div class="kpis">
+      <div class="kpi"><div class="vrow"><span class="v" id="s-rate">0</span><span class="u">/min</span></div><span class="k">throughput</span><canvas class="spark" id="spark-rate" width="180" height="36"></canvas></div>
+      <div class="kpi"><div class="vrow"><span class="v" id="s-done">0</span></div><span class="k">completed</span><span class="delta" id="d-done">—</span></div>
+      <div class="kpi"><div class="vrow"><span class="v" id="s-active">0/0</span></div><span class="k">active fleet</span></div>
+      <div class="kpi"><div class="vrow"><span class="v" id="s-queue">0</span></div><span class="k">queued</span><canvas class="spark" id="spark-queue" width="180" height="36"></canvas><span id="q-eta" style="font-size:8px;color:var(--alert);letter-spacing:.5px;display:block;margin-top:2px"></span></div>
+      <div class="kpi"><div class="vrow"><span class="v" id="s-up">00:00</span></div><span class="k">uptime</span></div>
+    </div>
+  </header>
+
+  <aside class="rail left">
+    <div class="card">
+      <h3>Fleet health</h3>
+      <div class="health">
+        <div class="donutwrap"><canvas id="util-donut" width="168" height="168"></canvas><div class="ctr"><span class="pc" id="util-pc">0%</span><span class="lb">working</span></div></div>
+        <div class="hmeta"><div class="hm"><span class="b" id="hm-active">0</span><span class="s">active<br/>fleet</span></div><div class="hm"><span class="b" id="hm-queue">0</span><span class="s">tasks<br/>queued</span></div></div>
+      </div>
+      <div class="statecounts" id="state-counts"></div>
+    </div>
+    <div class="card grow">
+      <h3>Agents <span class="count" id="roster-count">0</span></h3>
+      <div class="listscroll" id="roster" role="listbox" aria-label="Agent fleet" tabindex="0"></div>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <canvas id="rbp-c" aria-hidden="true"></canvas>
+    <div class="legend" aria-hidden="true">
+      <span class="it"><span class="sw" style="color:var(--dispatch)"></span>dispatched</span>
+      <span class="it"><span class="sw" style="color:var(--work)"></span>working</span>
+      <span class="it"><span class="sw" style="color:var(--return)"></span>returning</span>
+      <span class="it"><span class="sw" style="color:var(--dock)"></span>docked</span>
+      <span class="it"><span class="sw" style="color:var(--alert)"></span>low cell</span>
+    </div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div class="tip" id="tip"></div>
+    <div class="wire" id="wire">
+      <div class="wire-h" id="wire-h"><span class="d"></span><span class="t">wire · launch pad</span><span class="c" id="wire-c">seq 0</span></div>
+      <div class="wire-b" id="wire-b"></div>
+    </div>
+    <aside class="inspector" id="inspector" role="region" aria-label="Selection inspector">
+      <div class="insp-head"><span class="ring" id="insp-ring"></span><div class="ttl"><div class="n" id="insp-name">—</div><div class="ty" id="insp-type">—</div></div><button class="x" id="insp-close" aria-label="Clear selection">✕</button></div>
+      <div class="insp-body" id="insp-body"></div>
+      <div class="insp-actions" id="insp-actions"></div>
+    </aside>
+    <div class="replaybar" id="replaybar"><span class="rl" id="rl-state">⏱ Replay</span><input type="range" id="rl-scrub" min="0" max="0" value="0" aria-label="Replay timeline" /><span class="rt" id="rl-time">--:--</span><button class="rl-x" id="rl-exit">return to live ▸</button></div>
+    <div class="qstrip"><span class="ql">queue</span><div class="qchips" id="qchips"></div></div>
+  </main>
+
+  <aside class="rail right">
+    <div class="railscroll">
+      <div class="card">
+        <h3><span class="tick"></span>Throughput trend</h3>
+        <div class="thru"><span class="big" id="thru-big">0</span><span class="un">tasks/min</span><span class="peak">peak <b id="thru-peak">0</b><br/>completed <b id="thru-done">0</b></span></div>
+        <canvas class="bigspark" id="spark-throughput" width="600" height="92"></canvas>
+        <div id="thru-delta" style="font-size:9px;color:var(--steel-dim);margin-top:5px;letter-spacing:.5px">—</div>
+      </div>
+      <div class="card">
+        <h3>Reliability · SLA <span class="count" id="sla-rate">100%</span></h3>
+        <div class="sla"><div class="slacells"><div class="slc"><span class="b" id="sla-ok">0</span><span class="s">completed</span></div><div class="slc"><span class="b bad" id="sla-fail">0</span><span class="s">failed</span></div><div class="slc"><span class="b" id="sla-p95">0ms</span><span class="s">p95 latency</span></div></div><div class="slabar"><i id="sla-bar" style="width:100%"></i><span class="slamark"></span></div><div class="slacap" id="sla-cap"><span id="sla-status">all green</span> · target <span id="sla-tgt">99</span>%&thinsp;<button class="sla-thr-btn" id="sla-dn" title="Lower SLA target">−</button><button class="sla-thr-btn" id="sla-up" title="Raise SLA target">+</button></div></div>
+      </div>
+      <div class="card">
+        <h3>Station load <span class="count" id="stn-count">7 steps</span></h3>
+        <div id="stn-load"></div>
+      </div>
+      <div class="card">
+        <h3>Incidents <span class="count" id="inc-count">0</span></h3>
+        <div id="incidents"></div>
+      </div>
+      <div class="card grow">
+        <h3>Activity</h3>
+        <div class="listscroll" id="log" aria-live="off"></div>
+      </div>
+    </div>
+  </aside>
+
+  <footer class="dock">
+    <button class="btn primary" id="btn-play"><span class="ic"></span><span id="play-label">Pause</span></button>
+    <button class="btn" id="btn-agent">+ Agent</button>
+    <button class="btn" id="btn-replay">⏱ Replay</button><button class="btn" id="btn-export" title="Download metrics CSV">↓ Export</button><button class="btn" id="btn-summary" title="Session debrief (Tab)">⊞ Summary</button><button class="btn" id="btn-zoom" title="Zoom out to multi-port (scroll wheel or +/-)">&#9633; 100%</button><label class="btn" title="Load a ROBOPORT run (run_log.jsonl, plan.json, steps/*.json)" style="cursor:pointer">↑ Load Run<input type="file" id="run-file-input" multiple accept=".json,.jsonl" style="display:none"></label>
+    <div class="injector"><label for="task-station">Queue task to</label><select id="task-station" aria-label="Target station"></select><button class="queue" id="btn-queue">Queue</button></div>
+    <div class="speed"><label for="speed">Speed</label><input type="range" id="speed" min="0.25" max="3" step="0.25" value="1" /><output id="speed-out">1.0×</output></div>
+    <div class="hint">click agent/station/hub to inspect &amp; command · <b>↑↓</b> select · <b>R</b> recall · <b>H</b> hold · <b>Space</b> pause · <b>Tab</b> summary · <b>wheel</b> zoom · <b>drag</b> pan · <b>dbl-click</b> focus · <b>F</b> follow · <b>0</b> reset zoom · <b>Esc</b> clear</div>
+  </footer>
+</div>
+<div class="sr-only" id="sr" aria-live="polite"></div>
+</div>
+</body>
+</html>

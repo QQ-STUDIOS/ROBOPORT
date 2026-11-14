@@ -896,8 +896,21 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
 }
 
 
+# The only REA capability admitted in the first deployment profile.
+from .rea import analyze_project
+TOOL_FNS['rea_analyze_project'] = analyze_project
+TOOL_SCHEMAS['rea_analyze_project'] = {
+    'type': 'function', 'function': {'name': 'rea_analyze_project',
+    'description': 'Analyze an approved local JavaScript project statically; returns evidence references and limitations. No target code executes.',
+    'parameters': {'type': 'object', 'required': ['project_path'], 'additionalProperties': False,
+                   'properties': {'project_path': {'type': 'string'}}}}}
+
 def dispatch(name: str, arguments: dict[str, Any]) -> Any:
     """Execute a tool call. Returns a JSON-serializable result or an error dict."""
+    from .config import load_runtime_config
+    scope = load_runtime_config().get('launchpad_scope')
+    if scope is not None and name not in scope.get('tools', []):
+        return {'error': f'tool {name!r} not approved for this mission'}
     fn = TOOL_FNS.get(name)
     if fn is None:
         return {"error": f"unknown tool: {name}"}
@@ -915,7 +928,6 @@ def schemas_for(allowed: list[str]) -> list[dict]:
 
 def load_agent_tool_map() -> dict[str, list[str]]:
     """Read config/agent_config.yaml -> {agent_id: [tool_name, ...]}."""
-    import yaml  # local import: yaml only needed when --live
-
-    cfg = yaml.safe_load((REPO / "config" / "agent_config.yaml").read_text(encoding="utf-8"))
+    from .config import load_runtime_config
+    cfg = load_runtime_config(REPO)
     return {k: list(v or []) for k, v in (cfg.get("tools") or {}).items()}

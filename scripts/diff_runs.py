@@ -49,6 +49,17 @@ from typing import Any, Optional
 REPO = Path(__file__).resolve().parent.parent
 OUTPUT_SCHEMA = REPO / "resources" / "schemas" / "output.schema.json"
 
+
+def _output_schema() -> dict:
+    """Core output contracts plus station packs'; the core file alone if packs fail."""
+    try:
+        sys.path.insert(0, str(REPO / "scripts"))
+        from station_packs import load_output_schema
+
+        return load_output_schema(REPO)
+    except (ImportError, OSError, ValueError):
+        return _load_json(OUTPUT_SCHEMA) or {}
+
 # Severity ordering — higher wins when rolling up a step / the whole run.
 SEV_ORDER = {"info": 0, "warning": 1, "regression": 2, "inconclusive": 3}
 
@@ -152,7 +163,7 @@ def _schema_validity(instance: Any, output_type: Optional[str]) -> Optional[bool
         import jsonschema  # type: ignore
     except ImportError:
         return None
-    full = _load_json(OUTPUT_SCHEMA) or {}
+    full = _output_schema()
     defs = full.get("definitions") or {}
     if output_type not in defs:
         return None
@@ -197,7 +208,7 @@ def _collect_stable(schema: Any, defs: dict, instance: Any,
 def _stable_field_signals(baseline: "Run", candidate: "Run") -> list[dict]:
     """A stable field that changed value between runs is a warning — the strongest
     *content* signal, between hard criteria/schema regressions and volatile prose."""
-    full = _load_json(OUTPUT_SCHEMA) or {}
+    full = _output_schema()
     defs = full.get("definitions") or {}
     ot = candidate.final_output_type or baseline.final_output_type
     if not ot or ot not in defs:

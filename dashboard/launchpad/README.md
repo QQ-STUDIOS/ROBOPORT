@@ -6,6 +6,10 @@ implemented from the Claude Design handoff (`Roboport Launch Pad.dc.html`).
 Everything runs on **labelled demo fixtures**. No gateway calls are made, no command buttons
 mutate anything, and every unavailable action is rendered disabled with the exact reason.
 
+This static demo is separate from the live, authenticated Launch Pad at `dashboard/launchpad.html`,
+served by `bridge.py`. The Python files in this directory implement that live gateway;
+the demo does not import or invoke them.
+
 ## Run
 
 No build step, no dependencies. Serve the `dashboard/` folder (not `launchpad/` — the Fleet tab
@@ -42,9 +46,9 @@ Deep links: `#missions`, `#fleet`, … or `?section=evidence`. Browser back/forw
 
 ## Swapping in a gateway
 
-Replace the imports from `fixtures.js` with gateway reads (same shapes), and wire the disabled
-buttons to `POST /api/command` once the gateway enforces auth, approvals and re-checks at dispatch.
-Keep the DEMO badge driven by the active mode — demo must never render as live.
+Use the existing `dashboard/launchpad.html` and `assets/launchpad.js` implementation for
+gateway-backed operation. Its authenticated routes live under `/api/launchpad/`; the demo
+is a design reference and must keep its DEMO badge and disabled command actions.
 
 ## Known gaps vs. the design
 

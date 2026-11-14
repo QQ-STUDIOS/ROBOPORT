@@ -14,7 +14,9 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Protocol
 
-from .pricing import cost_for
+from .budget import request_timeout
+from .config import load_runtime_config, resolved_model, wrapper_provider
+from .pricing import anthropic_usage_cost, cost_for
 
 
 class TransientProviderError(Exception):
@@ -49,6 +51,7 @@ class Provider(ABC):
         tools: list[dict] | None,
         force_json: bool,
         model_hint: str,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Returns dict with keys:
           - "tool_calls": list of {"id", "name", "arguments": dict} (may be empty)
@@ -57,6 +60,10 @@ class Provider(ABC):
                           {"provider", "model", "prompt_tokens", "completion_tokens",
                            "cost_usd" (float|None), "latency_ms"}. Callers must
                           tolerate its absence (the fault harness omits it).
+
+        `model` optionally pins the concrete model (used by the RoutingProvider to
+        honor its candidate choice); when None the provider derives it from
+        `model_hint` as before.
         """
         ...
 
@@ -67,14 +74,15 @@ class OllamaProvider(Provider):
     name = "ollama"
 
     def __init__(self) -> None:
-        import requests  # noqa: PLC0415
+        import requests
         self._requests = requests
-        self.host = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-        self.model_reasoning = os.environ.get("OLLAMA_MODEL_REASONING", "qwen3.5:latest")
-        self.model_default = os.environ.get("OLLAMA_MODEL_DEFAULT", "gemma4:latest")
+        self.config = load_runtime_config()
+        self.host = resolved_model("any", self.config, self.name)["base_url"].rstrip("/")
+        self.model_reasoning = self.model_for("reasoning-strong")
+        self.model_default = self.model_for("any")
 
     def model_for(self, hint: str) -> str:
-        return self.model_reasoning if hint == "reasoning-strong" else self.model_default
+        return resolved_model(hint, self.config, self.name)["model"]
 
     def health_check(self) -> None:
         try:
@@ -102,16 +110,17 @@ class OllamaProvider(Provider):
         tools: list[dict] | None,
         force_json: bool,
         model_hint: str,
+        model: str | None = None,
     ) -> dict[str, Any]:
         full_messages = [{"role": "system", "content": system}, *messages]
-        model = self.model_for(model_hint)
+        model = model or self.model_for(model_hint)
         payload: dict[str, Any] = {
             "model": model,
             "messages": full_messages,
             "stream": False,
             "keep_alive": "30m",
             "think": False,
-            "options": {"temperature": 0.2, "num_ctx": 16384},
+            "options": {"temperature": 0.2, "num_ctx": int(self.config.get("defaults", {}).get("context_tokens", 8192)), "num_predict": int(self.config.get("defaults", {}).get("max_tokens", 2048))},
         }
         if tools and not force_json:
             payload["tools"] = tools
@@ -121,7 +130,7 @@ class OllamaProvider(Provider):
         exc = self._requests.exceptions
         t0 = time.perf_counter()
         try:
-            r = self._requests.post(f"{self.host}/api/chat", json=payload, timeout=900)
+            r = self._requests.post(f"{self.host}/api/chat", json=payload, timeout=request_timeout())
             r.raise_for_status()
         except exc.HTTPError as e:
             status = getattr(e.response, "status_code", None)
@@ -161,21 +170,21 @@ class OllamaProvider(Provider):
 class AnthropicProvider(Provider):
     name = "anthropic"
 
-    # Anthropic model selection — Opus 4.7 for reasoning, Sonnet 4.6 otherwise.
-    MODEL_REASONING = os.environ.get("ANTHROPIC_MODEL_REASONING", "claude-opus-4-7")
-    MODEL_DEFAULT = os.environ.get("ANTHROPIC_MODEL_DEFAULT", "claude-sonnet-4-6")
+    # Model selection: an anthropic route from config, else ANTHROPIC_MODEL_*
+    # env, else config.DEFAULT_MODELS (never an Ollama route's model).
 
     def __init__(self) -> None:
         if not os.environ.get("ANTHROPIC_API_KEY"):
             raise RuntimeError(
                 "ANTHROPIC_API_KEY is not set. Export it or use --provider ollama."
             )
-        import anthropic  # noqa: PLC0415  (optional dep)
+        import anthropic
+        self.config = load_runtime_config()
         self._anthropic = anthropic
-        self.client = anthropic.Anthropic()
+        self.client = anthropic.Anthropic(max_retries=0)
 
     def model_for(self, hint: str) -> str:
-        return self.MODEL_REASONING if hint == "reasoning-strong" else self.MODEL_DEFAULT
+        return resolved_model(hint, self.config, self.name)["model"]
 
     def health_check(self) -> None:
         # The SDK validates the key on first call; we don't pre-flight to
@@ -190,15 +199,16 @@ class AnthropicProvider(Provider):
         tools: list[dict] | None,
         force_json: bool,
         model_hint: str,
+        model: str | None = None,
     ) -> dict[str, Any]:
         # Convert OpenAI-style tool history to Anthropic shape.
         anth_messages = self._convert_messages(messages)
         anth_tools = self._convert_tools(tools or [])
 
-        model = self.model_for(model_hint)
+        model = model or self.model_for(model_hint)
         kwargs: dict[str, Any] = {
             "model": model,
-            "max_tokens": 8000,
+            "max_tokens": int(self.config.get("defaults", {}).get("max_tokens", 2048)),
             "system": [{
                 "type": "text",
                 "text": system,
@@ -210,7 +220,7 @@ class AnthropicProvider(Provider):
             kwargs["tools"] = anth_tools
 
         t0 = time.perf_counter()
-        resp = self.client.messages.create(**kwargs)
+        resp = self._sdk_call(self.client.messages.create, **kwargs)
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
         tool_calls: list[dict] = []
@@ -226,7 +236,10 @@ class AnthropicProvider(Provider):
                 text_parts.append(block.text)
 
         usage = getattr(resp, "usage", None)
-        prompt_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        uncached_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        cache_write = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+        cache_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        prompt_tokens = uncached_tokens + cache_write + cache_read
         completion_tokens = int(getattr(usage, "output_tokens", 0) or 0)
         return {
             "content": "".join(text_parts),
@@ -236,10 +249,38 @@ class AnthropicProvider(Provider):
                 "model": model,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
-                "cost_usd": cost_for(self.name, model, prompt_tokens, completion_tokens),
+                "cost_usd": anthropic_usage_cost(model, usage),
+                "uncached_prompt_tokens": uncached_tokens,
+                "cache_creation_input_tokens": cache_write,
+                "cache_read_input_tokens": cache_read,
                 "latency_ms": latency_ms,
             },
         }
+
+    def _sdk_call(self, fn, **kwargs):
+        """Map the SDK's retryable failures (its own retries are off) to
+        TransientProviderError so the executor's bounded, budgeted retry runs."""
+        sdk = self._anthropic
+        try:
+            return fn(**kwargs, timeout=request_timeout())
+        except sdk.APIConnectionError as e:  # includes APITimeoutError
+            # The request may have been processed, so its cost hold is kept.
+            err = TransientProviderError(f"anthropic transport: {type(e).__name__}")
+            err.billing_unknown = True
+            raise err from e
+        except sdk.APIStatusError as e:
+            if e.status_code in (408, 409, 429) or e.status_code >= 500:
+                raise TransientProviderError(f"anthropic HTTP {e.status_code}") from e
+            raise                                 # other 4xx → fatal
+
+    def count_input_tokens(self, *, system, messages, tools, force_json, model_hint, model=None):
+        kwargs = {"model": model or self.model_for(model_hint), "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}], "messages": self._convert_messages(messages)}
+        if tools and not force_json:
+            kwargs["tools"] = self._convert_tools(tools)
+        count = self._sdk_call(self.client.messages.count_tokens, **kwargs).input_tokens
+        # Covers counted input plus the provider's documented cache-write
+        # premium (1.25x input price); cached reads can only reduce this charge.
+        return max(1, int(count * 1.25) + 1)
 
     @staticmethod
     def _convert_tools(openai_tools: list[dict]) -> list[dict]:
@@ -300,12 +341,21 @@ class AnthropicProvider(Provider):
 # ----- Factory -------------------------------------------------------------
 
 def get_provider(name: str | None = None) -> Provider:
-    name = (name or os.environ.get("ROBOPORT_PROVIDER") or "ollama").lower()
+    name = (name or wrapper_provider() or resolved_model("any", load_runtime_config())["provider"]).lower()
     if name == "ollama":
         return OllamaProvider()
     if name == "anthropic":
         return AnthropicProvider()
-    raise ValueError(f"unknown provider: {name!r} (expected: ollama|anthropic)")
+    if name == "routing":
+        # Phase 4 task 4: pick a provider/model per hint from the routing policy.
+        from .routing import build_routing_provider  # lazy — avoids import cycle
+        return build_routing_provider(get_provider)
+    if name == "fault":
+        # Offline fault injection (scripts/fault_bench.py): script via ROBOPORT_FAULT_SCRIPT.
+        from .fault_provider import fault_provider_from_env  # lazy
+        return fault_provider_from_env()
+    raise ValueError(
+        f"unknown provider: {name!r} (expected: ollama|anthropic|routing|fault)")
 
 
 def _coerce_args(args: Any) -> dict:

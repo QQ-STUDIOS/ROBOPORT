@@ -4,6 +4,8 @@ An agent orchestration framework with typed contracts, deterministic-when-possib
 
 The flagship example shipped with the repo is **JD-Crew** — the eight-agent sequential job-description analyzer pictured in the Crew Builder UI: `scout → (technical, compliance) → strategist → synth (+ optional resume_tailor, cover_letter_writer, salary_estimator)`.
 
+A second crew, **DataOps** (`data_engineering → reporting`), ships alongside it to show the framework generalizes: it ingests messy tabular data and produces a report grounded in it, reusing existing agents with typed contracts (`CleanedDataset`, `DataReport`). It landed *under the governance gate* — the gate now requires every registry crew to carry a four-kind, blockered eval set, so no crew lands without proof.
+
 ```
 ┌──────────┐   ┌─────────────────┐   ┌──────────────────┐   ┌─────────────┐
 │ job      │──▶│ technical_      │──┐                                       
@@ -46,12 +48,12 @@ pip install jsonschema pyyaml
 python scripts/validate.py --all
 
 # Dry-run the JD crew (no LLM calls — synthetic schema-valid stubs)
-python scripts/benchmark.py --target jd_crew --dry-run
+python scripts/benchmark.py --target jd_crew
 
 # Real run
 python scripts/benchmark.py \
   --target jd_crew \
-  --input "Senior backend engineer roles at health-tech companies, remote, US"
+  --live --runs 1 --grade
 
 # See the artifacts
 ls runs/<run_id>/
@@ -137,7 +139,11 @@ deterministic fault harness the CI Tests job runs — a layer that stops firing
 fails the build. L1 retries transient 5xx, repairs schema-invalid output, and
 guards the quiet-200 empty result; L2 aborts on a per-agent call budget; L3
 escalates a requested unsafe/irreversible action (`policy.unsafe_actions`)
-without ever dispatching it. Full taxonomy and enforcement notes:
+without ever dispatching it. Beyond the unit tests, `scripts/fault_bench.py` runs
+the scenarios in `evals/fault_injection.json` through the **real executor** via a
+scripted `FaultProvider` — no model — grades each outcome against its declared
+expectation, and writes diff_runs-compatible run artifacts (also CI-gated). Full
+taxonomy and enforcement notes:
 [`resources/prompts/error_handling.md`](resources/prompts/error_handling.md).
 
 ---
@@ -173,7 +179,20 @@ tokens, `cost_usd` (priced per model; `None` when unknown rather than guessed), 
 `latency_ms` — accumulated per step, written to `run.log`, and rolled up into a per-agent
 `routing` summary in each benchmark's `summary.json`. `aggregate.py` reports cost/latency
 per *passing* run and by provider/model, and `--compare` flags per-agent cost/latency
-regressions. That's the foundation for cost/latency-aware routing (Phase 4).
+regressions.
+
+That telemetry closes a loop: with `--provider routing`, the runtime picks a concrete
+`{provider, model}` per `model_hint` from the `routing:` policy in `agent_config.yaml` —
+static priority by default, or, given an `aggregate.py` scoreboard,
+`blocker_pass_then_cost` (highest blocker pass rate, then cheapest, within a latency
+budget). **Runs emit cost/latency → aggregate scores each provider/model → the router
+picks the winner.**
+
+Breadth is kept from outrunning proof by a **governance gate** (`scripts/governance.py`,
+run in CI): every eval must carry a blocker, every crew's eval set must cover all four
+proof kinds (`happy_path`, `empty`, `schema_failure`, `evidence_grounding`), and every
+crew station must map to a registered agent and a declared output contract — or the gate
+exits nonzero and CI fails.
 
 ---
 

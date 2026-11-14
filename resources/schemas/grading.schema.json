@@ -3,7 +3,7 @@
   "$id": "https://roboport.dev/schemas/grading.schema.json",
   "title": "GradingResult",
   "type": "object",
-  "required": ["run_id", "results", "pass_rate"],
+  "required": ["run_id", "results", "pass_rate", "blocker_failed"],
   "properties": {
     "run_id": { "type": "string" },
     "target": {

@@ -38,6 +38,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from station_packs import load_registry  # noqa: E402
 
 
 def step_fingerprint(owner: str, registry: dict, config: dict) -> str:
@@ -113,15 +115,9 @@ def routing_summary(steps: list[dict]) -> dict:
 
 
 def load_agent_config() -> dict:
-    """Best-effort load of config/agent_config.yaml (empty dict if unavailable)."""
-    path = REPO / "config" / "agent_config.yaml"
-    if not path.exists():
-        return {}
-    try:
-        import yaml  # lazy; pyyaml is a runtime dep
-        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except Exception:  # noqa: BLE001 — fingerprint degrades gracefully without config
-        return {}
+    """Load the same resolved configuration used by runtime providers."""
+    from roboport_runtime.config import load_runtime_config
+    return load_runtime_config(REPO)
 
 
 # --- Pluggable runtime stubs --------------------------------------------------
@@ -164,7 +160,7 @@ def call_executor(step: dict, accumulated: dict, registry: dict) -> dict:
     }
 
 
-def call_grader(expectations: list[str], transcript_path: Path | None, outputs_dir: Path) -> dict:
+def call_grader(expectations: list[str], transcript_path: Path | None, outputs_dir: Path, blockers=None) -> dict:
     """Stub. Marks all expectations PASS with placeholder evidence."""
     return {
         "run_id": outputs_dir.name,
@@ -190,8 +186,14 @@ def jsonl_append(path: Path, obj: dict) -> None:
         f.write(json.dumps(obj, default=str) + "\n")
 
 
+def _safe_step_id(sid) -> bool:
+    """Step ids come from the model's plan and name files under steps/."""
+    import re
+    return isinstance(sid, str) and bool(re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}", sid)) and ".." not in sid
+
+
 def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=None,
-            config: dict | None = None) -> dict:
+            config: dict | None = None, defer_completion: bool = False) -> dict:
     """Execute a single (eval × run) pair. Returns a small summary.
 
     If `feed` (a roboport_runtime.feed_log.FeedLog) is provided, the run also
@@ -211,9 +213,18 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
         run_log.run_start(crew)
     _t_run = _time.perf_counter()
 
-    plan = call_planner(eval_obj["prompt"], context={}, registry=registry)
+    plan = call_planner(eval_obj["prompt"], context={**eval_obj.get("context", {}), "target": crew}, registry=registry)
     (run_dir / "plan.json").write_text(json.dumps(plan, indent=2))
     jsonl_append(log, {"event": "plan_emitted", "ts": datetime.now(timezone.utc).isoformat()})
+    unsafe = [s.get("id") if isinstance(s, dict) else s for s in plan.get("steps", [])
+              if not isinstance(s, dict) or not _safe_step_id(s.get("id"))]
+    if unsafe:
+        error = f"plan rejected: unsafe step id(s) {unsafe!r}"
+        if run_log is not None and not defer_completion:
+            run_log.run_complete(_run_summary([], 0, 0, _t_run, _time))
+        (run_dir / "final_output.json").write_text(json.dumps({"status": "failed", "error": error}, indent=2))
+        return {"status": "failed", "step_failed": None, "error": error, "steps": [],
+                "run_summary": _run_summary([], 0, 0, _t_run, _time)}
 
     if feed is not None:
         from roboport_runtime.feed_log import stations_from_plan  # lazy
@@ -297,23 +308,25 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
                                       latency_ms=result.get("latency_ms"))
             else:
                 run_log.step_failed(sid, owner, result.get("error"), layer="criterion_failed")
+        (run_dir / "steps").mkdir(exist_ok=True)
+        (run_dir / "steps" / f"{sid}.json").write_text(json.dumps(result, indent=2))
         if not ok:
-            if feed is not None:
+            if feed is not None and not defer_completion:
                 feed.crew_end(status="failed")
-            if run_log is not None:
+            if run_log is not None and not defer_completion:
                 run_log.run_complete(_run_summary(durations_ms, llm_total, tool_total, _t_run, _time))
             (run_dir / "final_output.json").write_text(json.dumps(
                 {"status": "failed", "error": result.get("error")}, indent=2))
-            return {"status": "failed", "step_failed": sid, "steps": step_telemetry}
+            return {"status": "failed", "step_failed": sid, "steps": step_telemetry, "run_summary": _run_summary(durations_ms, llm_total, tool_total, _t_run, _time)}
         accumulated[sid] = result["output"]
 
-    if feed is not None:
+    if feed is not None and not defer_completion:
         feed.crew_end(status="ok")
-    if run_log is not None:
+    if run_log is not None and not defer_completion:
         run_log.run_complete(_run_summary(durations_ms, llm_total, tool_total, _t_run, _time))
     final = list(accumulated.values())[-1] if accumulated else {}
     (run_dir / "final_output.json").write_text(json.dumps(final, indent=2))
-    return {"status": "ok", "steps": step_telemetry}
+    return {"status": "ok", "steps": step_telemetry, "run_summary": _run_summary(durations_ms, llm_total, tool_total, _t_run, _time)}
 
 
 def _run_summary(durations_ms, llm_total, tool_total, t_run_start, _time) -> dict:
@@ -332,10 +345,49 @@ def _run_summary(durations_ms, llm_total, tool_total, t_run_start, _time) -> dic
     }
 
 
+def execute_run(ev: dict, run_dir: Path, registry: dict, *, config: dict, live: bool,
+                grade: bool, feed=None, run_log=None) -> tuple[dict, dict | None]:
+    """One budget/provenance boundary includes planning through grading."""
+    from roboport_runtime.budget import RunBudget, run_budget
+    budget = RunBudget(config)
+    budget.artifact_dir = run_dir.resolve()
+    run_dir.mkdir(parents=True, exist_ok=True)
+    metadata = {'mode': 'live' if live else 'synthetic', 'run_id': run_dir.resolve().as_posix(),
+                'started_at': datetime.now(timezone.utc).isoformat(), 'eval_id': ev['id'],
+                'target': ev.get('target'), 'telemetry_run_id': getattr(run_log, 'run_id', None), 'feed_path': str(feed.path.resolve()) if feed else None, 'ops_log_path': str(run_log.path.resolve()) if run_log else None, 'config': {k: config.get(k) for k in ('models', 'defaults', 'budgets', 'policy')},
+                'expectations': ev.get('expectations', []), 'input_sha256': hashlib.sha256(json.dumps({'prompt': ev['prompt'], 'context': ev.get('context', {})}, sort_keys=True).encode()).hexdigest()}
+    # Persist before the first provider call, so failed startup is auditable.
+    (run_dir / 'provenance.json').write_text(json.dumps(metadata, indent=2))
+    grading = None
+    with run_budget(budget):
+        try:
+            outcome = run_one(ev, run_dir, registry, config=config, feed=feed, run_log=run_log, defer_completion=True)
+            budget.remaining_seconds()
+            if grade and outcome['status'] == 'ok':
+                grading = call_grader(ev['expectations'], run_dir / 'run.log', run_dir, blockers=ev.get('blockers'))
+                (run_dir / 'grading.json').write_text(json.dumps(grading, indent=2))
+                if grading.get('blocker_failed') or grading.get('pass_rate') != 1.0:
+                    outcome['status'] = 'failed'
+                    outcome['error'] = 'grading failed or inconclusive'
+        except Exception as exc:
+            outcome = {'status': 'failed', 'error': str(exc), 'steps': []}
+            (run_dir / 'final_output.json').write_text(json.dumps(outcome, indent=2))
+            jsonl_append(run_dir / 'run.log', {'event': 'run_failed', 'error': str(exc)})
+        finally:
+            if feed is not None:
+                feed.crew_end(status=outcome['status'], error=outcome.get('error'))
+            if run_log is not None:
+                run_log.run_complete({**outcome.get('run_summary', {}), 'status': outcome['status'], 'error': outcome.get('error')})
+            (run_dir / 'budget.json').write_text(json.dumps(budget.snapshot(), indent=2))
+    metadata.update({'status': outcome['status'], 'finished_at': datetime.now(timezone.utc).isoformat()})
+    (run_dir / 'provenance.json').write_text(json.dumps(metadata, indent=2))
+    return outcome, grading
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", required=True, help="Agent or crew id (e.g., jd_crew)")
-    ap.add_argument("--eval-set", default=str(REPO / "evals" / "evals.json"))
+    ap.add_argument("--eval-set", default=None)
     ap.add_argument("--runs", type=int, default=3, help="Runs per eval (>=3 recommended)")
     ap.add_argument("--label", default=None, help="Output folder label; defaults to timestamp")
     ap.add_argument("--out", default=None, help="Override benchmark output dir")
@@ -351,10 +403,13 @@ def main() -> int:
     ap.add_argument("--live", action="store_true",
                     help="Use the model-backed runtime (scripts/roboport_runtime) "
                          "instead of the stubs.")
-    ap.add_argument("--provider", choices=["ollama", "anthropic"], default=None,
+    ap.add_argument("--provider", choices=["ollama", "anthropic", "routing"], default=None,
                     help="Backend for --live. Default: $ROBOPORT_PROVIDER or "
-                         "'ollama'. Anthropic requires ANTHROPIC_API_KEY.")
+                         "'ollama'. Anthropic requires ANTHROPIC_API_KEY. 'routing' "
+                         "picks per-hint from the routing policy in agent_config.yaml.")
     args = ap.parse_args()
+    if args.eval_set is None:
+        args.eval_set = str(REPO / "evals" / ("environment_investigation.json" if args.target == "environment_investigation" else "evals.json"))
 
     if args.live:
         if args.provider:
@@ -382,7 +437,7 @@ def main() -> int:
     if not registry_path.exists():
         print(f"registry not found: {registry_path}", file=sys.stderr)
         return 2
-    registry = json.loads(registry_path.read_text())
+    registry = load_registry(REPO)
     config = load_agent_config()
 
     eval_set = json.loads(Path(args.eval_set).read_text())
@@ -413,23 +468,19 @@ def main() -> int:
             feed = None
             if args.feed_log:
                 from roboport_runtime.feed_log import FeedLog  # lazy; stdlib-only
-                feed = FeedLog(args.feed_log, run_id=f"{label}/{ev['id']}/run_{n}")
+                feed = FeedLog(args.feed_log, run_id=f"{label}_{ev['id']}_run{n}")
             run_log = None
             if args.run_log:
                 from roboport_runtime.run_log import RunLog  # lazy; stdlib-only
                 rl_id = f"{label}_{ev['id']}_run{n}"
                 run_log = RunLog(Path(args.run_log) / rl_id, run_id=rl_id)
             try:
-                outcome = run_one(ev, run_dir, registry, feed=feed, run_log=run_log, config=config)
+                outcome, grading = execute_run(ev, run_dir, registry, config=config, live=args.live, grade=args.grade, feed=feed, run_log=run_log)
             finally:
                 if feed is not None:
                     feed.close()
                 if run_log is not None:
                     run_log.close()
-            grading = None
-            if args.grade:
-                grading = call_grader(ev["expectations"], run_dir / "run.log", run_dir)
-                (run_dir / "grading.json").write_text(json.dumps(grading, indent=2))
             ev_summary["runs"].append({
                 "n": n,
                 "status": outcome["status"],
