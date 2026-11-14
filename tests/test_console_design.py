@@ -1,0 +1,51 @@
+"""Execute standalone console behavior with controlled canvas and network seams."""
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parents[1]
+
+
+def test_console_modes_apg_layout_and_single_live_connection(tmp_path):
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node is required for design behavior checks')
+    driver = tmp_path / 'design.cjs'
+    driver.write_text(r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const src=fs.readFileSync(process.argv[2],'utf8');
+function fn(name){return src.match(new RegExp('  function '+name+'\\([^]*?\\n  \\}'))[0];}
+const badge={replay:false,sourceMode:'demo'};vm.createContext(badge);vm.runInContext(fn('modeBadge'),badge);
+for(const [mode,label] of [['demo','DEMO'],['live','LIVE'],['file','FILE'],['import','IMPORTED'],['gateway','GATEWAY']]){
+ badge.sourceMode=mode;assert(badge.modeBadge().startsWith(label+' ·'));
+}
+badge.replay=true;assert(badge.modeBadge().startsWith('REPLAY ·'));
+const hit={view:'apg'};vm.createContext(hit);vm.runInContext(fn('hitTest'),hit);
+assert.equal(hit.hitTest(10,10),null); // No invisible port state is needed or consulted.
+for(const [W,H] of [[900,700],[600,400]]){
+ const text=[];
+ const ctx=new Proxy({}, {get(o,k){if(k==='fillText')return(t,x,y)=>text.push({t,x,y});
+ if(k==='measureText')return()=>({width:20});if(k==='createLinearGradient')return()=>({addColorStop(){}});
+ return()=>{};},set(){return true;}});
+ const draw={W,H,ctx,T:{},performance:{now:()=>0},roundRect(){},drawGrid(){}};
+ vm.createContext(draw);vm.runInContext(fn('drawAPGContent')+'\n'+fn('drawAPG'),draw);draw.drawAPG();
+ const phase=text.find(x=>x.t==='RAG / Pinecone'), roadmap=text.find(x=>x.t==='PHASE 0 · BASELINE HARDENING');
+ assert(phase && roadmap && phase.y+20<roadmap.y-14,'pipeline must end before roadmap panel');
+}
+let adapters=0,sse=0,fetches=0;
+const net={sourceMode:'demo',location:{search:'?api=http://localhost:4242'},URLSearchParams,
+ window:{ROBOPORT_ADAPTER(){adapters++;return{};}},ResizeObserver:class{observe(){}},canvas:{addEventListener(){}},
+ document:{getElementById:()=>({addEventListener(){}})},layout(){},route(){},createMockBackend(){throw Error('wrong backend');},
+ createFeed:()=>({onEnvelope(){},connect(){}}),performance:{now:()=>0},requestAnimationFrame(){},setInterval(){},
+ EventSource:class{constructor(){sse++;}},fetch(){fetches++;return{then(){return{then(){return{catch(){}}}}}};},
+ el:()=>({addEventListener(){}})};
+const start=src.indexOf('  new ResizeObserver('),end=src.indexOf('    window.__feed=feed;',start);
+net.window.parent=net.window;
+vm.runInNewContext(src.slice(start,end)+'\nwindow.__feed=feed;',net);
+assert.equal(adapters,1);assert.equal(sse,0);assert.equal(fetches,0);
+''', encoding='utf-8')
+    result = subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

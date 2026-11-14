@@ -10,6 +10,7 @@ class Component extends DCLogic {
   boot(){
   "use strict";
   const PROPS=this.props||{};
+  let sourceMode=PROPS.embedded?"gateway":"demo";
   if(PROPS.embedded){const r0=document.getElementById("rbp");if(r0)r0.classList.add("embedded","readonly");}
   const FEED_LABEL=PROPS.embedded?"feed · gateway":"feed · mock";
   const INIT_AGENTS=Math.max(1,Math.min(12,PROPS.initialAgents??5));
@@ -701,8 +702,12 @@ class Component extends DCLogic {
     const txt="⌖ following "+a.agent_id+" · "+actLabel(a)+" · drag, Esc or F to release";ctx.font="500 11px 'JetBrains Mono',monospace";const tw=ctx.measureText(txt).width+18,bx=Math.round(W/2-tw/2),by=48;
     roundRect(ctx,bx,by,tw,24,5);ctx.fillStyle="rgba(8,13,19,0.92)";ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=0.7;ctx.stroke();ctx.globalAlpha=1;ctx.fillStyle=col;ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(txt,bx+9,by+12);PLACED.push({x:bx,y:by,w:tw,h:24});ctx.restore();
   }
+  function modeBadge(){
+    if(replay)return "REPLAY · recorded frames";
+    return {live:"LIVE · observed feed",file:"FILE · drop mode",import:"IMPORTED · run data",gateway:"GATEWAY · observed agents"}[sourceMode]||"DEMO · simulated backend";
+  }
   function drawModeBadge(){
-    const txt=replay?"REPLAY · recorded frames":(PROPS.embedded?"GATEWAY · observed agents":"DEMO · simulated backend"),col=replay?T.dispatch:(PROPS.embedded?T.return:T.work);
+    const txt=modeBadge(),col=sourceMode==="demo"?T.work:T.dispatch;
     ctx.save();ctx.font="700 10px 'JetBrains Mono',monospace";const tw=ctx.measureText(txt).width+22,bx=W-12-tw,by=H-156-30;
     roundRect(ctx,bx,by,tw,22,4);ctx.fillStyle="rgba(8,13,19,0.9)";ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=0.7;ctx.lineWidth=1;ctx.stroke();ctx.globalAlpha=1;
     ctx.fillStyle=col;ctx.beginPath();ctx.arc(bx+10,by+11,3,0,6.283);ctx.fill();ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(txt,bx+18,by+11.5);PLACED.push({x:bx,y:by,w:tw,h:22});ctx.restore();
@@ -1049,6 +1054,10 @@ class Component extends DCLogic {
 
   /* ── Applied Proving Ground view ───────────────────────────────────── */
   function drawAPG(){
+    const scale=Math.min(1,H/850,W/900);
+    ctx.save();ctx.scale(scale,scale);drawAPGContent(W/scale,H/scale);ctx.restore();
+  }
+  function drawAPGContent(W,H){
     drawGrid();
     if(W<600){ctx.fillStyle='rgba(138,157,168,0.5)';ctx.font='400 11px JetBrains Mono,monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('APG view requires wider canvas',W/2,H/2);return;}
     const PAD=36,LW=Math.max(180,W*0.38),RX=PAD+LW+28,RW=Math.max(200,W-RX-PAD);
@@ -1078,12 +1087,13 @@ class Component extends DCLogic {
       {id:"Restructure",label:"Restructure", sub:"local stage only",     hue:VIOLET, gate:"NoChange",     artifact:"*-org-restructure-plan.csv"},
       {id:"RAG",        label:"RAG / Pinecone",sub:"workflow memory",    hue:VIOLET, gate:null,           artifact:"agent-memory-index.jsonl"},
     ];
-    const NP=PHASES.length,nodeH=(BOT-TOP)/(NP-0.5),nodeW=LW-8,nodeR=7;
+    const PIPE_BOTTOM=BOT-184;
+    const NP=PHASES.length,nodeH=(PIPE_BOTTOM-TOP)/(NP-0.5),nodeW=LW-8,nodeR=7;
     const nx=PAD+LW/2;
 
     // Spine line
     ctx.save();ctx.strokeStyle="rgba(54,198,224,0.12)";ctx.lineWidth=1.5;ctx.setLineDash([4,8]);
-    ctx.beginPath();ctx.moveTo(nx,TOP+16);ctx.lineTo(nx,BOT-16);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+    ctx.beginPath();ctx.moveTo(nx,TOP+16);ctx.lineTo(nx,PIPE_BOTTOM-16);ctx.stroke();ctx.setLineDash([]);ctx.restore();
 
     const t2=performance.now()*0.001;
     PHASES.forEach((ph,i)=>{
@@ -1531,6 +1541,7 @@ class Component extends DCLogic {
   function announce(){if(!selected){D.sr.textContent="Selection cleared.";return;}if(selected.type==="agent"){const a=M.agents.get(selected.id);if(a)D.sr.textContent=a.agent_id+" selected. "+actLabel(a)+". Energy "+Math.round(a.energy)+" percent.";}else if(selected.type==="station"){D.sr.textContent=M.stations.get(selected.id).name+" station selected.";}else if(selected.type==="port")D.sr.textContent="Hub overview selected.";else{const nd=selNode();D.sr.textContent=(nd?nd.label:"Node")+" selected.";}}
 
   function hitTest(px,py){
+    if(view==="apg")return null;
     if(view==="flow"){const o=ordered(),n=o.length;for(let i=0;i<n;i++){const p=flowPos(i,n);if(Math.hypot(p.x-px,p.y-py)<22)return{type:"station",id:o[i].station_id};}const h=flowHub();if(Math.hypot(h.x-px,h.y-py)<26)return{type:"port"};return null;}
     if(view==="dag"){for(const st of M.stations.values()){const p=dagNodePos(st.station_id);if(p&&Math.hypot(p.x-px,p.y-py)<28)return{type:"station",id:st.station_id};}return null;}
     if(MINI&&px>=MINI.x&&px<=MINI.x+MINI.w&&py>=MINI.y&&py<=MINI.y+MINI.h)return null;
@@ -1736,7 +1747,7 @@ class Component extends DCLogic {
   }
   function loadRunFiles(files){
     let plan=null,finalOut=null,stepOutputs={},runLog=[];let pending=files.length;
-    const done=()=>{if(--pending>0)return;buildAndReplayRun(plan,finalOut,stepOutputs,runLog);};
+    const done=()=>{if(--pending>0)return;sourceMode="import";buildAndReplayRun(plan,finalOut,stepOutputs,runLog);};
     for(const file of files){
       const name=file.name.toLowerCase();const reader=new FileReader();
       reader.onload=e=>{const text=e.target.result;

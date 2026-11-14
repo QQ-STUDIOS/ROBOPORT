@@ -36,6 +36,7 @@ logic = logic.replace(
     'Object.assign({},this.props||{},new URLSearchParams(location.search).get("embedded")==="1"?{embedded:true}:{})',
     'this.props||{}',
 )
+logic = logic.replace('let sourceMode="demo";', 'let sourceMode=PROPS.embedded?"gateway":"demo";')
 logic, seams = re.subn(
     r'  const _q=new URLSearchParams\(location.search\),_api=_q.get\("api"\);.*?: createMockBackend\(\);',
     '  const backend=createMockBackend();', logic, flags=re.S,
@@ -105,9 +106,6 @@ logic = sub(
     logic,
 )
 # The canvas badge and the energy counter describe the mock backend.
-logic = sub('const txt=replay?"REPLAY · recorded frames":"DEMO · simulated backend",col=replay?T.dispatch:T.work;',
-            'const txt=replay?"REPLAY · recorded frames":(PROPS.embedded?"GATEWAY · observed agents":"DEMO · simulated backend"),col=replay?T.dispatch:(PROPS.embedded?T.return:T.work);',
-            logic)
 low_cell = """'<div class="sc"><span class="d" style="color:'+T.alert+'"></span><span class="n">'+low+'</span><span class="l">low cell</span></div>'"""
 logic = sub(low_cell, "(PROPS.embedded?'':" + low_cell + ")", logic)
 energy_field = """<div class="f"><div class="k">energy</div><div class="v">'+Math.round(a.energy)+'%</div></div>"""
@@ -163,8 +161,6 @@ logic = sub(
     logic,
 )
 # The ?api= SSE mode would connect to an arbitrary endpoint; the gateway feed replaces it.
-live = one(r"\n  // SSE live mode: \?api=.*?fsEl\.textContent='feed · live \('\+API_BASE\+'\)';\n  \}\n", logic)
-logic = logic[: live.start()] + "\n" + logic[live.end():]
 assert "EventSource" not in logic and "fetch(" not in logic
 assert "location.search" not in logic
 
