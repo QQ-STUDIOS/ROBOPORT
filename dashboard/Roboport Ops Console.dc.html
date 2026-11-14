@@ -1463,11 +1463,18 @@ class Component extends DCLogic {
     }
     if(!files.length)pushLog('<span style="color:var(--work)">no files selected</span>');
   }
-  document.getElementById('run-file-input').addEventListener('change',e=>{if(window.parent!==window){e.target.value='';return;}loadRunFiles([...e.target.files]);e.target.value='';});
+  function rejectEmbeddedImport(e){
+    if(window.parent===window)return false;
+    e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='none';canvas.style.outline='';
+    const notice="Run imports are unavailable in embedded consoles; open the standalone viewer.";
+    if(D.sr.textContent!==notice)D.sr.textContent=notice;const hint=root.querySelector('.hint');if(hint&&hint.textContent!==notice)hint.textContent=notice;
+    return true;
+  }
+  document.getElementById('run-file-input').addEventListener('change',e=>{if(rejectEmbeddedImport(e)){e.target.value='';return;}loadRunFiles([...e.target.files]);e.target.value='';});
   // Canvas drop zone for run files
-  canvas.addEventListener('dragover',e=>{e.preventDefault();canvas.style.outline='2px dashed #4fd672';});
+  canvas.addEventListener('dragover',e=>{if(rejectEmbeddedImport(e))return;e.preventDefault();canvas.style.outline='2px dashed #4fd672';});
   canvas.addEventListener('dragleave',()=>{canvas.style.outline='';});
-  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';if(window.parent!==window)return;const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
+  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';if(rejectEmbeddedImport(e))return;const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
   // SSE live mode: ?api=http://localhost:7474
   const API_BASE=new URLSearchParams(location.search).get('api')||null;
   if(API_BASE){
