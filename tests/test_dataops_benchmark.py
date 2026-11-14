@@ -143,7 +143,7 @@ def test_failed_timestamp_repair_cannot_be_overwritten_by_grounding_pass(tmp_pat
 
 
 
-@pytest.mark.parametrize('ids', [('same', 'same'), ('schema_failure_probe', 'report')])
+@pytest.mark.parametrize('ids', [('same', 'same'), ('schema_failure_probe', 'report'), ('Same', 'same'), ('SCHEMA_FAILURE_PROBE', 'report')])
 def test_colliding_plan_ids_rejected_before_any_execution(tmp_path, monkeypatch, ids):
     outcome, provider = execute(tmp_path, monkeypatch, 3, step_ids=ids)
     assert outcome['status'] == 'failed'

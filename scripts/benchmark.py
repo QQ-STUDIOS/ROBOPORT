@@ -224,8 +224,10 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
     unsafe = [s.get("id") if isinstance(s, dict) else s for s in plan.get("steps", [])
               if not isinstance(s, dict) or not _safe_step_id(s.get("id"))]
     ids = [step.get('id') for step in plan.get('steps', []) if isinstance(step, dict)]
-    if not unsafe and (len(ids) != len(set(ids)) or (dataops is not None and 'schema_failure_probe' in ids)):
-        unsafe = ['duplicate or reserved step IDs']
+    if not unsafe:
+        artifact_ids = [sid.casefold() for sid in ids]
+        if len(artifact_ids) != len(set(artifact_ids)) or (dataops is not None and 'schema_failure_probe' in artifact_ids):
+            unsafe = ['duplicate or reserved step IDs']
     if unsafe:
         error = f"plan rejected: unsafe step id(s) {unsafe!r}"
         if run_log is not None and not defer_completion:
