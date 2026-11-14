@@ -248,14 +248,19 @@ def test_the_fault_provider_runs_under_a_budget():
 
 
 def test_step_outputs_never_push_grading_past_the_context_ceiling(tmp_path, monkeypatch):
-    from roboport_runtime import grader
+    from roboport_runtime import client, grader
     (tmp_path / "steps").mkdir()
     (tmp_path / "steps/big.json").write_text(json.dumps({"status": "ok", "output": {"text": "x" * 40000}}))
-    seen = {}
+    backend = FakeProvider()
+    backend.config = {"defaults": {"context_tokens": 32768, "max_tokens": 2048}}
+    def respond(**kwargs):
+        backend.calls.append(kwargs)
+        return {"content": json.dumps({"results": [], "pass_rate": 0, "blocker_failed": False})}
+    backend.chat_with_tools = respond
     monkeypatch.setattr(grader, "load_agent_spec", lambda p: "")
-    monkeypatch.setattr(grader, "call_model_json", lambda **k: seen.update(k) or {"results": [], "pass_rate": 0, "blocker_failed": False})
+    monkeypatch.setattr(client, "provider", lambda: backend)
     with config_mod.runtime_config_scope({"defaults": {"context_tokens": 32768, "max_tokens": 2048}}):
-        grader.call_grader([], None, tmp_path)
-        assert "omitted" in seen["user_prompt"] and "x" * 100 not in seen["user_prompt"]
-        assert budget_mod.fits_local_context(system="", messages=[{"role": "user", "content": seen["user_prompt"]}],
-                                             tools=None, force_json=True, model_hint="reasoning-strong")
+        with budget_mod.run_budget(run_budget()):
+            grader.call_grader([], None, tmp_path)
+        prompt = backend.calls[0]["messages"][0]["content"]
+        assert "omitted" in prompt and "x" * 100 not in prompt

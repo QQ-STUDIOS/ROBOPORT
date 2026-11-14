@@ -131,21 +131,31 @@ def local_prompt_ceiling(kwargs: dict) -> int:
     return len(json.dumps(kwargs, ensure_ascii=False).encode('utf-8')) + 1024
 
 
-def fits_local_context(**kwargs) -> bool:
+def fits_local_context(*, config: dict | None = None, **kwargs) -> bool:
     """Whether a call would pass governed_chat's local context check."""
     from .config import load_runtime_config
-    defaults = load_runtime_config().get('defaults') or {}
+    defaults = (load_runtime_config() if config is None else config).get('defaults') or {}
     completion = int(defaults.get('max_tokens', 2048))
     return local_prompt_ceiling(kwargs) + completion <= int(defaults.get('context_tokens', 8192))
 
 
-def governed_chat(p, **kwargs) -> dict:
+def governed_chat(p, *, message_fallbacks: list[list[dict]] | None = None, **kwargs) -> dict:
     # A routing wrapper picks its concrete backend and model first, so the
     # call is reserved and dispatched against the same provider and model.
     routed = p.select(kwargs['model_hint']) if hasattr(p, 'select') else None
     if routed is not None:
         p, model, decision = routed
         kwargs['model'] = model
+    if message_fallbacks is not None:
+        # Pick evidence at the dispatch boundary, after routing pins the model.
+        # Every candidate includes all required evidence; only supporting
+        # evidence/notices may be omitted. Never truncate artifacts to fit.
+        for messages in [kwargs['messages'], *message_fallbacks]:
+            kwargs['messages'] = messages
+            if fits_local_context(config=getattr(p, 'config', {}), **kwargs):
+                break
+        else:
+            raise BudgetExceeded('input exceeds configured context ceiling')
     scope = _step_calls.get()
     if scope is not None:
         if scope[0] >= scope[1]:

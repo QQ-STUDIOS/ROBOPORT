@@ -48,10 +48,13 @@ def call_model_json(
     user_prompt: str,
     model_hint: str = "any",
     schema: dict | None = None,
+    user_prompt_fallbacks: list[str] | None = None,
 ) -> dict[str, Any]:
     """One-shot JSON call with no tools. Used by planner + grader."""
     p = provider()
     out = governed_chat(p,
+        message_fallbacks=([[{"role": "user", "content": prompt}] for prompt in user_prompt_fallbacks]
+                           if user_prompt_fallbacks is not None else None),
         system=system_spec,
         messages=[{"role": "user", "content": user_prompt}],
         tools=None,

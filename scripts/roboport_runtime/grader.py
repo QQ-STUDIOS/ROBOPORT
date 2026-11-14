@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .budget import fits_local_context
 from .client import call_model_json, load_agent_spec
 
 GRADING_SCHEMA = {
@@ -85,7 +84,8 @@ def call_grader(
         + "\n\nRUN LOG (JSONL)\n" + _read(transcript_path)
         + "\n\nGrade each expectation. PASS only with concrete evidence from "
           "the artifacts. FAIL on contradiction. INCONCLUSIVE when artifacts "
-          "are insufficient. pass_rate = PASS / total. blocker_failed=true "
+          "are insufficient. If STEP OUTPUTS are absent, do not PASS expectations "
+          "requiring them. pass_rate = PASS / total. blocker_failed=true "
           "if any FAIL is on a blocker-class expectation. JSON ONLY."
     )
 
@@ -108,14 +108,13 @@ def call_grader(
         # context ceiling, so they never make an otherwise gradable run fail;
         # without them, such an expectation is INCONCLUSIVE, never a PASS.
         with_steps = user + "\n\nSTEP OUTPUTS (by step id)\n" + _step_outputs(outputs_dir)
-        if fits_local_context(system=system_spec, messages=[{"role": "user", "content": with_steps}],
-                              tools=None, force_json=True, model_hint="reasoning-strong"):
-            user = with_steps
-        else:
-            user += "\n\nSTEP OUTPUTS\n(omitted: they would exceed the context ceiling)"
+        omitted = user + "\n\nSTEP OUTPUTS\n(omitted: they would exceed the context ceiling)"
         result = call_model_json(
             system_spec=system_spec,
-            user_prompt=user,
+            user_prompt=with_steps,
+            # The notice is optional too: a fitting base must not overflow
+            # just because the notice cannot fit. Required evidence stays intact.
+            user_prompt_fallbacks=[omitted, user],
             model_hint="reasoning-strong",
             schema=GRADING_SCHEMA,
         )
