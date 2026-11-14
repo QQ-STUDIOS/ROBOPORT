@@ -87,3 +87,17 @@ def test_frozen_report_still_authenticates_csv(tmp_path):
     Path(dataset['artifact_path']).write_text('tampered')
     with pytest.raises(ValueError, match='hash mismatch'):
         dataops.validate_report(report, dataset, report)
+
+
+def test_existing_artifact_hardlink_cannot_modify_source(tmp_path, monkeypatch):
+    import os
+    source = tmp_path / 'resources/datasets/sales_messy.csv'
+    source.parent.mkdir(parents=True)
+    source.write_bytes((REPO / 'resources/datasets/sales_messy.csv').read_bytes())
+    artifact_dir = tmp_path / 'artifacts'
+    artifact_dir.mkdir()
+    os.link(source, artifact_dir / 'normalized-sales.csv')
+    before = source.read_bytes()
+    monkeypatch.setattr(dataops, 'REPO', tmp_path)
+    dataops.prepare_dataset('resources/datasets/sales_messy.csv', artifact_dir)
+    assert source.read_bytes() == before

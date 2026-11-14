@@ -487,7 +487,7 @@ def _call_executor(step: dict, accumulated: dict, registry: dict, *, runtime_dat
                     llm_calls += 1
                     _accumulate(tele, repair_usage)
                     result = fixed
-                    if injected_fault and dataops_ground.get('persistent_schema_fault'):
+                    if injected_fault and dataops_ground.get('persistent_schema_fault') and not _validate_against(output_schema, result.get('output', {})):
                         result = inject_schema_fault(result)
                         fault_count += 1
                     repaired = True

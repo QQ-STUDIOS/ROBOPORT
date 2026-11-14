@@ -21,9 +21,10 @@ class ArtifactProvider(Provider):
     name = 'fault'
     config = {'defaults': {'context_tokens': 65536, 'max_tokens': 4096}}
 
-    def __init__(self, *, tamper=False, bad_repair=False, bad_timestamp=False, step_ids=None):
+    def __init__(self, *, tamper=False, bad_repair=False, bad_timestamp=False, step_ids=None, waves=None):
         self.requests = []
         self.step_ids = step_ids
+        self.waves = waves
         self.tamper = tamper
         self.bad_timestamp = bad_timestamp
         self.bad_repair = bad_repair
@@ -42,6 +43,9 @@ class ArtifactProvider(Provider):
             if self.step_ids:
                 for step, sid in zip(output['steps'], self.step_ids):
                     step['id'] = sid
+            if self.waves:
+                for step, wave in zip(output['steps'], self.waves):
+                    step['wave'] = wave
         else:
             source_line = next(line for line in prompt.splitlines() if line.startswith('input: '))
             grounds = json.loads(source_line.removeprefix('input: '))['dataops_grounding']
@@ -128,12 +132,12 @@ def test_wrong_numeric_claim_rejected(tmp_path, monkeypatch):
 def test_failed_single_repair_never_reaches_reporting(tmp_path, monkeypatch):
     outcome, provider = execute(tmp_path, monkeypatch, 3, bad_repair=True)
     assert outcome['status'] == 'failed'
-    assert outcome['step_failed'] == 'clean'
-    assert provider.repair_calls == 2
-    assert len(provider.requests) == 5
+    assert provider.repair_calls == 1
+    assert len(provider.requests) == 3
     assert not (tmp_path / 'steps/report.json').exists()
-    failed = json.loads((tmp_path / 'steps/clean.json').read_text())
+    failed = json.loads((tmp_path / 'steps/schema_failure_probe.json').read_text())
     assert failed['fault_injection']['count'] == 1 and failed['repair_attempts'] == 1
+    assert failed['expected_failure'] is False
 
 
 def test_failed_timestamp_repair_cannot_be_overwritten_by_grounding_pass(tmp_path, monkeypatch):
@@ -174,3 +178,11 @@ def test_planner_grounding_cannot_replace_canonical_report_schema(tmp_path, monk
     assert result['layer'] == ('schema_invalid' if trusted else 'grounding_invalid')
     if not trusted:
         assert provider.requests == []
+
+
+@pytest.mark.parametrize('waves', [(1, 0), (0, 0)])
+def test_fixed_dataops_dependencies_get_canonical_waves(tmp_path, monkeypatch, waves):
+    outcome, _ = execute(tmp_path, monkeypatch, waves=waves)
+    assert outcome['status'] == 'ok'
+    plan = json.loads((tmp_path / 'plan.json').read_text())
+    assert [step['wave'] for step in plan['steps']] == [0, 1]

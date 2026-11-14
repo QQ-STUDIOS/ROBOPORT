@@ -68,3 +68,15 @@ def test_probe_does_not_accept_unobserved_expected_failure(tmp_path):
         dataops.run_failure_probe(ground, {}, lambda *a, **kw: {'status': 'ok', 'repair_attempts': 1}, tmp_path)
     saved = json.loads((tmp_path / 'steps/schema_failure_probe.json').read_text())
     assert saved['expected_failure'] is False
+
+
+def test_incomplete_repair_never_counts_as_verified_probe(tmp_path):
+    ground = dataops.prepare_context({'data_source': {'path': 'resources/datasets/sales_messy.csv',
+                                                     'synthetic': True, 'schema_fault': True}}, tmp_path / 'artifacts')
+    incomplete = {'status': 'failed', 'layer': 'schema_invalid', 'repair_attempts': 1,
+                  'repaired': False, 'llm_calls': 1,
+                  'fault_injection': {'kind': 'missing_schema_columns', 'count': 1}}
+    with pytest.raises(ValueError, match='did not demonstrate'):
+        dataops.run_failure_probe(ground, {}, lambda *a, **kw: incomplete, tmp_path)
+    saved = json.loads((tmp_path / 'steps/schema_failure_probe.json').read_text())
+    assert saved['expected_failure'] is False

@@ -240,7 +240,8 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
         expected = [('data_engineering', 'CleanedDataset'), ('reporting', 'DataReport')]
         if [(s.get('owner'), s.get('output_type')) for s in plan['steps']] != expected:
             raise ValueError('DataOps plan must preserve the ordered CleanedDataset -> DataReport crew contract')
-        for step in plan['steps']:
+        for wave, step in enumerate(plan['steps']):
+            step['wave'] = wave
             step['input'] = {'dataops_grounding': dataops,
                              'instruction': 'The runtime has actually processed the source CSV. Return the supplied dataset contract for data_engineering or supplied report contract for reporting, exactly. Do not invent or rewrite artifact facts or report text.'}
             step['allowed_tools'] = []

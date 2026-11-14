@@ -9,6 +9,8 @@ import csv
 import hashlib
 import io
 import json
+import os
+import tempfile
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -52,10 +54,19 @@ def prepare_dataset(input_path, artifact_dir):
     path = destination / 'normalized-sales.csv'
     if path == source:
         raise ValueError('artifact must not overwrite source')
-    with path.open('w', encoding='utf-8', newline='') as stream:
-        writer = csv.writer(stream, lineterminator='\n')
-        writer.writerow([x[0] for x in COLUMNS])
-        writer.writerows(rows)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', newline='',
+                                         dir=destination, delete=False) as stream:
+            temporary = Path(stream.name)
+            writer = csv.writer(stream, lineterminator='\n')
+            writer.writerow([x[0] for x in COLUMNS])
+            writer.writerows(rows)
+        # Replace the entry itself, never follow a pre-existing symbolic/hard link.
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
     return {
         'schema_doc': {'columns': [{'name': n, 'dtype': t} for n, t in COLUMNS]},
         'row_count': len(rows), 'artifact_path': str(path),
@@ -174,7 +185,9 @@ def run_failure_probe(ground, registry, executor_callback, run_dir):
             'deterministic': False, 'allowed_tools': []}
     result = executor_callback(step, {}, registry, runtime_dataops_grounding=probe_ground)
     expected = (result.get('status') == 'failed' and result.get('layer') == 'schema_invalid'
-                and result.get('repair_attempts') == 1)
+                and result.get('repair_attempts') == 1 and result.get('repaired') is True
+                and result.get('fault_injection', {}).get('count') == 2
+                and result.get('llm_calls') == 2)
     record = {**result, 'expected_failure': expected, 'report_produced': False,
               'probe_kind': 'persistent_missing_schema_columns'}
     directory = Path(run_dir) / 'steps'
