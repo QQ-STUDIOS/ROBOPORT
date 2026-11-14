@@ -519,7 +519,7 @@ function init() {
   window.addEventListener("popstate", () => { state.section = sectionFromUrl(); render(); });
   window.addEventListener('message', e => {
     const frame = document.getElementById('fleet-console');
-    if (frame && e.source === frame.contentWindow && e.data?.type === '__dc_booted') {
+    if (frame && e.source === frame.contentWindow && e.data?.type === 'roboport-demo-ready') {
       clearTimeout(fleetBootTimer);
     }
   });

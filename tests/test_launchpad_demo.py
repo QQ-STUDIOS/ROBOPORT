@@ -55,7 +55,8 @@ assert(renderFleet().includes('Topology could not start'));
 state.fleetMode='topology';watchFleetBoot();
 const frameWindow={};document.getElementById('fleet-console').contentWindow=frameWindow;
 events.message({source:{},data:{type:'__dc_booted'}});assert(timers.has(nextTimer));
-events.message({source:frameWindow,data:{type:'__dc_booted'}});assert(!timers.has(nextTimer));
+events.message({source:frameWindow,data:{type:'__dc_booted'}});assert(timers.has(nextTimer));
+events.message({source:frameWindow,data:{type:'roboport-demo-ready'}});assert(!timers.has(nextTimer));
 state.consoleFailed=true;media.matches=true;events.media();media.matches=false;events.media();
 assert(!state.consoleFailed,'a topology retry must clear the prior failure status');
 `);
@@ -72,12 +73,16 @@ def test_embedded_console_preserves_tab_navigation(tmp_path):
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const src=fs.readFileSync(process.argv[2],'utf8');
 const handler=src.match(/function onKey\(e\)\{[\s\S]*?\n  \}/)[0];
-const ctx={window:{parent:{}},document:{activeElement:{tagName:'BUTTON'},getElementById:()=>({offsetParent:{}})},PROPS:{embedded:true}};
+const ctx={window:{parent:{}},document:{activeElement:{tagName:'BUTTON'},getElementById:()=>({offsetParent:{}})},PROPS:{embedded:true},D:{sr:{}}};
 vm.createContext(ctx);vm.runInContext(handler,ctx);
 for(const shiftKey of [false,true]){
  let prevented=false;
  ctx.onKey({key:'Tab',shiftKey,target:{tagName:'BUTTON'},preventDefault(){prevented=true;}});
  assert(!prevented);
+}
+for(const key of ['r','h']){
+ let prevented=false;ctx.onKey({key,target:{tagName:'BUTTON'},preventDefault(){prevented=true;}});
+ assert(prevented);assert(ctx.D.sr.textContent.includes('unavailable'));
 }
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],
@@ -94,12 +99,13 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const src=fs.readFileSync(process.argv[2],'utf8');
 const code=src.match(/\/\/ BEGIN standalone-readonly([\s\S]*?)\/\/ END standalone-readonly/)[1];
 for(const embedded of [false,true]){
- const button={disabled:false}, backend={handleCommand:()=>({status:'accepted'})};
+ const button={disabled:false,style:{}}, backend={handleCommand:()=>({status:'accepted'})};
  const w={};w.parent=embedded?{}:w;
  const ctx={window:w,backend,document:{getElementById:()=>({querySelectorAll:()=>[button]})},MutationObserver:class{observe(){}}};
  vm.runInNewContext(code,ctx);
  assert.equal(backend.handleCommand({command_id:'c1'}).status,embedded?'rejected':'accepted');
  assert.equal(button.disabled,embedded);
+ assert.equal(!!button.hidden,embedded);
 }
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],

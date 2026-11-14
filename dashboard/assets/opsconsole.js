@@ -1597,6 +1597,7 @@ class Component extends DCLogic {
   el("insp-close").addEventListener("click",clearSelection);
 
   function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.isContentEditable)return;
+    if(window.parent!==window&&["r","h"].includes(e.key.toLowerCase())){e.preventDefault();D.sr.textContent="Commands are unavailable in the read-only demo";return;}
     if(PROPS.embedded){const r0=document.getElementById("rbp");if(!r0||r0.offsetParent===null)return;if(e.key==="Tab")return;}
     if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
     if(e.key==="Tab"){e.preventDefault();showSummary=!showSummary;return;}
@@ -1679,7 +1680,7 @@ class Component extends DCLogic {
   const feed=createFeed(backend);
   layout();feed.onEnvelope(route);feed.connect();
 
-  let last=performance.now(),lastPanel=0,lastRec=0;
+  let last=performance.now(),lastPanel=0,lastRec=0,readySent=false;
   function step(now){
     if(replay)return;let dt=(now-last)/1000;last=now;if(dt>0.05)dt=0.05;
     const sdt=running?dt*simSpeed:0;
@@ -1688,7 +1689,7 @@ class Component extends DCLogic {
     if(now-lastPanel>110){refreshPanels();lastPanel=now;}
     if(now-lastRec>500){recordFrame();lastRec=now;}
   }
-  function rafLoop(now){step(now);requestAnimationFrame(rafLoop);}
+  function rafLoop(now){step(now);if(!readySent&&window.parent!==window){readySent=true;window.parent.postMessage({type:"roboport-demo-ready"},"*");}requestAnimationFrame(rafLoop);}
   requestAnimationFrame(rafLoop);
   setInterval(()=>{if(document.hidden)step(performance.now());},80);
 

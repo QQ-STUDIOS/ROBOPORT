@@ -45,6 +45,12 @@ const start=src.indexOf('  new ResizeObserver('),end=src.indexOf('    window.__f
 net.window.parent=net.window;
 vm.runInNewContext(src.slice(start,end)+'\nwindow.__feed=feed;',net);
 assert.equal(adapters,1);assert.equal(sse,0);assert.equal(fetches,0);
+const posted=[];
+const ready={readySent:false,step(){throw Error('render failed');},requestAnimationFrame(){},window:{parent:{postMessage:m=>posted.push(m)}}};
+vm.createContext(ready);vm.runInContext(src.match(/function rafLoop\(now\)\{[^\n]+/)[0],ready);
+assert.throws(()=>ready.rafLoop(0));assert.equal(posted.length,0);
+ready.step=()=>{};ready.rafLoop(1);ready.rafLoop(2);
+assert.equal(posted.length,1);assert.equal(posted[0].type,'roboport-demo-ready');
 ''', encoding='utf-8')
     result = subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],
                             capture_output=True, text=True)
