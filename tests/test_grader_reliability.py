@@ -148,3 +148,12 @@ def test_second_assessment_respects_remaining_call_budget(tmp_path, monkeypatch)
     assert result['review_required'] and result['blocker_failed'] and result['pass_rate'] == 0
     assert result['verification']['assessments_completed'] == 1
     assert result['results'][0]['assessments'] == assessment()['results']
+
+
+@pytest.mark.parametrize('verification_error', [False, True])
+@pytest.mark.parametrize('declared', [False, True])
+def test_result_blocker_flag_is_authoritative_even_on_error(tmp_path, monkeypatch, verification_error, declared):
+    responses = [assessment(), RuntimeError('verification failed') if verification_error else assessment()]
+    result, _ = run_grade(tmp_path, monkeypatch, responses,
+                          blockers=['completed_count is 3.'] if declared else [])
+    assert result['results'][0]['blocker'] is declared

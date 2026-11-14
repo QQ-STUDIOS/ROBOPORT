@@ -151,6 +151,8 @@ def call_grader(
                  'assessments': [assessment[i] for assessment in assessments]}
                 for i, ex in enumerate(expectations)]
     declared = set(blockers or [])
+    for row in rows:
+        row['blocker'] = row['expectation'] in declared
     return {
         'run_id': outputs_dir.name,
         'results': rows,
