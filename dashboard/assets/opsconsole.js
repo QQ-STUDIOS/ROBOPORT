@@ -370,7 +370,7 @@ class Component extends DCLogic {
     resetSnapshotEvidence(d);
     M.config=d.config;M.stations.clear();
     for(const c of d.config.stations)M.stations.set(c.station_id,{...c,state:"idle",worker_agent_id:null,drain:false,queue_depth:0,rev:-1,x:0,y:0,pulse:0});
-    for(const s of d.stations){const st=M.stations.get(s.station_id);Object.assign(st,s);}
+    for(const s of d.stations){const st=M.stations.get(s.station_id);if(st)Object.assign(st,s);}
     positionStations();M.agents.clear();for(const a of d.agents)addClientAgent(a);
     M.tasks.clear();for(const t of d.tasks)M.tasks.set(t.task_id,t);
     M.metrics=d.metrics;prevDone=d.metrics.completed_total;
@@ -380,7 +380,12 @@ class Component extends DCLogic {
     const slot=dockSlot(dockCounter++);
     const a={...dto,x:slot.x,y:slot.y,_prev:dto.state,trail:[],bob:Math.random()*6.28,spin:Math.random()*6.28,
       _slot:dockCounter%12,travelDur:0,travelT:0,p0:null,p1:null,p2:null,carry:null,_resultPending:false,tag:""};
-    M.agents.set(a.agent_id,a);return a;
+    M.agents.set(a.agent_id,a);
+    if(a.state==="dispatched"||a.state==="returning"){
+      a.p0={x:a.x,y:a.y};const target=a.state==="dispatched"?(M.stations.get(a.station_id)||{x:cx,y:cy}):{x:cx,y:cy};
+      const points=path(a.p0,target,1);a.p1=points[1];a.p2=points[2];a.travelDur=a.eta_s||1;a.travelT=0;
+    }
+    return a;
   }
   function applyAgent(dto){
     let a=M.agents.get(dto.agent_id);
@@ -1804,11 +1809,18 @@ class Component extends DCLogic {
     }
     if(!files.length)pushLog('<span style="color:var(--work)">no files selected</span>');
   }
-  document.getElementById('run-file-input').addEventListener('change',e=>{if(PROPS.embedded){e.target.value='';return;}if(window.parent!==window){e.target.value='';return;}loadRunFiles([...e.target.files]);e.target.value='';});
+  function rejectEmbeddedImport(e){
+    if(window.parent===window)return false;
+    e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='none';canvas.style.outline='';
+    const notice="Run imports are unavailable in embedded consoles; open the standalone viewer.";
+    if(D.sr.textContent!==notice)D.sr.textContent=notice;const hint=root.querySelector('.hint');if(hint&&hint.textContent!==notice)hint.textContent=notice;
+    return true;
+  }
+  document.getElementById('run-file-input').addEventListener('change',e=>{if(PROPS.embedded){e.target.value='';return;}if(rejectEmbeddedImport(e)){e.target.value='';return;}loadRunFiles([...e.target.files]);e.target.value='';});
   // Canvas drop zone for run files
-  canvas.addEventListener('dragover',e=>{e.preventDefault();canvas.style.outline='2px dashed #4fd672';});
+  canvas.addEventListener('dragover',e=>{if(rejectEmbeddedImport(e))return;e.preventDefault();canvas.style.outline='2px dashed #4fd672';});
   canvas.addEventListener('dragleave',()=>{canvas.style.outline='';});
-  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';if(PROPS.embedded)return;if(window.parent!==window)return;const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
+  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';if(PROPS.embedded)return;if(rejectEmbeddedImport(e))return;const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
   
     window.__feed=feed;
     step(performance.now());signalReady();

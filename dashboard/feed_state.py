@@ -58,7 +58,8 @@ class SnapshotStore:
         elif kind == 'agent.removed':
             self.agents.pop(data.get('agent_id'), None)
         elif kind == 'station.updated':
-            self._put(self.stations, data.get('station_id'), data)
+            if data.get('station_id') in {s.get('station_id') for s in (self.config.get('stations') or [])}:
+                self._put(self.stations, data.get('station_id'), data)
         elif kind in ('task.completed', 'task.failed', 'task.cancelled'):
             task = {**self.tasks.pop(data.get('task_id'), {}), **data}
             sid, aid = task.get('station_id'), task.get('assigned_agent_id')

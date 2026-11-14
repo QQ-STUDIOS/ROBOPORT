@@ -74,6 +74,13 @@ assert.equal(evidence.stnThru.get('s')[0],900,'use server observation time despi
 assert.equal(evidence.logEntries.length,1);assert.equal(evidence.incidents.length,2);assert.equal(evidence.toasts.length,0);
 assert.equal(evidence.incidents[0].alert_id,'new');
 assert.equal(evidence.hist.rate.length,1);assert.equal(evidence.chainPackets.length,0);
+const moving={M:{agents:new Map(),stations:new Map([['s',{x:20,y:30}]])},dockCounter:0,cx:100,cy:100,dockSlot:()=>({x:0,y:0})};
+vm.createContext(moving);
+vm.runInContext(src.match(/function path\([^\n]+/)[0]+'\n'+src.match(/function bez\([^\n]+/)[0]+'\n'+fn('addClientAgent'),moving);
+for(const [id,state,station_id] of [['a','dispatched','s'],['b','returning',null],['c','dispatched','unknown']]){
+ const agent=moving.addClientAgent({agent_id:id,state,station_id,eta_s:1});
+ const position=moving.bez(agent.p0,agent.p1,agent.p2,0.5);assert(Number.isFinite(position.x)&&Number.isFinite(position.y));
+}
 ''', encoding='utf-8')
     result = subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],
                             capture_output=True, text=True)

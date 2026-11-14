@@ -128,10 +128,18 @@ for(const embedded of [false,true]){
  if(embedded){assert(hint.textContent.includes('run imports are unavailable'));assert(input.disabled);assert(label.hidden);}
 }
 const change=src.match(/document.getElementById\('run-file-input'\).addEventListener\('change',e=>\{[^\n]+/)[0];
+const reject=src.match(/function rejectEmbeddedImport\(e\)\{[\s\S]*?\n  \}/)[0];
+const dragover=src.match(/canvas.addEventListener\('dragover',e=>\{[^\n]+/)[0];
 for(const embedded of [false,true]){
  let handler,loads=0;const w={};w.parent=embedded?{}:w;
- vm.runInNewContext(change,{window:w,document:{getElementById:()=>({addEventListener:(type,fn)=>handler=fn})},loadRunFiles(){loads++;}});
- handler({target:{files:[{}],value:'file'}});assert.equal(loads,embedded?0:1);
+ const hint={},events={},canvas={style:{},addEventListener:(type,fn)=>events[type]=fn};
+ const ctx={window:w,document:{getElementById:()=>({addEventListener:(type,fn)=>handler=fn})},loadRunFiles(){loads++;},
+ canvas,D:{sr:{}},root:{querySelector:()=>hint}};
+ vm.runInNewContext(reject+'\n'+change+'\n'+dragover,ctx);
+ handler({target:{files:[{}],value:'file'},preventDefault(){}});assert.equal(loads,embedded?0:1);
+ const dataTransfer={};events.dragover({dataTransfer,preventDefault(){}});
+ if(embedded){assert.equal(dataTransfer.dropEffect,'none');assert.equal(canvas.style.outline,'');assert(hint.textContent.includes('unavailable'));}
+ else assert(canvas.style.outline.includes('dashed'));
 }
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],

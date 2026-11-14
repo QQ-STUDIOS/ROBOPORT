@@ -66,13 +66,18 @@ def test_snapshot_state_and_slow_client_queues_remain_bounded(monkeypatch):
     monkeypatch.syspath_prepend(str(REPO / 'dashboard'))
     from feed_state import SnapshotStore
     state = SnapshotStore(limit=3, clock=lambda: 1)
-    state.accept({'type': 'snapshot', 'seq': 1, 'data': {'agents': [{'agent_id': 'real'}]}})
+    state.accept({'type': 'snapshot', 'seq': 1, 'data': {'agents': [{'agent_id': 'real'}],
+                  'config': {'stations': [{'station_id': 's'}]}, 'stations': [{'station_id': 's', 'rev': 1}]}})
+    state.accept({'type': 'station.updated', 'seq': 2, 'data': {'station_id': 'unknown', 'rev': 1}})
+    state.accept({'type': 'station.updated', 'seq': 3, 'data': {'station_id': 's', 'rev': 3}})
+    state.accept({'type': 'station.updated', 'seq': 4, 'data': {'station_id': 's', 'rev': 2}})
     for i in range(20):
         state.accept({'type': 'task.enqueued', 'seq': i+2, 'data': {'task_id': str(i)}})
     snap = state.snapshot()
     assert len(snap['data']['tasks']) == 3
     assert snap['data']['agents'] == [{'agent_id': 'real'}]
     assert snap['data']['history_limited']
+    assert snap['data']['stations'] == [{'station_id': 's', 'rev': 3}]
     # A slow subscriber only accumulates a bounded queue, coalesced to a current snapshot.
     spec = importlib.util.spec_from_file_location('bounded_serve', REPO / 'dashboard/serve.py')
     serve = importlib.util.module_from_spec(spec)

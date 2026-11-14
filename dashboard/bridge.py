@@ -710,8 +710,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.flush()
             while True:
                 recheck()
-                if queue:
-                    data = queue.pop(0)
+                with _subscribers_lock:
+                    data = queue.pop(0) if queue else None
+                if data is not None:
                     msg = f"data: {data}\n\n"
                     self.wfile.write(msg.encode())
                     self.wfile.flush()
