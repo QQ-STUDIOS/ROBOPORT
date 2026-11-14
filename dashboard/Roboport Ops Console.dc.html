@@ -1095,9 +1095,18 @@ class Component extends DCLogic {
     el("stn-count").textContent=M.config.stations.length+" steps";
   }
   function replaceRoster(html){
-    const aid=D.roster.contains(document.activeElement)?document.activeElement.closest('[data-aid]')?.dataset.aid:null;
-    D.roster.innerHTML=html;
-    if(aid)[...D.roster.querySelectorAll('[data-aid]')].find(row=>row.dataset.aid===aid)?.focus({preventScroll:true});
+    const roster=D.roster,scroll=roster.scrollTop,template=document.createElement('template');
+    template.innerHTML=html;
+    const existing=new Map([...roster.children].map(row=>[row.dataset.aid,row])),wanted=new Set();
+    let cursor=roster.firstElementChild;
+    for(const fresh of [...template.content.children]){
+      const id=fresh.dataset.aid,row=existing.get(id)||fresh;wanted.add(id);
+      if(row!==fresh){if(row.innerHTML!==fresh.innerHTML)row.innerHTML=fresh.innerHTML;row.className=fresh.className;row.setAttribute('aria-selected',fresh.getAttribute('aria-selected'));}
+      if(row!==cursor)roster.insertBefore(row,cursor);
+      cursor=row.nextElementSibling;
+    }
+    for(const row of existing.values())if(!wanted.has(row.dataset.aid))row.remove();
+    roster.scrollTop=scroll;
   }
   function refreshPanels(){
     const m=M.metrics;
@@ -1358,7 +1367,8 @@ class Component extends DCLogic {
   if(window.parent!==window){
     backend.handleCommand=cmd=>({command_id:cmd.command_id,status:"rejected",reason:"Read-only demo embedding; commands are unavailable"});
     const root=document.getElementById("rbp");
-    const readonlyHint=root.querySelector('.hint');if(readonlyHint)readonlyHint.textContent="Read-only console · commands are unavailable · Tab moves focus · click to inspect";
+    const readonlyHint=root.querySelector('.hint');if(readonlyHint)readonlyHint.textContent="Read-only demo · commands and run imports are unavailable · Tab moves focus · click to inspect";
+    const fileInput=root.querySelector('#run-file-input');if(fileInput){fileInput.disabled=true;const label=fileInput.closest?.('label');if(label){label.hidden=true;label.style.display="none";}}
     const disableCommands=()=>{for(const button of root.querySelectorAll('#btn-agent,#btn-queue,[data-cmd]:not([data-cmd="follow"]):not([data-cmd="focus"]):not([data-cmd="home"])')){
       if(!button.disabled)button.disabled=true;
       button.title="Commands are unavailable in the read-only demo";
@@ -1453,11 +1463,11 @@ class Component extends DCLogic {
     }
     if(!files.length)pushLog('<span style="color:var(--work)">no files selected</span>');
   }
-  document.getElementById('run-file-input').addEventListener('change',e=>{loadRunFiles([...e.target.files]);e.target.value='';});
+  document.getElementById('run-file-input').addEventListener('change',e=>{if(window.parent!==window){e.target.value='';return;}loadRunFiles([...e.target.files]);e.target.value='';});
   // Canvas drop zone for run files
   canvas.addEventListener('dragover',e=>{e.preventDefault();canvas.style.outline='2px dashed #4fd672';});
   canvas.addEventListener('dragleave',()=>{canvas.style.outline='';});
-  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
+  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';if(window.parent!==window)return;const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
   // SSE live mode: ?api=http://localhost:7474
   const API_BASE=new URLSearchParams(location.search).get('api')||null;
   if(API_BASE){
