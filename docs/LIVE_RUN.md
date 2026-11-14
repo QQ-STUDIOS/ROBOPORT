@@ -85,6 +85,31 @@ It swaps the default provider for Anthropic; note the cloud container **cannot h
 - Compare two live runs with `python scripts/diff_runs.py`; summarize provider/model cost with
   `python scripts/aggregate.py`.
 
+## Grader evidence and reliability
+
+The live grader makes two fresh, blinded assessments of the same artifact snapshot.
+Each identifies an expectation by its stable numeric ID and classifies it as
+SUPPORTED, CONTRADICTED, or INSUFFICIENT. The runtime preserves the original text
+and computes PASS, FAIL, INCONCLUSIVE, pass rates and declared-blocker policy.
+The model cannot change scores or blocker flags.
+
+Both assessments must agree. PASS and FAIL require nonblank, verbatim citations
+that actually occur in the named, supplied artifact. Step citations are rejected
+when step evidence was omitted at the context ceiling. A disagreement, invalid
+citation, malformed result, exhausted budget or provider error returns
+INCONCLUSIVE with `review_required: true` and blocks acceptance. There is no
+retry-until-PASS or majority-vote recovery. `grading.json` retains both validated
+per-expectation assessments and citations; `verification.assessments_completed`
+shows whether both assessments completed. A failed verification discards all
+provisional passes. Two calls count against the normal run budget and add model
+latency/cost; insufficient remaining budget fails closed.
+
+Agreement is a consistency check, not independent ground truth: both calls can
+use the same model and can share a semantic mistake. Exact quotes prove where
+cited text came from, not that it logically establishes an arbitrary assertion.
+Use deterministic schema, value and execution checks for machine-verifiable
+requirements, and inspect the retained citations for consequential decisions.
+
 ## Scope / safety
 
 Run this against the **synthetic fixture only**. Do not point `--live` at a real line-of-business

@@ -8,7 +8,7 @@ from __future__ import annotations
 import functools
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .providers import Provider, get_provider
 from .budget import governed_chat
@@ -49,10 +49,12 @@ def call_model_json(
     model_hint: str = "any",
     schema: dict | None = None,
     user_prompt_fallbacks: list[str] | None = None,
+    prompt_selected: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    """One-shot JSON call with no tools. Used by planner + grader."""
+    """One-shot JSON call. prompt_selected observes the exact dispatched user prompt."""
     p = provider()
     out = governed_chat(p,
+        prompt_selected=prompt_selected,
         message_fallbacks=([[{"role": "user", "content": prompt}] for prompt in user_prompt_fallbacks]
                            if user_prompt_fallbacks is not None else None),
         system=system_spec,
