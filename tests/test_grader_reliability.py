@@ -102,6 +102,7 @@ def test_second_assessment_error_does_not_keep_first_pass(tmp_path, monkeypatch)
     result, _ = run_grade(tmp_path, monkeypatch, [assessment(), RuntimeError('verification unavailable')])
     assert result['review_required'] and result['blocker_failed'] and result['pass_rate'] == 0
     assert result['results'][0]['verdict'] == 'INCONCLUSIVE'
+    assert result['results'][0]['assessments'] == assessment()['results']
 
 
 @pytest.mark.parametrize('include_steps', [False, True])
@@ -146,3 +147,4 @@ def test_second_assessment_respects_remaining_call_budget(tmp_path, monkeypatch)
     assert len(backend.calls) == 1
     assert result['review_required'] and result['blocker_failed'] and result['pass_rate'] == 0
     assert result['verification']['assessments_completed'] == 1
+    assert result['results'][0]['assessments'] == assessment()['results']

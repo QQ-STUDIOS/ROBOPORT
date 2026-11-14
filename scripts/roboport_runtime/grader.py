@@ -147,8 +147,9 @@ def call_grader(
         review_required = True
         critiques.append(f'grader error: {exc!r}')
         rows = [{'expectation': ex, 'verdict': 'INCONCLUSIVE',
-                 'evidence': f'Grading could not be verified: {exc!r}', 'citations': []}
-                for ex in expectations]
+                 'evidence': f'Grading could not be verified: {exc!r}', 'citations': [],
+                 'assessments': [assessment[i] for assessment in assessments]}
+                for i, ex in enumerate(expectations)]
     declared = set(blockers or [])
     return {
         'run_id': outputs_dir.name,
