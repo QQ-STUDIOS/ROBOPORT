@@ -1094,6 +1094,11 @@ class Component extends DCLogic {
     D.stnLoad.innerHTML=M.config.stations.map(s=>'<div class="stnrow" data-sid="'+s.station_id+'"><div class="nm"><span class="sd" style="color:'+s.hue+'"></span>'+s.name+'</div><div class="track"><i id="ld-'+s.station_id.replace(/\./g,"-")+'" style="width:0%;background:'+s.hue+';box-shadow:0 0 6px '+s.hue+'"></i></div><div class="q" id="q-'+s.station_id.replace(/\./g,"-")+'">—</div></div>').join("");
     el("stn-count").textContent=M.config.stations.length+" steps";
   }
+  function replaceRoster(html){
+    const aid=D.roster.contains(document.activeElement)?document.activeElement.closest('[data-aid]')?.dataset.aid:null;
+    D.roster.innerHTML=html;
+    if(aid)[...D.roster.querySelectorAll('[data-aid]')].find(row=>row.dataset.aid===aid)?.focus({preventScroll:true});
+  }
   function refreshPanels(){
     const m=M.metrics;
     D.rate.textContent=m.tasks_per_min;D.done.textContent=m.completed_total;D.active.textContent=m.active_agents+"/"+m.total_agents;
@@ -1101,11 +1106,11 @@ class Component extends DCLogic {
     D.dDone.textContent=(doneDelta>0?"▲ +"+doneDelta:"· steady")+"/min";D.dDone.className="delta"+(doneDelta>0?" up":"");
     const s=m.uptime_s;D.up.textContent=String((s/60)|0).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
     D.rosterCount.textContent=M.agents.size;
-    D.roster.innerHTML=[...M.agents.values()].map(a=>{
+    replaceRoster([...M.agents.values()].map(a=>{
       const col=stateColor(a),sc=(selected&&selected.type==="agent"&&selected.id===a.agent_id)?" sel":"";
       const tokPct=Math.round((a.tokens_used||0)/(a.token_budget||60000)*100),tokWarn=tokPct>85;
       return'<div class="agent'+sc+'" role="option" tabindex="0" data-aid="'+a.agent_id+'" aria-selected="'+(sc?"true":"false")+'"><span class="pip" style="color:'+col+';background:'+col+'"></span><div class="who"><div class="name">'+a.agent_id+(a.hold?'<span class="lock">⏸</span>':'')+'</div><div class="act">'+actLabel(a)+'</div></div><div class="cell"><div class="bar"><i style="width:'+a.energy+'%;background:'+ecolor(a.energy)+';box-shadow:0 0 6px '+ecolor(a.energy)+'"></i></div><div class="pct">'+Math.round(a.energy)+'%</div><div class="bar" style="margin-top:2px"><i style="width:'+tokPct+'%;background:'+(tokWarn?T.alert:T.steelDim)+'"></i></div></div></div>';
-    }).join("");
+    }).join(""));
     if(logDirty){D.log.innerHTML=logEntries.map(e=>'<div class="logline"><span class="t">'+e.t+'</span><span class="m">'+e.html+'</span></div>').join("");logDirty=false;}
     renderQueue();renderTelemetry();if(incDirty)renderIncidents();if(selected)renderInspector();
     el("btn-agent").disabled=M.config&&M.agents.size>=M.config.max_agents;
@@ -1262,6 +1267,7 @@ class Component extends DCLogic {
   function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.isContentEditable)return;
     if(e.key==="Tab"&&window.parent!==window)return;
     if(e.ctrlKey||e.metaKey||e.altKey)return;
+    if(e.code==="Space"&&e.target.closest?.("button,a,[role=button],[role=option]"))return;
     if(window.parent!==window&&selected?.type==="agent"&&["r","h"].includes(e.key.toLowerCase())){e.preventDefault();D.sr.textContent="Commands are unavailable in the read-only console";return;}
     if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
     if(e.key==="Tab"){e.preventDefault();showSummary=!showSummary;return;}
