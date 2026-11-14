@@ -1345,6 +1345,18 @@ class Component extends DCLogic {
     ? window.ROBOPORT_ADAPTER({apiUrl:_api||undefined})
     : createMockBackend();
   const feed=createFeed(backend);
+  // BEGIN standalone-readonly
+  if(window.parent!==window){
+    backend.handleCommand=cmd=>({command_id:cmd.command_id,status:"rejected",reason:"Read-only demo embedding; commands are unavailable"});
+    const root=document.getElementById("rbp");
+    const disableCommands=()=>{for(const button of root.querySelectorAll('#btn-agent,#btn-queue,[data-cmd]:not([data-cmd="follow"]):not([data-cmd="focus"]):not([data-cmd="home"])')){
+      if(!button.disabled)button.disabled=true;
+      button.title="Commands are unavailable in the read-only demo";
+    }};
+    disableCommands();
+    new MutationObserver(disableCommands).observe(root,{subtree:true,childList:true,attributes:true,attributeFilter:["disabled"]});
+  }
+  // END standalone-readonly
   layout();feed.onEnvelope(route);feed.connect();
 
   let last=performance.now(),lastPanel=0,lastRec=0;
