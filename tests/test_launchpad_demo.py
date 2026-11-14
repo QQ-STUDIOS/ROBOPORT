@@ -40,6 +40,7 @@ assert(frame.includes('embedded=1'));
 const replay=renderEvidence().match(/<button\\b[^>]*>Open replay in Fleet<\\/button>/)[0];
 assert(replay.includes('disabled'));
 for(const button of renderSettings().matchAll(/<button\\b[^>]*>/g))assert(button[0].includes('disabled'));
+assert(renderSettings().replace(/<[^>]*>/g,'').includes('This view is not implemented'));
 let paints=0;
 Object.defineProperty(document.getElementById('main'),'innerHTML',{set(){paints++;}});
 go('fleet');
@@ -88,6 +89,16 @@ for(const modifier of ['ctrlKey','metaKey','altKey']){
  let prevented=false;ctx.onKey({key:'r',[modifier]:true,target:{tagName:'BUTTON'},preventDefault(){prevented=true;}});
  assert(!prevented,'browser shortcuts must remain available');
 }
+let prevented=false;
+ctx.onKey({key:' ',code:'Space',target:{tagName:'BUTTON',closest:()=>({})},preventDefault(){prevented=true;}});
+assert(!prevented,'native button activation must not pause the simulation');
+const oldRow={dataset:{aid:'a1'},closest(){return this;}};
+let focused=false;
+const newRow={dataset:{aid:'a1'},focus(){focused=true;}};
+ctx.document.activeElement=oldRow;
+ctx.D.roster={contains:()=>true,querySelectorAll:()=>[{dataset:{aid:'a2'},focus(){throw Error('wrong row');}},newRow]};
+vm.runInContext(src.match(/function replaceRoster\(html\)\{[\s\S]*?\n  \}/)[0],ctx);
+ctx.replaceRoster('<div>updated roster</div>');assert(focused);
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],
                    check=True, capture_output=True, text=True)

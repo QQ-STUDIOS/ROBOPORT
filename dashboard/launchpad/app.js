@@ -338,7 +338,7 @@ function renderEvidence() {
             ${ghostBtn("Open replay in Fleet", "Replay handoff is not implemented in this demo")}
             ${ghostBtn("Safe export", "Classification policy not configured — safe export unavailable")}
           </div>
-          <div class="foot-note">Safe export is unavailable until a classification policy governs redaction. Source fields render as text only.</div>
+          <div class="foot-note">Replay handoff is not implemented in this demo. Safe export is unavailable until a classification policy governs redaction. Source fields render as text only.</div>
         </div>
       </div>
     </div>
@@ -376,7 +376,7 @@ function renderSettings() {
         <div class="cap__head"><span class="cap__name">${esc(c.name)}</span>${status(tone, icon, c.state)}</div>
         <div class="t-muted">${esc(c.detail)}</div>
         ${c.blocker ? `<div class="t-amber">${esc(c.blocker)}</div>` : ""}
-        <div class="cap__action">${btn}</div></div>`;
+        <div class="cap__action">${btn}</div><div class="foot-note">${esc(c.why || "This view is not implemented in the static demo")}</div></div>`;
     }).join("")}</div></div>`).join("");
 
   return `<section class="section" aria-labelledby="h-settings" data-screen-label="Settings">
