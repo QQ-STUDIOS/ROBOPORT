@@ -93,12 +93,15 @@ let prevented=false;
 ctx.onKey({key:' ',code:'Space',target:{tagName:'BUTTON',closest:()=>({})},preventDefault(){prevented=true;}});
 assert(!prevented,'native button activation must not pause the simulation');
 const oldRow={dataset:{aid:'a1'},closest(){return this;}};
-let focused=false;
-const newRow={dataset:{aid:'a1'},focus(){focused=true;}};
+oldRow.innerHTML='old';oldRow.className='agent';oldRow.setAttribute=()=>{};oldRow.nextElementSibling=null;
+const newRow={dataset:{aid:'a1'},innerHTML:'updated',className:'agent sel',getAttribute:()=> 'true'};
 ctx.document.activeElement=oldRow;
-ctx.D.roster={contains:()=>true,querySelectorAll:()=>[{dataset:{aid:'a2'},focus(){throw Error('wrong row');}},newRow]};
+ctx.D.roster={children:[oldRow],firstElementChild:oldRow,scrollTop:40,insertBefore(){throw Error('unchanged rows must not move');}};
+ctx.document.createElement=()=>({content:{children:[newRow]},set innerHTML(v){}});
 vm.runInContext(src.match(/function replaceRoster\(html\)\{[\s\S]*?\n  \}/)[0],ctx);
-ctx.replaceRoster('<div>updated roster</div>');assert(focused);
+ctx.replaceRoster('<div>updated roster</div>');
+assert.equal(ctx.D.roster.children[0],oldRow);assert.equal(ctx.document.activeElement,oldRow);
+assert.equal(oldRow.innerHTML,'updated');assert.equal(ctx.D.roster.scrollTop,40);
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],
                    check=True, capture_output=True, text=True)
@@ -116,13 +119,19 @@ const code=src.match(/\/\/ BEGIN standalone-readonly([\s\S]*?)\/\/ END standalon
 for(const embedded of [false,true]){
  const button={disabled:false,style:{}}, backend={handleCommand:()=>({status:'accepted'})};
  const w={};w.parent=embedded?{}:w;
- const hint={};
- const ctx={window:w,backend,document:{getElementById:()=>({querySelectorAll:()=>[button],querySelector:()=>hint})},MutationObserver:class{observe(){}}};
+ const hint={},label={style:{}},input={closest:()=>label};
+ const ctx={window:w,backend,document:{getElementById:()=>({querySelectorAll:()=>[button],querySelector:selector=>selector==='.hint'?hint:input})},MutationObserver:class{observe(){}}};
  vm.runInNewContext(code,ctx);
  assert.equal(backend.handleCommand({command_id:'c1'}).status,embedded?'rejected':'accepted');
  assert.equal(button.disabled,embedded);
  assert.equal(!!button.hidden,embedded);
- if(embedded)assert(hint.textContent.includes('commands are unavailable'));
+ if(embedded){assert(hint.textContent.includes('run imports are unavailable'));assert(input.disabled);assert(label.hidden);}
+}
+const change=src.match(/document.getElementById\('run-file-input'\).addEventListener\('change',e=>\{[^\n]+/)[0];
+for(const embedded of [false,true]){
+ let handler,loads=0;const w={};w.parent=embedded?{}:w;
+ vm.runInNewContext(change,{window:w,document:{getElementById:()=>({addEventListener:(type,fn)=>handler=fn})},loadRunFiles(){loads++;}});
+ handler({target:{files:[{}],value:'file'}});assert.equal(loads,embedded?0:1);
 }
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],

@@ -677,7 +677,24 @@ class Component extends DCLogic {
   }
   function dockSlot(i){const ring=46,n=12,ang=(i%n)/n*Math.PI*2+performance.now()*0.00002;return{x:cx+Math.cos(ang)*ring,y:cy+Math.sin(ang)*ring};}
 
+  function resetSnapshotEvidence(d){
+    for(const map of [stnThru,stnLat,agentHistory,agentCtx,nodeAlerts])map.clear();
+    for(const list of [sparks,srcPackets,chainPackets,logEntries,toasts,incidents])list.length=0;
+    const derived=d.derived||{},now=performance.now(),wall=Number.isFinite(d.observed_at_ms)?d.observed_at_ms:Date.now();
+    for(const [id,rows] of Object.entries(derived.throughput_ms||{}))stnThru.set(id,rows.filter(at=>wall-at<60000).map(at=>now-(wall-at)));
+    for(const [id,rows] of Object.entries(derived.latencies||{}))stnLat.set(id,rows.slice(-30));
+    for(const [id,rows] of Object.entries(derived.agent_history||{}))agentHistory.set(id,rows.slice(0,10));
+    hist.rate=(d.metrics_history||[]).map(m=>m.tasks_per_min);
+    hist.queued=(d.metrics_history||[]).map(m=>m.queued);
+    peakRate=d.peak_rate??Math.max(0,...hist.rate);doneDelta=0;dockCounter=0;
+    for(const row of (d.recent_logs||[]))logEntries.push({t:hhmm(row.ts),html:row.html});
+    for(const alert of [...(d.recent_incidents||d.alerts||[])].reverse())pushIncident(alert);
+    for(const alert of (d.alerts||[]))pushNodeAlert(alert);
+    if(d.history_limited)logEntries.unshift({t:"",html:"Older task history is limited; recent evidence and current state are shown."});
+    logDirty=true;incDirty=true;telDirty=true;
+  }
   function hydrate(d){
+    resetSnapshotEvidence(d);
     M.config=d.config;M.stations.clear();
     for(const c of d.config.stations)M.stations.set(c.station_id,{...c,state:"idle",worker_agent_id:null,drain:false,queue_depth:0,rev:-1,x:0,y:0,pulse:0});
     for(const s of d.stations){const st=M.stations.get(s.station_id);Object.assign(st,s);}
@@ -733,6 +750,7 @@ class Component extends DCLogic {
     nodeAlerts.set(id,{kind:al.kind,born:performance.now(),ttl_ms:(al.ttl_s||7)*1000,col});
   }
   function route(env){
+    if(replay)return;
     pushWire(env);
     switch(env.type){
       case "snapshot":hydrate(env.data);break;
@@ -1713,9 +1731,18 @@ class Component extends DCLogic {
     el("stn-count").textContent=M.config.stations.length+" steps";
   }
   function replaceRoster(html){
-    const aid=D.roster.contains(document.activeElement)?document.activeElement.closest('[data-aid]')?.dataset.aid:null;
-    D.roster.innerHTML=html;
-    if(aid)[...D.roster.querySelectorAll('[data-aid]')].find(row=>row.dataset.aid===aid)?.focus({preventScroll:true});
+    const roster=D.roster,scroll=roster.scrollTop,template=document.createElement('template');
+    template.innerHTML=html;
+    const existing=new Map([...roster.children].map(row=>[row.dataset.aid,row])),wanted=new Set();
+    let cursor=roster.firstElementChild;
+    for(const fresh of [...template.content.children]){
+      const id=fresh.dataset.aid,row=existing.get(id)||fresh;wanted.add(id);
+      if(row!==fresh){if(row.innerHTML!==fresh.innerHTML)row.innerHTML=fresh.innerHTML;row.className=fresh.className;row.setAttribute('aria-selected',fresh.getAttribute('aria-selected'));}
+      if(row!==cursor)roster.insertBefore(row,cursor);
+      cursor=row.nextElementSibling;
+    }
+    for(const row of existing.values())if(!wanted.has(row.dataset.aid))row.remove();
+    roster.scrollTop=scroll;
   }
   function refreshPanels(){
     const m=M.metrics;
@@ -2030,7 +2057,8 @@ class Component extends DCLogic {
   if(window.parent!==window){
     backend.handleCommand=cmd=>({command_id:cmd.command_id,status:"rejected",reason:"Read-only demo embedding; commands are unavailable"});
     const root=document.getElementById("rbp");
-    const readonlyHint=root.querySelector('.hint');if(readonlyHint)readonlyHint.textContent="Read-only console · commands are unavailable · Tab moves focus · click to inspect";
+    const readonlyHint=root.querySelector('.hint');if(readonlyHint)readonlyHint.textContent="Read-only demo · commands and run imports are unavailable · Tab moves focus · click to inspect";
+    const fileInput=root.querySelector('#run-file-input');if(fileInput){fileInput.disabled=true;const label=fileInput.closest?.('label');if(label){label.hidden=true;label.style.display="none";}}
     const disableCommands=()=>{for(const button of root.querySelectorAll('#btn-agent,#btn-queue,[data-cmd]:not([data-cmd="follow"]):not([data-cmd="focus"]):not([data-cmd="home"])')){
       if(!button.disabled)button.disabled=true;
       button.title="Commands are unavailable in the read-only demo";
@@ -2125,11 +2153,11 @@ class Component extends DCLogic {
     }
     if(!files.length)pushLog('<span style="color:var(--work)">no files selected</span>');
   }
-  document.getElementById('run-file-input').addEventListener('change',e=>{loadRunFiles([...e.target.files]);e.target.value='';});
+  document.getElementById('run-file-input').addEventListener('change',e=>{if(window.parent!==window){e.target.value='';return;}loadRunFiles([...e.target.files]);e.target.value='';});
   // Canvas drop zone for run files
   canvas.addEventListener('dragover',e=>{e.preventDefault();canvas.style.outline='2px dashed #4fd672';});
   canvas.addEventListener('dragleave',()=>{canvas.style.outline='';});
-  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
+  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';if(window.parent!==window)return;const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
   
     window.__feed=feed;
     step(performance.now());signalReady();

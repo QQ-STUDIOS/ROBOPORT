@@ -276,7 +276,7 @@ def test_console_hides_unmeasured_readings_and_rebuilds_incidents():
     assert '(PROPS.embedded?"docked":"charge")' in js       # no "charge 100%" when docked
     assert "(PROPS.embedded?0:a.energy/100)" in js
     assert 'if(!PROPS.embedded)ctx.fillText("ctx "' in js     # token use is not measured
-    assert "for(const al of d.alerts)pushIncident(al)" in js  # snapshot incidents survive a reload
+    # Incident reconstruction and repeated snapshots are exercised in test_console_design.py.
 
 
 def test_launch_form_defaults_match_the_gateway():

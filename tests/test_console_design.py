@@ -61,6 +61,19 @@ assert.equal(posted.length,1);assert.equal(posted[0].type,'roboport-demo-ready')
 ready.readySent=false;posted.length=0;ready.performance={now:()=>0};ready.feed={};
 vm.runInContext(src.slice(src.indexOf('    window.__feed=feed;'),src.indexOf('\n  }\n}',src.indexOf('    window.__feed=feed;'))),ready);
 assert.equal(posted.length,1,'readiness must not depend on a foreground animation callback');
+const evidence={stnThru:new Map(),stnLat:new Map(),agentHistory:new Map(),agentCtx:new Map(),nodeAlerts:new Map(),
+ sparks:[1],srcPackets:[1],chainPackets:[1],logEntries:[1],toasts:[1],incidents:[1],hist:{rate:[99],queued:[99]},
+ performance:{now:()=>1000},Date,hhmm:()=> 'now'};
+evidence.pushIncident=al=>evidence.incidents.unshift(al);evidence.pushNodeAlert=()=>{};
+vm.createContext(evidence);vm.runInContext(fn('resetSnapshotEvidence'),evidence);
+const snapshot={observed_at_ms:1000000,derived:{throughput_ms:{s:[999900]},latencies:{s:[3]},agent_history:{a:[{task_id:'t'}]}},
+ recent_logs:[{html:'server log'}],recent_incidents:[{alert_id:'new'},{alert_id:'old'}],metrics_history:[{tasks_per_min:1,queued:0}]};
+evidence.resetSnapshotEvidence(snapshot);evidence.resetSnapshotEvidence(snapshot);
+assert.equal(evidence.stnThru.get('s').length,1);assert.equal(evidence.agentHistory.get('a').length,1);
+assert.equal(evidence.stnThru.get('s')[0],900,'use server observation time despite browser clock skew');
+assert.equal(evidence.logEntries.length,1);assert.equal(evidence.incidents.length,2);assert.equal(evidence.toasts.length,0);
+assert.equal(evidence.incidents[0].alert_id,'new');
+assert.equal(evidence.hist.rate.length,1);assert.equal(evidence.chainPackets.length,0);
 ''', encoding='utf-8')
     result = subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],
                             capture_output=True, text=True)

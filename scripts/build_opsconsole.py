@@ -135,12 +135,6 @@ logic = sub(
 )
 # A snapshot replaces the console's state; carry the gateway's open incidents
 # (failed steps) into the incident log so a reload or resync keeps them.
-logic = sub(
-    "    populateInjector();renderStationLoadShell();\n  }",
-    "    if(PROPS.embedded&&Array.isArray(d.alerts)){incidents.length=0;for(const al of d.alerts)pushIncident(al);incDirty=true;}\n"
-    "    populateInjector();renderStationLoadShell();\n  }",
-    logic,
-)
 # The design's proving-ground panel names a real SharePoint tenant; ship a placeholder.
 logic, tenants = re.subn(r"[a-z0-9-]+\.sharepoint\.com", "contoso.sharepoint.com", logic)
 assert tenants == 1, tenants

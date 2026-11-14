@@ -54,7 +54,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, parse_qs
@@ -73,40 +73,40 @@ DEFAULT_PORT = 7474
 # SSE client registry
 # ---------------------------------------------------------------------------
 
-_clients: list[Any] = []   # list of wfile handles
+from feed_state import SnapshotStore
+
+_clients: list[Any] = []   # pending-event queues; socket writes stay outside the lock
 _clients_lock = threading.Lock()
-_watch_history: list[bytes] = []
+_WATCH_CAP = 8000
+_watch_state = SnapshotStore(_WATCH_CAP)
 
 
 def _broadcast(event: dict) -> None:
     payload = f"data: {json.dumps(event, default=str)}\n\n"
-    dead = []
     with _clients_lock:
-        _watch_history.append(payload.encode())
-        for wf in list(_clients):
-            try:
-                wf.write(payload.encode())
-                wf.flush()
-            except (BrokenPipeError, OSError):
-                dead.append(wf)
-        for wf in dead:
-            _clients.remove(wf)
+        _watch_state.accept(event)
+        for queue in _clients:
+            if len(queue) >= _WATCH_CAP:
+                queue.clear()
+                queue.append(f"data: {json.dumps(_watch_state.snapshot())}\n\n".encode())
+            else:
+                queue.append(payload.encode())
 
 
-def _add_client(wf: Any) -> None:
+def _add_client():
     with _clients_lock:
-        # Replay and registration share the broadcast lock: a late watcher
-        # receives authoritative history once, before any new live envelopes.
-        for payload in _watch_history:
-            wf.write(payload)
-        wf.flush()
-        _clients.append(wf)
+        current = _watch_state.snapshot()
+        queue = []
+        _clients.append(queue)
+        return current, queue
 
 
-def _remove_client(wf: Any) -> None:
+def _remove_client(queue) -> None:
     with _clients_lock:
-        if wf in _clients:
-            _clients.remove(wf)
+        for index, existing in enumerate(_clients):
+            if existing is queue:
+                del _clients[index]
+                break
 
 
 # ---------------------------------------------------------------------------
@@ -273,17 +273,25 @@ class Handler(BaseHTTPRequestHandler):
 
             if _watch_mode:
                 # Watch mode: keep the connection alive; _watch_thread broadcasts
-                _add_client(self.wfile)
+                current, queue = _add_client()
                 try:
-                    while True:
-                        # heartbeat comment to keep connection alive
-                        self.wfile.write(b": heartbeat\n\n")
+                    if current:
+                        self.wfile.write(f"data: {json.dumps(current)}\n\n".encode())
                         self.wfile.flush()
-                        time.sleep(15)
+                    while True:
+                        with _clients_lock:
+                            batch = list(queue)
+                            queue.clear()
+                        for payload in batch:
+                            self.wfile.write(payload)
+                        if not batch:
+                            self.wfile.write(b": heartbeat\n\n")
+                        self.wfile.flush()
+                        time.sleep(0.2)
                 except (BrokenPipeError, OSError, ConnectionResetError):
                     pass
                 finally:
-                    _remove_client(self.wfile)
+                    _remove_client(queue)
             else:
                 # Replay mode: stream all cached events then close
                 evts = _cached_events or []
@@ -428,7 +436,7 @@ def main() -> None:
         _cached_events = [envelope("snapshot", build_snapshot("demo"))]
 
     # Start HTTP server
-    server = HTTPServer(("0.0.0.0", args.port), Handler)
+    server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     mode_str = f"watch · {_current_run_dir.name}" if _watch_mode else \
                (f"replay · {_current_run_dir.name}" if _current_run_dir else "demo")
     print(f"[serve] http://localhost:{args.port}/  [{mode_str}]", flush=True)
