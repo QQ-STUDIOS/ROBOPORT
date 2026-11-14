@@ -25,13 +25,15 @@ badge.replay=true;assert(badge.modeBadge().startsWith('REPLAY ·'));
 const hit={view:'apg'};vm.createContext(hit);vm.runInContext(fn('hitTest'),hit);
 assert.equal(hit.hitTest(10,10),null); // No invisible port state is needed or consulted.
 for(const [W,H] of [[900,700],[600,400]]){
- const text=[];
+ const text=[], operations=[];
  const ctx=new Proxy({}, {get(o,k){if(k==='fillText')return(t,x,y)=>text.push({t,x,y});
+ if(k==='scale')return()=>operations.push('scale');
  if(k==='measureText')return()=>({width:20});if(k==='createLinearGradient')return()=>({addColorStop(){}});
  return()=>{};},set(){return true;}});
- const draw={W,H,ctx,T:{},performance:{now:()=>0},roundRect(){},drawGrid(){}};
+ const draw={W,H,ctx,T:{},performance:{now:()=>0},roundRect(){},drawGrid(){operations.push('grid');}};
  vm.createContext(draw);vm.runInContext(fn('drawAPGContent')+'\n'+fn('drawAPG'),draw);draw.drawAPG();
  const phase=text.find(x=>x.t==='RAG / Pinecone'), roadmap=text.find(x=>x.t==='PHASE 0 · BASELINE HARDENING');
+ assert.equal(operations[0],'grid','clear the full canvas before scaling APG content');
  assert(phase && roadmap && phase.y+20<roadmap.y-14,'pipeline must end before roadmap panel');
 }
 let adapters=0,sse=0,fetches=0;
@@ -43,8 +45,10 @@ const net={sourceMode:'demo',location:{search:'?api=http://localhost:4242'},URLS
  el:()=>({addEventListener(){}})};
 const start=src.indexOf('  new ResizeObserver('),end=src.indexOf('    window.__feed=feed;',start);
 net.window.parent=net.window;
-vm.runInNewContext(src.slice(start,end)+'\nwindow.__feed=feed;',net);
+const status={};net.el=()=>status;
+vm.runInNewContext(fn('feedLabel')+'\n'+fn('updateSourceLabel')+'\n'+src.slice(start,end)+'\nwindow.__feed=feed;',net);
 assert.equal(adapters,1);assert.equal(sse,0);assert.equal(fetches,0);
+assert.equal(status.textContent,'feed · live');
 const posted=[];
 const ready={readySent:false,step(){throw Error('render failed');},requestAnimationFrame(){},window:{parent:{postMessage:m=>posted.push(m)}}};
 vm.createContext(ready);vm.runInContext(src.match(/function rafLoop\(now\)\{[^\n]+/)[0],ready);

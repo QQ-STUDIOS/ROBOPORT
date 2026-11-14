@@ -64,7 +64,6 @@ logic = sub(
     '  const FEED_LABEL=PROPS.embedded?"feed · gateway":"feed · mock";',
     logic,
 )
-logic = sub('el("feed-status").textContent="feed · mock";', 'el("feed-status").textContent=FEED_LABEL;', logic)
 
 GATEWAY_BACKEND = r'''
   /* ── GATEWAY BACKEND (Roboport station) ──────────────────────────────

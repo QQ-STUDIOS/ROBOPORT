@@ -706,6 +706,12 @@ class Component extends DCLogic {
     if(replay)return "REPLAY · recorded frames";
     return {live:"LIVE · observed feed",file:"FILE · drop mode",import:"IMPORTED · run data",gateway:"GATEWAY · observed agents"}[sourceMode]||"DEMO · simulated backend";
   }
+  function feedLabel(){
+    return {live:"feed · live",file:"feed · file-drop",import:"feed · imported",gateway:"feed · gateway"}[sourceMode]||"feed · mock";
+  }
+  function updateSourceLabel(){
+    el("feed-status").textContent=feedLabel();
+  }
   function drawModeBadge(){
     const txt=modeBadge(),col=sourceMode==="demo"?T.work:T.dispatch;
     ctx.save();ctx.font="700 10px 'JetBrains Mono',monospace";const tw=ctx.measureText(txt).width+22,bx=W-12-tw,by=H-156-30;
@@ -1054,11 +1060,11 @@ class Component extends DCLogic {
 
   /* ── Applied Proving Ground view ───────────────────────────────────── */
   function drawAPG(){
+    drawGrid();
     const scale=Math.min(1,H/850,W/900);
     ctx.save();ctx.scale(scale,scale);drawAPGContent(W/scale,H/scale);ctx.restore();
   }
   function drawAPGContent(W,H){
-    drawGrid();
     if(W<600){ctx.fillStyle='rgba(138,157,168,0.5)';ctx.font='400 11px JetBrains Mono,monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('APG view requires wider canvas',W/2,H/2);return;}
     const PAD=36,LW=Math.max(180,W*0.38),RX=PAD+LW+28,RW=Math.max(200,W-RX-PAD);
     const AMBER="#f2b134",TEAL="#36c6e0",VIOLET="#c98bff",GREEN="#4fd672",ALERT="#ff5a52";
@@ -1666,7 +1672,7 @@ class Component extends DCLogic {
     el("rl-state").textContent="⏱ "+(idx+1)+"/"+frames.length;
   }
   function enterReplay(){if(replay||frames.length<2)return;replay=true;el("replaybar").classList.add("on");el("btn-replay").classList.add("on");el("feed-status").textContent="feed · replay";const sc=el("rl-scrub");sc.max=frames.length-1;sc.value=frames.length-1;applyReplay(frames.length-1);}
-  function exitReplay(){if(!replay)return;replay=false;el("replaybar").classList.remove("on");el("btn-replay").classList.remove("on");el("feed-status").textContent=FEED_LABEL;feed.connect();last=performance.now();}
+  function exitReplay(){if(!replay)return;replay=false;el("replaybar").classList.remove("on");el("btn-replay").classList.remove("on");updateSourceLabel();feed.connect();last=performance.now();}
 
   function pushToast(al){toasts.push({...al,born:performance.now()});if(toasts.length>4)toasts.shift();renderToasts();setTimeout(()=>{toasts.splice(0,toasts.length,...toasts.filter(t=>t.alert_id!==al.alert_id));renderToasts();},(al.ttl_s||5)*1000);}
   function renderToasts(){const k={info:"info",warning:"warn",critical:"bad"};D.toasts.innerHTML=toasts.map(t=>'<div class="toast '+(k[t.kind]||"info")+'" data-tid="'+t.alert_id+'"><div class="tx"><div class="th">'+t.title+'</div><div class="tb">'+t.body+'</div></div><div class="tg">'+Math.round((performance.now()-t.born)/1000)+'s</div></div>').join("");}
@@ -1678,6 +1684,7 @@ class Component extends DCLogic {
   new ResizeObserver(()=>{DPR=Math.min(window.devicePixelRatio||1,2);layout();}).observe(canvas);
   const backend=PROPS.embedded?createGatewayBackend():createMockBackend();
   const feed=createFeed(backend);
+  updateSourceLabel();
   layout();feed.onEnvelope(route);feed.connect();
 
   let last=performance.now(),lastPanel=0,lastRec=0,readySent=false;
@@ -1748,7 +1755,7 @@ class Component extends DCLogic {
   }
   function loadRunFiles(files){
     let plan=null,finalOut=null,stepOutputs={},runLog=[];let pending=files.length;
-    const done=()=>{if(--pending>0)return;sourceMode="import";buildAndReplayRun(plan,finalOut,stepOutputs,runLog);};
+    const done=()=>{if(--pending>0)return;sourceMode="import";updateSourceLabel();buildAndReplayRun(plan,finalOut,stepOutputs,runLog);};
     for(const file of files){
       const name=file.name.toLowerCase();const reader=new FileReader();
       reader.onload=e=>{const text=e.target.result;
