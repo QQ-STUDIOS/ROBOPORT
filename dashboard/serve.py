@@ -241,7 +241,7 @@ class Handler(BaseHTTPRequestHandler):
             rid   = (qs.get("run") or [""])[0]
             rdir  = (RUNS_DIR / rid) if rid else _current_run_dir
             if rdir and rdir.is_dir():
-                evts  = _load_run(rdir)
+                evts  = convert_run(rdir)
                 # Return the data from the first snapshot envelope
                 snap  = next((e["data"] for e in evts if e["type"] == "snapshot"), None)
                 self._send_json(snap or build_snapshot(rdir.name, crew=detect_crew(rdir)))

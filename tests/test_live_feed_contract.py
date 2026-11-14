@@ -98,3 +98,30 @@ def test_snapshot_state_and_slow_client_queues_remain_bounded(monkeypatch):
         assert len(serve._clients) == 1 and serve._clients[0] is other
     finally:
         sys.modules.pop(spec.name, None)
+
+
+def test_snapshot_request_does_not_replace_selected_replay(monkeypatch, tmp_path):
+    from urllib.request import urlopen
+    from http.server import ThreadingHTTPServer
+    import threading
+    monkeypatch.syspath_prepend(str(REPO / 'dashboard'))
+    spec = importlib.util.spec_from_file_location('snapshot_isolation_serve', REPO / 'dashboard/serve.py')
+    serve = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(serve)
+    requested = tmp_path / 'requested'
+    requested.mkdir()
+    selected = [{'type': 'snapshot', 'data': {'config': {'run_id': 'selected'}}}]
+    serve._cached_events = selected
+    monkeypatch.setattr(serve, 'RUNS_DIR', tmp_path)
+    monkeypatch.setattr(serve, 'convert_run', lambda path: [{'type': 'snapshot', 'data': {'config': {'run_id': path.name}}}])
+    server = ThreadingHTTPServer(('127.0.0.1', 0), serve.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(f'http://127.0.0.1:{server.server_port}/api/snapshot?run=requested') as response:
+            assert json.load(response)['config']['run_id'] == 'requested'
+        assert serve._cached_events is selected
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()

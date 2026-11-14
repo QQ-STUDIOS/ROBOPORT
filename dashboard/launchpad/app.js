@@ -423,6 +423,9 @@ function go(section) {
   if (location.hash !== "#" + section) history.pushState(null, "", "#" + section);
   state.section = section;
   render();
+  const destination = $("main");
+  destination.setAttribute("tabindex", "-1");
+  destination.focus();
   window.scrollTo(0, 0);
 }
 
