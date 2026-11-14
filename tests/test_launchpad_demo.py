@@ -22,6 +22,7 @@ const elements = new Map();
 global.document = {getElementById(id){if(!elements.has(id))elements.set(id,{addEventListener(){},style:{}});return elements.get(id);}};
 global.window = {matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener(){},scrollTo(){}};
 global.location = {hash:'',search:''};
+global.history = {pushState(a,b,hash){location.hash=hash;}};
 global.assert = assert;
 global.localStorage = {getItem:()=>null};
 vm.runInThisContext(fixtures+'\n'+app+`
@@ -34,6 +35,11 @@ assert(frame.includes('embedded=1'));
 const replay=renderEvidence().match(/<button\\b[^>]*>Open replay in Fleet<\\/button>/)[0];
 assert(replay.includes('disabled'));
 for(const button of renderSettings().matchAll(/<button\\b[^>]*>/g))assert(button[0].includes('disabled'));
+let paints=0;
+Object.defineProperty(document.getElementById('main'),'innerHTML',{set(){paints++;}});
+go('fleet');
+ACTIONS['fleet-mode']({dataset:{mode:'topology'}});
+assert.equal(paints,0,'active Fleet controls must preserve the existing iframe');
 `);
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(REPO)], check=True, capture_output=True, text=True)
