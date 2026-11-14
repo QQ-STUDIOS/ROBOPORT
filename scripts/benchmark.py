@@ -282,7 +282,8 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
             run_log.step_start(sid, owner, wave=int(step.get("wave", 0)))
 
         _t_step = _time.perf_counter()
-        result = call_executor(step, accumulated, registry)
+        result = (call_executor(step, accumulated, registry, runtime_dataops_grounding=dataops)
+                  if dataops is not None else call_executor(step, accumulated, registry))
         dur_ms = int((_time.perf_counter() - _t_step) * 1000)
 
         jsonl_append(log, {

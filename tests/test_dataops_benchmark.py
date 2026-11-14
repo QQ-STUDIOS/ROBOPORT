@@ -157,3 +157,20 @@ def test_offline_dataops_preserves_synthetic_mode(tmp_path):
                              '--eval-set', 'evals/dataops_evals.json', '--runs', '1', '--grade',
                              '--out', str(tmp_path / 'offline')], cwd=REPO, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('trusted', [False, True])
+def test_planner_grounding_cannot_replace_canonical_report_schema(tmp_path, monkeypatch, trusted):
+    from roboport_runtime import dataops
+    ground = dataops.prepare_context({'data_source': {'path': 'resources/datasets/sales_messy.csv'}}, tmp_path / 'artifacts')
+    ground['report'] = {'title': 'Invented incomplete report'}
+    provider = ArtifactProvider()
+    monkeypatch.setattr(client, 'get_provider', lambda: provider)
+    step = {'id': 'report', 'owner': 'reporting', 'wave': 0, 'output_type': 'DataReport',
+            'input': {'dataops_grounding': ground}, 'success_criteria': [], 'deterministic': False, 'allowed_tools': []}
+    with runtime_config_scope({'defaults': provider.config['defaults']}):
+        result = executor.call_executor(step, {}, load_registry(REPO), runtime_dataops_grounding=ground if trusted else None)
+    assert result['status'] == 'failed'
+    assert result['layer'] == ('schema_invalid' if trusted else 'grounding_invalid')
+    if not trusted:
+        assert provider.requests == []

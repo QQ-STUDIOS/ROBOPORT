@@ -133,7 +133,9 @@ writes `artifacts/normalized-sales.csv` under the run directory. Source and
 artifact SHA-256 values, row counts and lineage are recorded. Report figures and
 section text are calculated from the reloaded, hash-verified CSV.
 
-The live planner must preserve the two-step crew contract. Live agent calls emit
+The live planner must preserve the two-step crew contract. Trusted evidence is supplied through a runtime-only executor argument; a plan
+cannot authenticate its own `dataops_grounding` field. Canonical contract checks
+remain alongside exact-value validation. Live agent calls emit
 the supplied authenticated dataset/report contract using schema-constrained
 JSON; runtime checks reject changes to facts, hashes, fields or report text.
 Their task is constrained contract emission, not open-ended model-authored data

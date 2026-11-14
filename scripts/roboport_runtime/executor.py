@@ -222,8 +222,15 @@ def _agent_tools_for(owner: str) -> list[str]:
         return []
 
 
-def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, Any]:
+def _call_executor(step: dict, accumulated: dict, registry: dict, *, runtime_dataops_grounding=None) -> dict[str, Any]:
     owner = step["owner"]
+    supplied_grounding = step.get('input', {}).get('dataops_grounding')
+    if supplied_grounding is not None and runtime_dataops_grounding is None:
+        return _failed(step, 'Planner-supplied DataOps grounding is not authenticated runtime evidence', layer='grounding_invalid')
+    if runtime_dataops_grounding is not None:
+        expected_type = {'data_engineering': 'CleanedDataset', 'reporting': 'DataReport'}.get(owner)
+        if expected_type != step.get('output_type') or supplied_grounding != runtime_dataops_grounding:
+            return _failed(step, 'DataOps runtime evidence or contract mismatch', layer='grounding_invalid')
     agent_meta = registry["agents"].get(owner)
     if agent_meta is None:
         return _failed(step, f"unknown agent: {owner}")
@@ -253,14 +260,15 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
     model_hint = agent_meta.get("model_hint", "any")
     output_type = step.get("output_type", "object")
     output_schema = _resolve_output_schema(output_type)
-    dataops_input = step.get('input', {}).get('dataops_grounding')
+    dataops_input = runtime_dataops_grounding
     response_format = None
     if dataops_input and owner in ('data_engineering', 'reporting'):
         expected = dataops_input['dataset' if owner == 'data_engineering' else 'report']
-        output_schema = {'const': expected}
+        canonical = output_schema
+        output_schema = {'definitions': canonical['definitions'], 'allOf': [{'$ref': canonical['$ref']}, {'const': expected}]}
         response_format = {'type': 'object', 'required': ['status', 'output', 'criteria_results'],
                            'properties': {'status': {'const': 'ok'},
-                                          'output': output_schema,
+                                          'output': {'const': expected},
                                           'criteria_results': {'const': []}}}
 
     catalog = None
@@ -445,7 +453,7 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
             return _failed(step, f"could not parse final JSON: {content[:300]!r}",
                            llm_calls=llm_calls, tool_calls=tool_calls_total)
 
-        dataops_ground = step.get('input', {}).get('dataops_grounding')
+        dataops_ground = runtime_dataops_grounding
         injected_fault = False
         fault_count = 0
         if owner == 'data_engineering' and dataops_ground and dataops_ground.get('schema_fault'):
@@ -608,7 +616,7 @@ def _failed(step: dict, msg: str, *, llm_calls: int = 0, tool_calls: int = 0,
     }
 
 
-def call_executor(step: dict, accumulated: dict, registry: dict) -> dict:
+def call_executor(step: dict, accumulated: dict, registry: dict, *, runtime_dataops_grounding=None) -> dict:
     limits = _budget_for(step['owner'], _agent_config())
     with model_call_scope(limits['max_llm_calls']):
-        return _call_executor(step, accumulated, registry)
+        return _call_executor(step, accumulated, registry, runtime_dataops_grounding=runtime_dataops_grounding)

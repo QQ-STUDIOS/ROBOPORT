@@ -58,13 +58,13 @@ def test_persistent_probe_real_executor_one_repair_no_report(tmp_path, monkeypat
 
 def test_probe_requires_controlled_fault(tmp_path):
     with pytest.raises(ValueError, match='controlled'):
-        dataops.run_failure_probe({'schema_fault': False}, {}, lambda *a: pytest.fail('must not execute'), tmp_path)
+        dataops.run_failure_probe({'schema_fault': False}, {}, lambda *a, **kw: pytest.fail('must not execute'), tmp_path)
 
 
 def test_probe_does_not_accept_unobserved_expected_failure(tmp_path):
     ground = dataops.prepare_context({'data_source': {'path': 'resources/datasets/sales_messy.csv',
                                                      'synthetic': True, 'schema_fault': True}}, tmp_path / 'artifacts')
     with pytest.raises(ValueError, match='did not demonstrate'):
-        dataops.run_failure_probe(ground, {}, lambda *a: {'status': 'ok', 'repair_attempts': 1}, tmp_path)
+        dataops.run_failure_probe(ground, {}, lambda *a, **kw: {'status': 'ok', 'repair_attempts': 1}, tmp_path)
     saved = json.loads((tmp_path / 'steps/schema_failure_probe.json').read_text())
     assert saved['expected_failure'] is False

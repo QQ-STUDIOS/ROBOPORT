@@ -172,7 +172,7 @@ def run_failure_probe(ground, registry, executor_callback, run_dir):
                       'instruction': 'Return the supplied dataset contract exactly. This isolated controlled synthetic probe exercises the schema-repair failure containment path; do not produce a report.'},
             'output_type': 'CleanedDataset', 'success_criteria': [],
             'deterministic': False, 'allowed_tools': []}
-    result = executor_callback(step, {}, registry)
+    result = executor_callback(step, {}, registry, runtime_dataops_grounding=probe_ground)
     expected = (result.get('status') == 'failed' and result.get('layer') == 'schema_invalid'
                 and result.get('repair_attempts') == 1)
     record = {**result, 'expected_failure': expected, 'report_produced': False,
