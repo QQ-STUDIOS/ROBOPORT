@@ -533,6 +533,7 @@ function init() {
     if (narrow === state.narrow) return false;
     state.narrow = narrow;
     state.fleetMode = narrow ? "table" : "topology";
+    if (!narrow) state.consoleFailed = false;
     return true;
   };
   applyWidth();

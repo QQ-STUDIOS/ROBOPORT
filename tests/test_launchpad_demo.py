@@ -24,7 +24,8 @@ global.setTimeout=fn=>{timers.set(++nextTimer,fn);return nextTimer;};
 global.clearTimeout=id=>timers.delete(id);
 global.document = {getElementById(id){if(!elements.has(id))elements.set(id,{addEventListener(){},style:{}});return elements.get(id);}};
 document.querySelector=()=>({focus(){focused++;}});
-global.window = {matchMedia:()=>({matches:false,addEventListener(){}}),addEventListener(type,fn){events[type]=fn;},scrollTo(){}};
+global.media={matches:false,addEventListener(type,fn){events.media=fn;}};
+global.window = {matchMedia:()=>media,addEventListener(type,fn){events[type]=fn;},scrollTo(){}};
 global.location = {hash:'',search:''};
 global.history = {pushState(a,b,hash){location.hash=hash;}};
 global.assert = assert;
@@ -55,6 +56,8 @@ state.fleetMode='topology';watchFleetBoot();
 const frameWindow={};document.getElementById('fleet-console').contentWindow=frameWindow;
 events.message({source:{},data:{type:'__dc_booted'}});assert(timers.has(nextTimer));
 events.message({source:frameWindow,data:{type:'__dc_booted'}});assert(!timers.has(nextTimer));
+state.consoleFailed=true;media.matches=true;events.media();media.matches=false;events.media();
+assert(!state.consoleFailed,'a topology retry must clear the prior failure status');
 `);
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(REPO)], check=True, capture_output=True, text=True)
