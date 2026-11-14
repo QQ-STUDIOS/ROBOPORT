@@ -58,3 +58,7 @@ is a design reference and must keep its DEMO badge and disabled command actions.
 
 The Fleet iframe loads the console with `?embedded=1`, which trims the console's own chrome
 (brand subtitle, global key handling while hidden) to fit inside the shell.
+
+The Fleet iframe runs with scripts and downloads enabled but without same-origin access.
+It cannot read the shell's saved drafts. Tab and Shift+Tab retain normal focus navigation.
+Replay handoff and Settings detail views remain disabled until implemented.
