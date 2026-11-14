@@ -28,6 +28,8 @@ except ImportError:
 
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from station_packs import eval_dirs, load_output_schema, load_registry  # noqa: E402
 SCHEMAS = REPO / "resources" / "schemas"
 
 
@@ -59,26 +61,34 @@ def validate_evals(path: Path) -> list[str]:
 
 
 def validate_registry(path: Path) -> list[str]:
-    reg = load_json(path)
+    try:
+        reg = load_registry(REPO, path)
+    except ValueError as e:
+        return [f"[registry] {e}"]
     errors: list[str] = []
 
-    for agent_id, meta in reg.get("agents", {}).items():
-        agent_path = REPO / meta["path"]
-        if not agent_path.exists():
-            errors.append(f"[registry] agent {agent_id}: file not found: {meta['path']}")
+    # A crew station may be a runnable agent or an offline catalog record
+    # (`catalog_agents`, from a station pack), matching the governance gate's R4 rule.
+    catalog = reg.get("catalog_agents", {})
+    for section in ("agents", "catalog_agents"):
+        for agent_id, meta in reg.get(section, {}).items():
+            agent_path = REPO / meta["path"]
+            if not agent_path.exists():
+                errors.append(f"[registry] agent {agent_id}: file not found: {meta['path']}")
 
+    known = set(reg.get("agents", {})) | set(catalog)
     for crew_id, crew in reg.get("crews", {}).items():
-        if crew["entry"] not in reg["agents"]:
+        if crew["entry"] not in known:
             errors.append(f"[registry] crew {crew_id}: entry agent not in registry: {crew['entry']}")
         for edge in crew.get("edges", []):
             for end in ("from", "to"):
-                if edge[end] not in reg["agents"]:
+                if edge[end] not in known:
                     errors.append(f"[registry] crew {crew_id}: edge references unknown agent: {edge[end]}")
     return errors
 
 
 def validate_output(path: Path, definition: str) -> list[str]:
-    schema_full = load_json(SCHEMAS / "output.schema.json")
+    schema_full = load_output_schema(REPO)
     if definition not in schema_full.get("definitions", {}):
         return [f"[output] unknown definition '{definition}' (try one of: {list(schema_full['definitions'])})"]
     sub = {
@@ -107,9 +117,12 @@ def main() -> int:
     targets: list[tuple[str, list[str]]] = []
 
     if args.all:
-        ev = REPO / "evals" / "evals.json"
-        if ev.exists():
-            targets.append(("evals.json", validate_evals(ev)))
+        for ev in sorted(p for d in eval_dirs(REPO) for p in d.glob("*.json")):
+            try:  # only eval sets (a top-level `evals` list); skip e.g. fault_injection.json
+                if isinstance(load_json(ev).get("evals"), list):
+                    targets.append((ev.name, validate_evals(ev)))
+            except Exception:  # noqa: BLE001 — a malformed file fails its own validation elsewhere
+                continue
         rg = REPO / "agents" / "registry.json"
         if rg.exists():
             targets.append(("registry.json", validate_registry(rg)))

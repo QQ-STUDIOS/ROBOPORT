@@ -94,7 +94,7 @@ This is the whole pattern. Every other crew you build is a variation on it.
 ## Third five minutes: dry-run the benchmark
 
 ```bash
-python scripts/benchmark.py --target jd_crew --dry-run
+python scripts/benchmark.py --target jd_crew
 ```
 
 `--dry-run` skips actual LLM calls — it stubs every model invocation with a synthetic, schema-valid response. You should see the orchestrator walk all 5 waves, write a run dir under `runs/`, and produce a final.json. Look at the run dir:
@@ -115,7 +115,7 @@ Drop `--dry-run` and provide a real prompt:
 ```bash
 python scripts/benchmark.py \
   --target jd_crew \
-  --input "Senior backend engineer roles at health-tech companies, remote, US"
+  --live --runs 1 --grade
 ```
 
 This will hit your local Ollama. Wall time is dominated by the four LLM calls; on a workstation with a recent GPU, expect 30–90 seconds end-to-end. The final report lands in `runs/<run_id>/final.json`.

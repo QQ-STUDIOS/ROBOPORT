@@ -21,7 +21,8 @@
         "Every Job has a source_url that resolves to a job posting",
         "Every CandidateMatch.verdict is one of: apply, tailor_first, skip, research_more"
       ],
-      "tags": ["happy_path", "jd_crew", "end_to_end"]
+      "tags": ["happy_path", "jd_crew", "end_to_end"],
+      "kind": "happy_path"
     },
     {
       "id": 2,
@@ -33,7 +34,11 @@
         "No technical_analyst, compliance_risk, or application_strategist invocations appear in the log",
         "User-facing message is 'no matches found' or equivalent"
       ],
-      "tags": ["edge_case", "empty_results"]
+      "blockers": [
+        "No technical_analyst, compliance_risk, or application_strategist invocations appear in the log"
+      ],
+      "tags": ["edge_case", "empty_results"],
+      "kind": "empty"
     },
     {
       "id": 3,
@@ -49,7 +54,8 @@
       "blockers": [
         "The HIPAA finding's evidence quotes the literal phrase 'patient records' from the JD"
       ],
-      "tags": ["compliance", "hipaa", "citation_discipline"]
+      "tags": ["compliance", "hipaa", "citation_discipline"],
+      "kind": "evidence_grounding"
     },
     {
       "id": 4,
@@ -65,7 +71,8 @@
         "TailoredResume.truthfulness_check == 'passed'",
         "No bullet in TailoredResume mentions Snowflake"
       ],
-      "tags": ["resume_tailor", "anti_hallucination"]
+      "tags": ["resume_tailor", "anti_hallucination"],
+      "kind": "evidence_grounding"
     },
     {
       "id": 5,
@@ -80,7 +87,8 @@
       "blockers": [
         "Every ranked_match.job.source_url passes a HEAD check at grading time (HTTP 2xx/3xx)"
       ],
-      "tags": ["job_scout", "url_validation", "anti_dead_link"]
+      "tags": ["job_scout", "url_validation", "anti_dead_link"],
+      "kind": "evidence_grounding"
     },
     {
       "id": 6,
@@ -96,7 +104,24 @@
       "blockers": [
         "Every ComplianceAnalysis.findings[*].evidence is a literal substring of the corresponding fetch_jd_full body"
       ],
-      "tags": ["fetch_jd_full", "citation_discipline", "end_to_end"]
+      "tags": ["fetch_jd_full", "citation_discipline", "end_to_end"],
+      "kind": "evidence_grounding"
+    },
+    {
+      "id": 7,
+      "prompt": "Same as eval 1, but technical_analyst's first response is schema-invalid (a required TechnicalAnalysis field such as fit_score is missing). Exercises the Layer-1 schema-repair path of the error stack.",
+      "expected_output": "The step recovers via at most one repair pass, or fails cleanly with a schema error surfaced; no schema-invalid TechnicalAnalysis ever reaches application_strategist.",
+      "expectations": [
+        "technical_analyst output validates against the TechnicalAnalysis contract before application_strategist runs",
+        "If the one repair pass does not fix it, the step status is 'failed' with a schema-layer error and no FinalReport is produced",
+        "No downstream agent consumes a schema-invalid TechnicalAnalysis",
+        "At most one schema-repair pass is attempted (the repair adds at most one llm_call)"
+      ],
+      "blockers": [
+        "No downstream agent consumes a schema-invalid TechnicalAnalysis"
+      ],
+      "tags": ["schema_failure", "layer1", "error_stack"],
+      "kind": "schema_failure"
     }
   ]
 }

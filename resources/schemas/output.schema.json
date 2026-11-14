@@ -6,99 +6,296 @@
   "definitions": {
     "Job": {
       "type": "object",
-      "required": ["id", "title", "company", "location", "source", "source_url", "posted_at"],
+      "required": [
+        "id",
+        "title",
+        "company",
+        "location",
+        "source",
+        "source_url",
+        "posted_at"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "company": { "type": "string" },
-        "location": { "type": "string" },
-        "source": { "type": "string" },
-        "source_url": { "type": "string", "format": "uri" },
-        "posted_at": { "type": "string", "format": "date" },
-        "raw_description": { "type": "string" },
-        "salary_hint": { "type": ["string", "null"] }
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "company": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "posted_at": {
+          "type": "string",
+          "format": "date"
+        },
+        "raw_description": {
+          "type": "string"
+        },
+        "salary_hint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
     "TechnicalAnalysis": {
       "type": "object",
-      "required": ["job_id", "stack", "seniority_signal", "confidence"],
+      "required": [
+        "job_id",
+        "stack",
+        "seniority_signal",
+        "confidence"
+      ],
       "properties": {
-        "job_id": { "type": "string" },
+        "job_id": {
+          "type": "string"
+        },
         "stack": {
           "type": "object",
-          "required": ["must_have", "nice_to_have"],
+          "required": [
+            "must_have",
+            "nice_to_have"
+          ],
           "properties": {
-            "must_have":     { "type": "array", "items": { "type": "string" } },
-            "nice_to_have":  { "type": "array", "items": { "type": "string" } },
-            "buzzword_only": { "type": "array", "items": { "type": "string" } }
+            "must_have": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nice_to_have": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "buzzword_only": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         },
-        "seniority_signal": { "type": "string", "enum": ["Junior", "Mid", "Senior", "Staff", "Principal", "Director+"] },
-        "team_shape": { "type": "string" },
-        "red_flags": { "type": "array", "items": { "type": "string" } },
-        "skills_overlap_with_profile": { "type": "number", "minimum": 0, "maximum": 1 },
-        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        "seniority_signal": {
+          "type": "string",
+          "enum": [
+            "Junior",
+            "Mid",
+            "Senior",
+            "Staff",
+            "Principal",
+            "Director+"
+          ]
+        },
+        "team_shape": {
+          "type": "string"
+        },
+        "red_flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skills_overlap_with_profile": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
       }
     },
     "ComplianceAnalysis": {
       "type": "object",
-      "required": ["job_id", "regulated_data", "frameworks_implied", "findings", "confidence"],
+      "required": [
+        "job_id",
+        "regulated_data",
+        "frameworks_implied",
+        "findings",
+        "confidence"
+      ],
       "properties": {
-        "job_id": { "type": "string" },
-        "regulated_data":     { "type": "array", "items": { "type": "string" } },
-        "frameworks_implied": { "type": "array", "items": { "type": "string" } },
-        "geographic_constraints": { "type": "array", "items": { "type": "string" } },
-        "clearance_required": { "type": "boolean" },
+        "job_id": {
+          "type": "string"
+        },
+        "regulated_data": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "frameworks_implied": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "geographic_constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "clearance_required": {
+          "type": "boolean"
+        },
         "findings": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["kind", "severity", "evidence", "citation_url"],
+            "required": [
+              "kind",
+              "severity",
+              "evidence",
+              "citation_url"
+            ],
             "properties": {
-              "kind":         { "type": "string" },
-              "severity":     { "type": "string", "enum": ["informational", "low", "medium", "high", "critical"] },
-              "evidence":     { "type": "string" },
-              "citation_url": { "type": "string", "format": "uri" }
+              "kind": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "informational",
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ]
+              },
+              "evidence": {
+                "type": "string"
+              },
+              "citation_url": {
+                "type": "string",
+                "format": "uri"
+              }
             }
           }
         },
-        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
       }
     },
     "CandidateMatch": {
       "type": "object",
-      "required": ["job_id", "fit_score", "verdict", "priority"],
+      "required": [
+        "job_id",
+        "fit_score",
+        "verdict",
+        "priority"
+      ],
       "properties": {
-        "job_id":     { "type": "string" },
-        "fit_score":  { "type": "number", "minimum": 0, "maximum": 1 },
-        "verdict":    { "type": "string", "enum": ["apply", "tailor_first", "skip", "research_more"] },
-        "reasoning_for":     { "type": "array", "items": { "type": "string" } },
-        "reasoning_against": { "type": "array", "items": { "type": "string" } },
-        "recommended_actions": { "type": "array", "items": { "type": "string" } },
-        "priority": { "type": "integer", "minimum": 1, "maximum": 5 }
+        "job_id": {
+          "type": "string"
+        },
+        "fit_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "apply",
+            "tailor_first",
+            "skip",
+            "research_more"
+          ]
+        },
+        "reasoning_for": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reasoning_against": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommended_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        }
       }
     },
     "SalaryBand": {
       "type": "object",
-      "required": ["job_id", "band", "sources", "confidence"],
+      "required": [
+        "job_id",
+        "band",
+        "sources",
+        "confidence"
+      ],
       "properties": {
-        "job_id": { "type": "string" },
+        "job_id": {
+          "type": "string"
+        },
         "band": {
           "type": "object",
-          "required": ["low", "mid", "high", "currency"],
+          "required": [
+            "low",
+            "mid",
+            "high",
+            "currency"
+          ],
           "properties": {
-            "low":  { "type": "number" },
-            "mid":  { "type": "number" },
-            "high": { "type": "number" },
-            "currency": { "type": "string", "minLength": 3, "maxLength": 3 }
+            "low": {
+              "type": "number"
+            },
+            "mid": {
+              "type": "number"
+            },
+            "high": {
+              "type": "number"
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 3
+            }
           }
         },
         "components": {
           "type": "object",
           "properties": {
-            "base":              { "type": "number" },
-            "bonus":             { "type": "number" },
-            "equity_per_year":   { "type": "number" }
+            "base": {
+              "type": "number"
+            },
+            "bonus": {
+              "type": "number"
+            },
+            "equity_per_year": {
+              "type": "number"
+            }
           }
         },
         "sources": {
@@ -106,47 +303,366 @@
           "minItems": 2,
           "items": {
             "type": "object",
-            "required": ["name", "weight"],
+            "required": [
+              "name",
+              "weight"
+            ],
             "properties": {
-              "name":   { "type": "string" },
-              "url":    { "type": "string" },
-              "weight": { "type": "number", "minimum": 0, "maximum": 1 }
+              "name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "weight": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
             }
           }
         },
-        "confidence": { "type": "string", "enum": ["low", "medium", "high"] }
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
       }
     },
     "FinalReport": {
       "type": "object",
-      "required": ["generated_at", "summary", "ranked_matches"],
+      "required": [
+        "generated_at",
+        "summary",
+        "ranked_matches"
+      ],
       "properties": {
-        "generated_at": { "type": "string", "format": "date-time" },
-        "query": { "type": "object" },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "query": {
+          "type": "object"
+        },
         "summary": {
           "type": "object",
-          "required": ["total_jobs", "verdicts"],
+          "required": [
+            "total_jobs",
+            "verdicts"
+          ],
           "properties": {
-            "total_jobs": { "type": "integer", "minimum": 0, "x-roboport": { "stable": true } },
-            "verdicts":   { "type": "object", "x-roboport": { "stable": true } }
+            "total_jobs": {
+              "type": "integer",
+              "minimum": 0,
+              "x-roboport": {
+                "stable": true
+              }
+            },
+            "verdicts": {
+              "type": "object",
+              "x-roboport": {
+                "stable": true
+              }
+            }
           }
         },
         "ranked_matches": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["rank", "job", "match"],
+            "required": [
+              "rank",
+              "job",
+              "match"
+            ],
             "properties": {
-              "rank":       { "type": "integer", "minimum": 1 },
-              "job":        { "$ref": "#/definitions/Job" },
-              "technical":  { "$ref": "#/definitions/TechnicalAnalysis" },
-              "compliance": { "$ref": "#/definitions/ComplianceAnalysis" },
-              "match":      { "$ref": "#/definitions/CandidateMatch" },
-              "salary":     { "$ref": "#/definitions/SalaryBand" }
+              "rank": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "job": {
+                "$ref": "#/definitions/Job"
+              },
+              "technical": {
+                "$ref": "#/definitions/TechnicalAnalysis"
+              },
+              "compliance": {
+                "$ref": "#/definitions/ComplianceAnalysis"
+              },
+              "match": {
+                "$ref": "#/definitions/CandidateMatch"
+              },
+              "salary": {
+                "$ref": "#/definitions/SalaryBand"
+              }
             }
           }
         },
-        "warnings": { "type": "array", "items": { "type": "string" } }
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "EnvironmentInvestigation": {
+      "type": "object",
+      "required": [
+        "evidence",
+        "findings",
+        "limitations"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "type": "object",
+          "required": [
+            "artifact_path",
+            "artifact_sha256",
+            "evidence_id",
+            "rea_version"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "artifact_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "artifact_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "evidence_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rea_version": {
+              "const": "6.4.0"
+            }
+          }
+        },
+        "findings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "statement",
+              "evidence_id"
+            ],
+            "properties": {
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence_id": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ImprovementProposal": {
+      "type": "object",
+      "required": [
+        "evidence",
+        "changes",
+        "limitations",
+        "approval_required"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "type": "object",
+          "required": [
+            "artifact_path",
+            "artifact_sha256",
+            "evidence_id",
+            "rea_version"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "artifact_path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "artifact_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "evidence_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rea_version": {
+              "const": "6.4.0"
+            }
+          }
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "description",
+              "evidence_id",
+              "validation",
+              "expected_impact",
+              "uncertainties"
+            ],
+            "properties": {
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "validation": {
+                "type": "string",
+                "minLength": 1
+              },
+              "expected_impact": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uncertainties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "approval_required": {
+          "const": true
+        }
+      }
+    },
+
+    "CleanedDataset": {
+      "type": "object",
+      "description": "data_engineering output: a staged dataset plus its schema and lineage.",
+      "required": ["schema_doc", "row_count", "lineage_log"],
+      "properties": {
+        "schema_doc": {
+          "type": "object",
+          "required": ["columns"],
+          "properties": {
+            "columns": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["name", "dtype"],
+                "properties": {
+                  "name":  { "type": "string" },
+                  "dtype": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "row_count":   { "type": "integer", "minimum": 0 },
+        "lineage_log": { "type": "array", "items": { "type": "string" } },
+        "artifact_path": { "type": "string" }
+      }
+    },
+
+    "DataReport": {
+      "type": "object",
+      "description": "reporting output: a templated report grounded in a CleanedDataset.",
+      "required": ["generated_at", "title", "sections", "source_row_count"],
+      "properties": {
+        "generated_at":     { "type": "string", "format": "date-time" },
+        "title":            { "type": "string" },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["heading", "body"],
+            "properties": {
+              "heading": { "type": "string" },
+              "body":    { "type": "string" }
+            }
+          }
+        },
+        "figures":          { "type": "array", "items": { "type": "object" } },
+        "source_row_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "ActionProposal": {
+      "type": "object",
+      "description": "automation output: side-effecting actions PROPOSED from an insight (a DataReport), each gated by an approval decision and an audit event. The automation station never executes an unsafe action — it proposes and escalates; the executor's Layer-3 unsafe-action policy blocks any proposed tool call that is irreversible or outward-facing until a human grants approval.",
+      "required": ["generated_at", "source_report", "proposed_actions", "audit_event", "approval"],
+      "properties": {
+        "generated_at": { "type": "string", "format": "date-time" },
+        "source_report": {
+          "type": "object",
+          "description": "grounding back to the insight the actions are drawn from.",
+          "required": ["title", "source_row_count"],
+          "properties": {
+            "title":            { "type": "string" },
+            "source_row_count": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "proposed_actions": {
+          "type": "array",
+          "description": "an empty array is valid: 'the insight warrants no action' is a legitimate proposal.",
+          "items": {
+            "type": "object",
+            "required": ["tool", "args", "requires_approval", "rationale", "idempotency_key"],
+            "properties": {
+              "tool":              { "type": "string" },
+              "args":              { "type": "object" },
+              "requires_approval": { "type": "boolean" },
+              "rationale":         { "type": "string" },
+              "idempotency_key":   { "type": "string", "minLength": 1 },
+              "grounded_in":       { "type": "string", "description": "the DataReport section/figure this action is justified by." }
+            }
+          }
+        },
+        "audit_event": {
+          "type": "object",
+          "required": ["actor", "action", "target", "ts"],
+          "properties": {
+            "actor":  { "type": "string" },
+            "action": { "type": "string" },
+            "target": { "type": "string" },
+            "ts":     { "type": "string", "format": "date-time" }
+          }
+        },
+        "approval": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status":        { "type": "string", "enum": ["pending", "granted", "denied"] },
+            "token":         { "type": ["string", "null"] },
+            "escalated_to":  { "type": "string" }
+          }
+        }
       }
     }
   }

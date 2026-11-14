@@ -21,7 +21,7 @@ services:
       ROBOPORT_PROVIDER: anthropic
       ROBOPORT_RUNS: "1"                # live runs per eval; raise for more crew runs
     ports:
-      - "4242:4242"
+      - "127.0.0.1:4242:4242"           # host loopback only
     volumes:
       - roboport-runs:/data/runs
 

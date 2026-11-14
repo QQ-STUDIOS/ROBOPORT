@@ -1,0 +1,3 @@
+Source assets: the QQ Studios banner artwork (qq_studios_banner2.png, crop 185,40 315x315). Brand: QQ Studios, monochrome.
+Dark variants: qq-logo-dark.png / qq-dark.ico = inner square crop 228,83 229x229 of the banner, colour-inverted, gold (212,175,55) rule on black.
+Window/shortcut icon: roboport.ico = original robot-head artwork (QQ black/white/gold) drawn with Pillow on 2026-11-10. Not derived from third-party art.

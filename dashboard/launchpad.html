@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Roboport · Launch Pad · QQ Studios</title>
+    <link rel="icon" type="image/png" href="/assets/qq-logo.png" />
+    <link rel="stylesheet" href="/assets/launchpad.css" />
+    <script src="/assets/state.js" defer></script>
+    <script src="/assets/opsfeed.js" defer></script>
+    <script src="/assets/fleet.js" defer></script>
+    <script src="/assets/review.js" defer></script>
+    <script src="/assets/launchpad.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to workspace</a>
+    <div id="lp">
+      <header class="topbar">
+        <div class="topbar-row">
+          <a class="brand" href="/" aria-label="Roboport home"
+            ><img class="brand-logo" src="/assets/qq-logo.png" alt="" width="30" height="30" /><span class="brand-text"
+              ><span class="brand-name">ROBOPORT</span><span class="brand-sub">Launch Pad · QQ Studios</span></span
+            ></a
+          >
+          <nav id="navigation" aria-label="Primary"></nav>
+          <div class="header-actions">
+            <div class="env-pill" title="Environment · last gateway observation">
+              <span id="environment" class="env-name">Not observed</span>
+              <span id="env-status" class="env-status tone-steel"><span class="glyph" aria-hidden="true">?</span><span>Unknown</span></span>
+              <span id="env-observed" class="env-observed">· never observed</span>
+            </div>
+            <div id="mode" class="mode-badge mode-live" role="status" title="Operating mode — permanently labelled">
+              <span class="mode-dot" aria-hidden="true"></span><span>LIVE</span>
+            </div>
+            <div class="mode-switch" role="group" aria-label="Operating mode">
+              <button id="demo-mode" class="quiet" type="button" aria-pressed="false">Demo</button
+              ><button id="live-mode" class="quiet" type="button" aria-pressed="true">Live</button
+              ><button id="sign-out" class="quiet" type="button" hidden>Sign out</button>
+            </div>
+          </div>
+        </div>
+      </header>
+      <div id="simulation" class="notice" hidden>
+        TEST SIMULATION · Browser fixture only. No workstation or model execution
+        is represented.
+      </div>
+      <div id="connection" class="sr-only" role="status">Connection unknown</div>
+      <main id="main" tabindex="-1"></main>
+      <footer class="foot">
+        <span id="modes-line">Modes: Demo · fixtures · Replay · Live</span>
+        <span>Loopback gateway · authenticated session required for commands · no credential in URL</span>
+        <span><span class="qq">QQ STUDIOS</span> · Roboport · Evidence before promotion · <span id="freshness">No observations</span></span>
+      </footer>
+    </div>
+    <div id="message" role="status" aria-live="polite"></div>
+    <noscript
+      >This console requires JavaScript. Missions continue independently of this
+      browser.</noscript
+    >
+  </body>
+</html>

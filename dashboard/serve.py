@@ -62,7 +62,8 @@ from urllib.parse import urlparse, parse_qs
 # Make bridge importable when running from repo root or dashboard/
 _THIS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_THIS))
-from bridge import convert_run, build_snapshot, STATIONS, _now_iso, envelope  # noqa: E402
+from bridge import (convert_run, build_snapshot, detect_crew, STATIONS,  # noqa: E402
+                    _now_iso, envelope)
 
 REPO_ROOT = _THIS.parent
 RUNS_DIR  = REPO_ROOT / "runs"
@@ -145,7 +146,7 @@ def _watch_thread(run_dir: Path) -> None:
     print(f"[serve] watching {log_path} …", flush=True)
 
     # emit initial snapshot
-    _broadcast(envelope("snapshot", build_snapshot(run_dir.name)))
+    _broadcast(envelope("snapshot", build_snapshot(run_dir.name, crew=detect_crew(run_dir))))
 
     while True:
         if log_path.exists():
@@ -236,7 +237,7 @@ class Handler(BaseHTTPRequestHandler):
                 evts  = _load_run(rdir)
                 # Return the data from the first snapshot envelope
                 snap  = next((e["data"] for e in evts if e["type"] == "snapshot"), None)
-                self._send_json(snap or build_snapshot(rdir.name))
+                self._send_json(snap or build_snapshot(rdir.name, crew=detect_crew(rdir)))
             else:
                 self._send_json(build_snapshot("no-run"))
             return

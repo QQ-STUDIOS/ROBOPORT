@@ -5,14 +5,14 @@
 ruff>=0.15.20
 
 # Type checking
-mypy>=2.1.0
+mypy>=2.4.1
 types-PyYAML
 types-requests
 types-jsonschema
 
 # Test runner
-pytest>=9.0.3
+pytest>=9.2.0
 pytest-cov>=7.1.0
 
 # Supply-chain audit (also run in CI)
-pip-audit>=2.10.0
+pip-audit>=2.10.1
