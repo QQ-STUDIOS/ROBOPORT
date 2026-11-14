@@ -1259,7 +1259,7 @@ class Component extends DCLogic {
   D.inspActions.addEventListener("click",e=>{const b=e.target.closest("[data-cmd]");if(b&&!b.disabled)command(b.dataset.cmd);});
   el("insp-close").addEventListener("click",clearSelection);
 
-  function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT")return;
+  function onKey(e){if(e.key==="Tab"&&window.parent!==window)return;if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT")return;
     if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
     if(e.key==="Tab"){e.preventDefault();showSummary=!showSummary;return;}
     if(e.key==="Escape"){if(showSummary){showSummary=false;return;}clearSelection();return;}

@@ -12,7 +12,7 @@ const DRAFT_KEY = "rbp.launchpad.draft.v1";
 const NARROW_PX = 720;
 const SECTIONS = NAV.map(n => n[0]);
 // The Ops Console lives one directory up (dashboard/) and is served by the same static server.
-const CONSOLE_SRC = "../Roboport%20Ops%20Console.dc.html";
+const CONSOLE_SRC = "../Roboport%20Ops%20Console.dc.html?embedded=1";
 
 const state = {
   section: "launch",
@@ -267,7 +267,7 @@ function renderFleet() {
   const canvas = !state.narrow && state.fleetMode === "topology";
   const topoOn = state.fleetMode === "topology" && !state.narrow;
   const body = canvas
-    ? `<div class="stage"><iframe src="${CONSOLE_SRC}" title="Ops Console — Port, Flow and DAG topology (demo backend)" loading="lazy"></iframe></div>`
+    ? `<div class="stage"><iframe src="${CONSOLE_SRC}" sandbox="allow-scripts allow-downloads" title="Ops Console — Port, Flow and DAG topology (demo backend)" loading="lazy"></iframe></div>`
     : `<div class="card card--flush">
         <div class="roster-head">Roster · fixture snapshot · ${FLEET.length} agents</div>
         ${FLEET.map(a => {
@@ -332,7 +332,7 @@ function renderEvidence() {
         <div class="card card--col8">
           <div class="eyebrow">Replay · exports</div>
           <div class="row-wrap">
-            <button type="button" class="btn btn--cyan btn--sm" data-action="go" data-section="fleet">Open replay in Fleet</button>
+            ${ghostBtn("Open replay in Fleet", "Replay handoff is not implemented in this demo")}
             ${ghostBtn("Safe export", "Classification policy not configured — safe export unavailable")}
           </div>
           <div class="foot-note">Safe export is unavailable until a classification policy governs redaction. Source fields render as text only.</div>
@@ -368,9 +368,7 @@ function renderSettings() {
     <div class="group-title">${esc(g.title)}</div>
     <div class="grid grid--290">${g.items.map(c => {
       const [tone, icon] = CAPABILITY_STATES[c.state] || CAPABILITY_STATES.unavailable;
-      const btn = c.disabled
-        ? `<button type="button" class="btn btn--ghost btn--xs btn--40" disabled title="${esc(c.why)}">${esc(c.action)}</button>`
-        : `<button type="button" class="btn btn--cyan btn--xs btn--40" data-action="fixture-action" data-label="${esc(c.action)}">${esc(c.action)}</button>`;
+      const btn = ghostBtn(c.action, c.why || "This view is not implemented in the static demo", "btn--xs btn--40");
       return `<div class="cap">
         <div class="cap__head"><span class="cap__name">${esc(c.name)}</span>${status(tone, icon, c.state)}</div>
         <div class="t-muted">${esc(c.detail)}</div>
@@ -477,7 +475,6 @@ const ACTIONS = {
   },
   "save-draft": saveDraft,
   "fleet-mode": el => { state.fleetMode = el.dataset.mode; render(); },
-  "fixture-action": el => flash(`${el.dataset.label} · fixture view — not wired in demo mode`),
 };
 
 function init() {
