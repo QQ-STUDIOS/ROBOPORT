@@ -116,16 +116,19 @@ def test_embedded_console_rejects_commands(tmp_path):
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const src=fs.readFileSync(process.argv[2],'utf8');
 const code=src.match(/\/\/ BEGIN standalone-readonly([\s\S]*?)\/\/ END standalone-readonly/)[1];
+const rejectCapture=src.match(/function rejectEmbeddedImport\(e\)\{[\s\S]*?\n  \}/)[0];
 for(const embedded of [false,true]){
  const button={disabled:false,style:{}}, backend={handleCommand:()=>({status:'accepted'})};
  const w={};w.parent=embedded?{}:w;
- const hint={},label={style:{}},input={closest:()=>label};
- const ctx={window:w,backend,document:{getElementById:()=>({querySelectorAll:()=>[button],querySelector:selector=>selector==='.hint'?hint:input})},MutationObserver:class{observe(){}}};
- vm.runInNewContext(code,ctx);
+ const hint={},label={style:{}},input={closest:()=>label},captures=[];
+ const root={querySelectorAll:()=>[button],querySelector:selector=>selector==='.hint'?hint:input};
+ const ctx={window:w,backend,root,canvas:{style:{}},D:{sr:{}},document:{getElementById:()=>root,addEventListener:(type,fn,capture)=>captures.push({type,fn,capture})},MutationObserver:class{observe(){}}};
+ vm.runInNewContext(rejectCapture+'\n'+code,ctx);
  assert.equal(backend.handleCommand({command_id:'c1'}).status,embedded?'rejected':'accepted');
  assert.equal(button.disabled,embedded);
  assert.equal(!!button.hidden,embedded);
  if(embedded){assert(hint.textContent.includes('run imports are unavailable'));assert(input.disabled);assert(label.hidden);}
+ if(embedded){let stopped=false;assert(captures[0].capture);captures[0].fn({dataTransfer:{},preventDefault(){},stopImmediatePropagation(){stopped=true;}});assert(stopped,'document-level import handlers must not receive embedded drops');}
 }
 const change=src.match(/document.getElementById\('run-file-input'\).addEventListener\('change',e=>\{[^\n]+/)[0];
 const reject=src.match(/function rejectEmbeddedImport\(e\)\{[\s\S]*?\n  \}/)[0];

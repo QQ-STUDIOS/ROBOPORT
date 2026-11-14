@@ -1367,6 +1367,7 @@ class Component extends DCLogic {
   if(window.parent!==window){
     backend.handleCommand=cmd=>({command_id:cmd.command_id,status:"rejected",reason:"Read-only demo embedding; commands are unavailable"});
     const root=document.getElementById("rbp");
+    document.addEventListener('drop',e=>{if(rejectEmbeddedImport(e))e.stopImmediatePropagation();},true);
     const readonlyHint=root.querySelector('.hint');if(readonlyHint)readonlyHint.textContent="Read-only demo · commands and run imports are unavailable · Tab moves focus · click to inspect";
     const fileInput=root.querySelector('#run-file-input');if(fileInput){fileInput.disabled=true;const label=fileInput.closest?.('label');if(label){label.hidden=true;label.style.display="none";}}
     const disableCommands=()=>{for(const button of root.querySelectorAll('#btn-agent,#btn-queue,[data-cmd]:not([data-cmd="follow"]):not([data-cmd="focus"]):not([data-cmd="home"])')){
