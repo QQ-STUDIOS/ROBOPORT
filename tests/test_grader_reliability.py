@@ -32,7 +32,7 @@ class AssessmentBackend:
 def assessment(finding='SUPPORTED', quote='"completed_count":3', expectation_id=0):
     return {'results': [{'expectation_id': expectation_id, 'finding': finding,
                         'citations': [] if finding == 'INSUFFICIENT' else [
-                            {'source': 'final_output', 'quote': quote}]}], 'meta_critique': []}
+                            {'source': 'final_output', 'pointer': '/completed_count' if quote == '"completed_count":3' else '/one/output/proof' if quote == 'step-secret' else '/missing/' + quote}]}], 'meta_critique': []}
 
 
 def run_grade(tmp_path, monkeypatch, responses, expectations=None, blockers=None):
@@ -50,7 +50,7 @@ def test_stable_ids_preserve_punctuation_and_compute_scores(tmp_path, monkeypatc
     result, backend = run_grade(tmp_path, monkeypatch, [response, response])
     assert result['results'][0]['expectation'] == 'completed_count is 3.'
     assert result['results'][0]['verdict'] == 'PASS'
-    assert result['results'][0]['citations'] == [{'source': 'final_output', 'quote': '"completed_count":3'}]
+    assert result['results'][0]['citations'] == [{'source': 'final_output', 'pointer': '/completed_count', 'quote': '3'}]
     assert result['pass_rate'] == 1 and not result['blocker_failed']
     assert not result['review_required']
     assert len(backend.calls) == 2
@@ -102,7 +102,7 @@ def test_second_assessment_error_does_not_keep_first_pass(tmp_path, monkeypatch)
     result, _ = run_grade(tmp_path, monkeypatch, [assessment(), RuntimeError('verification unavailable')])
     assert result['review_required'] and result['blocker_failed'] and result['pass_rate'] == 0
     assert result['results'][0]['verdict'] == 'INCONCLUSIVE'
-    assert result['results'][0]['assessments'] == assessment()['results']
+    assert result['results'][0]['assessments'][0]['citations'][0] == {'source': 'final_output', 'pointer': '/completed_count', 'quote': '3'}
 
 
 @pytest.mark.parametrize('include_steps', [False, True])
@@ -147,7 +147,7 @@ def test_second_assessment_respects_remaining_call_budget(tmp_path, monkeypatch)
     assert len(backend.calls) == 1
     assert result['review_required'] and result['blocker_failed'] and result['pass_rate'] == 0
     assert result['verification']['assessments_completed'] == 1
-    assert result['results'][0]['assessments'] == assessment()['results']
+    assert result['results'][0]['assessments'][0]['citations'][0] == {'source': 'final_output', 'pointer': '/completed_count', 'quote': '3'}
 
 
 @pytest.mark.parametrize('verification_error', [False, True])
@@ -157,3 +157,15 @@ def test_result_blocker_flag_is_authoritative_even_on_error(tmp_path, monkeypatc
     result, _ = run_grade(tmp_path, monkeypatch, responses,
                           blockers=['completed_count is 3.'] if declared else [])
     assert result['results'][0]['blocker'] is declared
+
+
+def test_pointer_evidence_preserves_escaped_keys_and_false_values(tmp_path, monkeypatch):
+    (tmp_path / 'final_output.json').write_text('{"a/b":{"~key":[false,0]}}')
+    response = {'results': [{'expectation_id': 0, 'finding': 'SUPPORTED',
+                             'citations': [{'source': 'final_output', 'pointer': '/a~1b/~0key/0'}]}]}
+    backend = AssessmentBackend([response, response])
+    monkeypatch.setattr(client, 'provider', lambda: backend)
+    with budget.run_budget(budget.RunBudget({})):
+        result = grader.call_grader(['The supplied boolean is false.'], None, tmp_path)
+    assert result['pass_rate'] == 1 and not result['review_required']
+    assert result['results'][0]['citations'][0]['quote'] == 'false'

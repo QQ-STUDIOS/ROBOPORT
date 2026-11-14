@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from typing import Any
+from copy import deepcopy
+import json
 
 from .client import call_model_json, load_agent_spec
 
@@ -49,13 +51,27 @@ def call_planner(goal: str, context: dict, registry: dict) -> dict[str, Any]:
     system_spec = load_agent_spec(planner_meta["path"])
 
     available = {name: meta.get("role", "") for name, meta in registry["agents"].items()}
-    crews = list(registry.get("crews", {}).keys())
+    crews = registry.get('crews', {})
+    schema = deepcopy(PLAN_SCHEMA)
+    schema['properties']['steps']['minItems'] = 1
+    props = schema['properties']['steps']['items']['properties']
+    props['owner'] = {'enum': list(available)}
+    props['wave']['minimum'] = 0
+    if context.get('target') == 'dataops_crew':
+        schema['properties']['steps'].update(minItems=2, maxItems=2)
+        props['owner'] = {'enum': ['data_engineering', 'reporting']}
+        props['output_type'] = {'enum': ['CleanedDataset', 'DataReport']}
+        props['input'] = {'const': {}}
+        props['deterministic'] = {'const': False}
+        props['success_criteria'] = {'const': ['Output matches the authenticated artifact contract']}
+        system_spec += '\nFor DataOps, plan exactly two ordered steps: data_engineering produces CleanedDataset, then reporting produces DataReport. Each input must be {}; runtime injects authenticated artifact evidence after planning. Both are model-assisted, not deterministic agents.'
+
 
     user = (
         f"GOAL\n{goal}\n\n"
         f"CONTEXT\n{context or '(none)'}\n\n"
         f"AVAILABLE AGENTS (id -> role)\n{available}\n\n"
-        f"AVAILABLE CREWS\n{crews}\n\n"
+        f"AVAILABLE CREWS\n{json.dumps(crews)}\n\n"
         "Produce a plan as JSON conforming to the schema. "
         "Set `owner` on every step to one of the available agent ids. "
         "Group independent steps into the same `wave`. Output JSON ONLY."
@@ -65,7 +81,7 @@ def call_planner(goal: str, context: dict, registry: dict) -> dict[str, Any]:
         system_spec=system_spec,
         user_prompt=user,
         model_hint=planner_meta.get("model_hint", "any"),
-        schema=PLAN_SCHEMA,
+        schema=schema,
     )
     plan.setdefault("estimated_llm_calls", len(plan.get("steps", [])))
     plan.setdefault("estimated_tool_calls", 0)

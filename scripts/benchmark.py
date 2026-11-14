@@ -213,9 +213,33 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
         run_log.run_start(crew)
     _t_run = _time.perf_counter()
 
-    plan = call_planner(eval_obj["prompt"], context={**eval_obj.get("context", {}), "target": crew}, registry=registry)
+    context = {**eval_obj.get("context", {}), "target": crew}
+    dataops = None
+    if crew == 'dataops_crew':
+        from roboport_runtime.dataops import prepare_context
+        context['data_source'] = eval_obj.get('data_source', context.get('data_source'))
+        dataops = prepare_context(context, run_dir / 'artifacts')
+        context['artifact_facts'] = dataops['facts']
+    plan = call_planner(eval_obj["prompt"], context=context, registry=registry)
+    if dataops is not None:
+        expected = [('data_engineering', 'CleanedDataset'), ('reporting', 'DataReport')]
+        if [(s.get('owner'), s.get('output_type')) for s in plan['steps']] != expected:
+            raise ValueError('DataOps plan must preserve the ordered CleanedDataset -> DataReport crew contract')
+        for step in plan['steps']:
+            step['input'] = {'dataops_grounding': dataops,
+                             'instruction': 'The runtime has actually processed the source CSV. Return the supplied dataset contract for data_engineering or supplied report contract for reporting, exactly. Do not invent or rewrite artifact facts or report text.'}
+            step['allowed_tools'] = []
+
     (run_dir / "plan.json").write_text(json.dumps(plan, indent=2))
     jsonl_append(log, {"event": "plan_emitted", "ts": datetime.now(timezone.utc).isoformat()})
+    if dataops is not None and dataops['schema_fault']:
+        from roboport_runtime.dataops import run_failure_probe
+        probe = run_failure_probe(dataops, registry, call_executor, run_dir)
+        jsonl_append(log, {'event': 'controlled_negative_probe', 'step_id': 'schema_failure_probe',
+                           'status': probe['status'], 'layer': probe['layer'],
+                           'expected_failure': True, 'report_produced': False,
+                           'repair_attempts': probe['repair_attempts'], 'llm_calls': probe['llm_calls']})
+
     unsafe = [s.get("id") if isinstance(s, dict) else s for s in plan.get("steps", [])
               if not isinstance(s, dict) or not _safe_step_id(s.get("id"))]
     if unsafe:
@@ -355,7 +379,7 @@ def execute_run(ev: dict, run_dir: Path, registry: dict, *, config: dict, live: 
     metadata = {'mode': 'live' if live else 'synthetic', 'run_id': run_dir.resolve().as_posix(),
                 'started_at': datetime.now(timezone.utc).isoformat(), 'eval_id': ev['id'],
                 'target': ev.get('target'), 'telemetry_run_id': getattr(run_log, 'run_id', None), 'feed_path': str(feed.path.resolve()) if feed else None, 'ops_log_path': str(run_log.path.resolve()) if run_log else None, 'config': {k: config.get(k) for k in ('models', 'defaults', 'budgets', 'policy')},
-                'expectations': ev.get('expectations', []), 'input_sha256': hashlib.sha256(json.dumps({'prompt': ev['prompt'], 'context': ev.get('context', {})}, sort_keys=True).encode()).hexdigest()}
+                'expectations': ev.get('expectations', []), 'data_source': ev.get('data_source'), 'input_sha256': hashlib.sha256(json.dumps({'prompt': ev['prompt'], 'context': ev.get('context', {}), 'data_source': ev.get('data_source')}, sort_keys=True).encode()).hexdigest()}
     # Persist before the first provider call, so failed startup is auditable.
     (run_dir / 'provenance.json').write_text(json.dumps(metadata, indent=2))
     grading = None

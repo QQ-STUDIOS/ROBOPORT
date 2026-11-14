@@ -19,9 +19,9 @@ tier A station runs (`qwen3:14b`, see `deploy/windows/hardware-tiers.json`).
 ollama pull qwen3:14b      # ~9GB; matches the Crew Builder UI
 ollama serve               # if not already running (defaults to 127.0.0.1:11434)
 ```
-The `OllamaProvider` defaults to `qwen3.5:latest` (reasoning) / `gemma4:latest` (default);
-override with `OLLAMA_MODEL_REASONING` / `OLLAMA_MODEL_DEFAULT` to match what you pulled,
-or edit `config/agent_config.yaml`.
+The checked-in runtime configuration binds local model hints to `qwen3:14b`.
+Override bindings with `OLLAMA_MODEL_REASONING` / `OLLAMA_MODEL_DEFAULT` or
+`config/agent_config.local.yaml` when intentionally testing another model.
 
 **2. Run the crew** — no `--provider` needed; `ollama` is the default:
 ```bash
@@ -93,8 +93,11 @@ SUPPORTED, CONTRADICTED, or INSUFFICIENT. The runtime preserves the original tex
 and computes PASS, FAIL, INCONCLUSIVE, pass rates and declared-blocker policy.
 The model cannot change scores or blocker flags.
 
-Both assessments must agree. PASS and FAIL require nonblank, verbatim citations
-that actually occur in the named, supplied artifact. Step citations are rejected
+Both assessments must agree. PASS and FAIL require references to supplied
+artifacts: source name plus JSON pointer. The runtime resolves each pointer and
+generates the quoted value itself; the model never copies or escapes quotations.
+JSONL logs are addressed as arrays of records. Missing, blank, or unresolved
+references are rejected. Step citations are rejected
 when step evidence was omitted at the context ceiling. A disagreement, invalid
 citation, malformed result, exhausted budget or provider error returns
 INCONCLUSIVE with `review_required: true` and blocks acceptance. There is no
@@ -105,10 +108,45 @@ provisional passes. Two calls count against the normal run budget and add model
 latency/cost; insufficient remaining budget fails closed.
 
 Agreement is a consistency check, not independent ground truth: both calls can
-use the same model and can share a semantic mistake. Exact quotes prove where
-cited text came from, not that it logically establishes an arbitrary assertion.
+use the same model and can share a semantic mistake. Resolved references prove where
+cited values came from, not that it logically establishes an arbitrary assertion.
 Use deterministic schema, value and execution checks for machine-verifiable
 requirements, and inspect the retained citations for consequential decisions.
+
+## Artifact-backed DataOps benchmark
+
+All four DataOps evals now select explicit repository CSV fixtures via
+`data_source`: messy input, a header-only file, and a real 128-row file. The
+schema-repair eval explicitly enables one controlled boundary fault on the messy
+synthetic fixture. It removes `schema_doc.columns` before the normal validator,
+then exercises the existing single repair path. An isolated persistent-fault
+probe also removes the field after repair, verifies a real schema-layer failure,
+and saves `steps/schema_failure_probe.json` with `expected_failure: true` and
+`report_produced: false`. The probe never invokes reporting; its expected failure
+is retained as a failure and is not relabeled as a successful crew execution.
+Both probe and primary calls consume the normal run budget. Injection and repair
+evidence are retained in step results, including failures.
+
+The deterministic preparation component actually reads the CSV, normalizes its
+headers and values, excludes TOTAL rows, preserves missing numeric values, and
+writes `artifacts/normalized-sales.csv` under the run directory. Source and
+artifact SHA-256 values, row counts and lineage are recorded. Report figures and
+section text are calculated from the reloaded, hash-verified CSV.
+
+The live planner must preserve the two-step crew contract. Live agent calls emit
+the supplied authenticated dataset/report contract using schema-constrained
+JSON; runtime checks reject changes to facts, hashes, fields or report text.
+Their task is constrained contract emission, not open-ended model-authored data
+transformation. Runtime checks, not model self-assessments, determine those
+artifact criteria. The grader independently assesses the resulting recorded
+artifacts. This benchmark verifies pipeline integration, empty-input handling,
+repair behavior and grounding; it is not a measure of general data-science
+reasoning or proof that arbitrary datasets are supported.
+
+To repeat the full suite:
+```bash
+python scripts/benchmark.py --target dataops_crew --eval-set evals/dataops_evals.json --runs 3 --live --provider ollama --grade --out benchmark-results
+```
 
 ## Scope / safety
 

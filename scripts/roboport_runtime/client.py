@@ -53,6 +53,8 @@ def call_model_json(
 ) -> dict[str, Any]:
     """One-shot JSON call. prompt_selected observes the exact dispatched user prompt."""
     p = provider()
+    if schema is not None:
+        system_spec += '\n\nOUTPUT JSON SCHEMA\n' + json.dumps(schema, ensure_ascii=False, separators=(',', ':'))
     out = governed_chat(p,
         prompt_selected=prompt_selected,
         message_fallbacks=([[{"role": "user", "content": prompt}] for prompt in user_prompt_fallbacks]
@@ -60,7 +62,7 @@ def call_model_json(
         system=system_spec,
         messages=[{"role": "user", "content": user_prompt}],
         tools=None,
-        force_json=True,
+        force_json=schema if schema is not None else True,
         model_hint=model_hint,
     )
     result = _parse_json(out["content"])

@@ -49,7 +49,7 @@ class Provider(ABC):
         system: str,
         messages: list[dict],
         tools: list[dict] | None,
-        force_json: bool,
+        force_json: bool | dict,
         model_hint: str,
         model: str | None = None,
     ) -> dict[str, Any]:
@@ -60,6 +60,10 @@ class Provider(ABC):
                           {"provider", "model", "prompt_tokens", "completion_tokens",
                            "cost_usd" (float|None), "latency_ms"}. Callers must
                           tolerate its absence (the fault harness omits it).
+
+        `force_json` is True for JSON mode or a JSON Schema dictionary for
+        constrained Ollama decoding. JSON callers also include the schema in
+        their system prompt for providers without native format enforcement.
 
         `model` optionally pins the concrete model (used by the RoutingProvider to
         honor its candidate choice); when None the provider derives it from
@@ -108,7 +112,7 @@ class OllamaProvider(Provider):
         system: str,
         messages: list[dict],
         tools: list[dict] | None,
-        force_json: bool,
+        force_json: bool | dict,
         model_hint: str,
         model: str | None = None,
     ) -> dict[str, Any]:
@@ -125,7 +129,7 @@ class OllamaProvider(Provider):
         if tools and not force_json:
             payload["tools"] = tools
         if force_json:
-            payload["format"] = "json"
+            payload["format"] = force_json if isinstance(force_json, dict) else "json"
 
         exc = self._requests.exceptions
         t0 = time.perf_counter()
@@ -197,7 +201,7 @@ class AnthropicProvider(Provider):
         system: str,
         messages: list[dict],
         tools: list[dict] | None,
-        force_json: bool,
+        force_json: bool | dict,
         model_hint: str,
         model: str | None = None,
     ) -> dict[str, Any]:
