@@ -8,6 +8,7 @@ import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
 from threading import RLock
+from typing import Callable
 
 from .pricing import cost_for
 
@@ -139,7 +140,7 @@ def fits_local_context(*, config: dict | None = None, **kwargs) -> bool:
     return local_prompt_ceiling(kwargs) + completion <= int(defaults.get('context_tokens', 8192))
 
 
-def governed_chat(p, *, message_fallbacks: list[list[dict]] | None = None, **kwargs) -> dict:
+def governed_chat(p, *, message_fallbacks: list[list[dict]] | None = None, prompt_selected: Callable[[str], None] | None = None, **kwargs) -> dict:
     # A routing wrapper picks its concrete backend and model first, so the
     # call is reserved and dispatched against the same provider and model.
     routed = p.select(kwargs['model_hint']) if hasattr(p, 'select') else None
@@ -198,6 +199,8 @@ def governed_chat(p, *, message_fallbacks: list[list[dict]] | None = None, **kwa
         model = kwargs.get('model') or (p.model_for(kwargs['model_hint']) if hasattr(p, 'model_for') else p.name)
         rid = b.reserve_model_call(model, prompt, completion, local)
     try:
+        if prompt_selected is not None:
+            prompt_selected(kwargs['messages'][0]['content'])
         result = p.chat_with_tools(**kwargs)
     except BaseException as exc:
         # A provider marks errors after which billing is unknown (a timeout or

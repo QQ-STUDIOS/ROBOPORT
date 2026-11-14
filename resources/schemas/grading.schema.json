@@ -28,6 +28,18 @@
     "pass_rate":      { "type": "number", "minimum": 0, "maximum": 1 },
     "blocker_failed": { "type": "boolean" },
     "meta_critique":  { "type": "array", "items": { "type": "string" } },
+    "review_required": {
+      "type": "boolean",
+      "description": "Assessment disagreement or unverifiable grading; always blocks acceptance."
+    },
+    "verification": {
+      "type": "object",
+      "required": ["method", "assessments_completed"],
+      "properties": {
+        "method": { "const": "blinded_consensus" },
+        "assessments_completed": { "type": "integer", "minimum": 0, "maximum": 2 }
+      }
+    },
     "graded_at":      { "type": "string", "format": "date-time" }
   }
 }

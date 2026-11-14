@@ -102,14 +102,15 @@ def test_a_plan_step_id_cannot_escape_the_run_directory(tmp_path, monkeypatch):
 
 def test_only_blocker_misses_set_blocker_failed(tmp_path, monkeypatch):
     from roboport_runtime import grader
-    rows = [{"expectation": "a", "verdict": "PASS", "evidence": "e", "blocker": True},
-            {"expectation": "b", "verdict": "FAIL", "evidence": "e", "blocker": False}]
+    (tmp_path / 'final_output.json').write_text('{"e":"proof"}')
+    rows = [{'expectation_id': 0, 'finding': 'SUPPORTED', 'citations': [{'source': 'final_output', 'quote': 'proof'}]},
+            {'expectation_id': 1, 'finding': 'CONTRADICTED', 'citations': [{'source': 'final_output', 'quote': 'proof'}]}]
     monkeypatch.setattr(grader, "load_agent_spec", lambda p: "")
-    monkeypatch.setattr(grader, "call_model_json", lambda **k: {"results": rows, "pass_rate": 0.5, "blocker_failed": False})
-    out = grader.call_grader(["a", "b"], None, tmp_path)
+    monkeypatch.setattr(grader, "call_model_json", lambda **k: k["prompt_selected"](k["user_prompt"]) or {"results": rows})
+    out = grader.call_grader(["a", "b"], None, tmp_path, blockers=['a'])
     assert out["blocker_failed"] is False and out["pass_rate"] == 0.5
-    rows[0]["verdict"] = "INCONCLUSIVE"
-    assert grader.call_grader(["a", "b"], None, tmp_path)["blocker_failed"] is True
+    rows[0]["finding"] = "INSUFFICIENT"
+    assert grader.call_grader(["a", "b"], None, tmp_path, blockers=['a'])["blocker_failed"] is True
 
 
 def test_the_grader_sees_step_outputs(tmp_path, monkeypatch):
@@ -118,7 +119,7 @@ def test_the_grader_sees_step_outputs(tmp_path, monkeypatch):
     (tmp_path / "steps/investigate.json").write_text(json.dumps({"status": "ok", "output": {"finding": "f1"}}))
     seen = {}
     monkeypatch.setattr(grader, "load_agent_spec", lambda p: "")
-    monkeypatch.setattr(grader, "call_model_json", lambda **k: seen.update(k) or {"results": [], "pass_rate": 0, "blocker_failed": False})
+    monkeypatch.setattr(grader, "call_model_json", lambda **k: seen.update(k) or {"results": []})
     grader.call_grader([], None, tmp_path)
     assert '"finding":"f1"' in seen["user_prompt"]
 
@@ -232,9 +233,10 @@ def test_the_ram_allowance_matches_setup():
 
 def test_declared_blockers_decide_blocker_failed(tmp_path, monkeypatch):
     from roboport_runtime import grader
-    rows = [{"expectation": "a", "verdict": "FAIL", "evidence": "e"}]
+    (tmp_path / 'final_output.json').write_text('{"e":"proof"}')
+    rows = [{'expectation_id': 0, 'finding': 'CONTRADICTED', 'citations': [{'source': 'final_output', 'quote': 'proof'}]}]
     monkeypatch.setattr(grader, "load_agent_spec", lambda p: "")
-    monkeypatch.setattr(grader, "call_model_json", lambda **k: {"results": rows, "pass_rate": 0, "blocker_failed": False})
+    monkeypatch.setattr(grader, "call_model_json", lambda **k: k["prompt_selected"](k["user_prompt"]) or {"results": rows})
     assert grader.call_grader(["a"], None, tmp_path)["blocker_failed"] is False
     assert grader.call_grader(["a"], None, tmp_path, blockers=["a"])["blocker_failed"] is True
 
@@ -255,7 +257,7 @@ def test_step_outputs_never_push_grading_past_the_context_ceiling(tmp_path, monk
     backend.config = {"defaults": {"context_tokens": 32768, "max_tokens": 2048}}
     def respond(**kwargs):
         backend.calls.append(kwargs)
-        return {"content": json.dumps({"results": [], "pass_rate": 0, "blocker_failed": False})}
+        return {"content": json.dumps({"results": []})}
     backend.chat_with_tools = respond
     monkeypatch.setattr(grader, "load_agent_spec", lambda p: "")
     monkeypatch.setattr(client, "provider", lambda: backend)

@@ -23,8 +23,8 @@ class GradingBackend:
     def chat_with_tools(self, **kwargs):
         self.calls.append(kwargs)
         return {'content': json.dumps({'results': [
-            {'expectation': 'final evidence exists', 'verdict': 'PASS', 'evidence': 'final-proof'}
-        ], 'pass_rate': 1, 'blocker_failed': False}),
+            {'expectation_id': 0, 'finding': 'SUPPORTED', 'citations': [{'source': 'final_output', 'quote': 'final-proof'}]}
+        ]}),
                 'tool_calls': [], 'usage': {'cost_usd': 0.0}}
 
 
@@ -56,14 +56,15 @@ def test_routed_grader_checks_the_model_inclusive_request(tmp_path, monkeypatch)
     backend, router = setup_grading(tmp_path, monkeypatch, routed=True)
     with config.runtime_config_scope(backend.config):
         assert grade(tmp_path)['pass_rate'] == 1
-        full = backend.calls.pop()
+        full = backend.calls[-1]
+        backend.calls.clear()
         without_model = {k: v for k, v in full.items() if k != 'model'}
         backend.config['defaults']['context_tokens'] = request_size(without_model)
         router.decisions.clear()
         result = grade(tmp_path)
     assert result['pass_rate'] == 1, result
     assert not result['blocker_failed']
-    assert len(router.decisions) == 1
+    assert len(router.decisions) == 2
     sent = backend.calls[-1]
     assert sent['model'] == 'qwen3:14b'
     assert 'omitted' in sent['messages'][0]['content']
@@ -75,7 +76,8 @@ def test_omission_notice_cannot_overflow_a_fitting_base_prompt(tmp_path, monkeyp
     backend, _ = setup_grading(tmp_path, monkeypatch, routed)
     with config.runtime_config_scope(backend.config):
         grade(tmp_path)
-        full = backend.calls.pop()
+        full = backend.calls[-1]
+        backend.calls.clear()
         base = dict(full)
         base['messages'] = [{'role': 'user', 'content': full['messages'][0]['content'].split('\n\nSTEP OUTPUTS')[0]}]
         backend.config['defaults']['context_tokens'] = request_size(base)
@@ -121,13 +123,13 @@ def test_anthropic_fallbacks_use_token_counts(tmp_path, monkeypatch, routed, fit
         assert len(counted) == 3
     else:
         assert result['pass_rate'] == 1, result
-        assert backend.calls == [counted[-1]]
+        assert backend.calls == [counted[-1], counted[-1]]
         prompt = backend.calls[0]['messages'][0]['content']
         assert ('x' * 100 in prompt) == (fits == 'steps')
         assert ('omitted' in prompt) == (fits == 'notice')
-        assert len(counted) == {'steps': 1, 'notice': 2, 'base': 3}[fits]
+        assert len(counted) == 2 * {'steps': 1, 'notice': 2, 'base': 3}[fits]
     if routed:
-        assert len(router.decisions) == 1
+        assert len(router.decisions) == (1 if fits == 'none' else 2)
         assert all(k['model'] == 'claude-sonnet-4-6' for k in counted)
 
 
@@ -135,8 +137,8 @@ def test_anthropic_fallbacks_use_token_counts(tmp_path, monkeypatch, routed, fit
 def test_blank_evidence_cannot_pass_a_declared_blocker(tmp_path, monkeypatch, evidence):
     backend, _ = setup_grading(tmp_path, monkeypatch)
     backend.chat_with_tools = lambda **kwargs: {'content': json.dumps({
-        'results': [{'expectation': 'final evidence exists', 'verdict': 'PASS', 'evidence': evidence}],
-        'pass_rate': 1, 'blocker_failed': False}), 'usage': {'cost_usd': 0}}
+        'results': [{'expectation_id': 0, 'finding': 'SUPPORTED',
+                     'citations': [{'source': 'final_output', 'quote': evidence}]}]}), 'usage': {'cost_usd': 0}}
     with config.runtime_config_scope(backend.config), budget.run_budget(budget.RunBudget({})):
         result = grader.call_grader(['final evidence exists'], None, tmp_path,
                                     blockers=['final evidence exists'])
