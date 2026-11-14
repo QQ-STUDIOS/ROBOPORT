@@ -247,6 +247,13 @@ by validation.) Future: annotate array-internal fields once run ordering is norm
 **Goal:** move the Ops Console from live-demo visualization to a regression
 investigation surface.
 
+> **Generic per-crew dashboard (shipped):** the console's stations are no longer
+> hardwired to JD-Crew. `bridge.derive_stations(crew, registry)` computes the station
+> layout (ids, waves, optional flags) for *any* registry crew by relaxing waves from
+> its entry over the typed edges, and the bridge detects the crew from each run's
+> `run.log` `run.start` event — so `dataops_crew` (and every future crew) renders on
+> the same console. Proven by `tests/test_bridge_stations.py`.
+
 > **Status:** v1 landed — `bridge.py --baseline/--candidate` (or `--diff FILE`)
 > renders a `diff_runs` comparison as a regression overlay, and the console accepts
 > a dropped `diff_against_baseline.json` offline. Rather than invent new `diff.*`
@@ -298,8 +305,11 @@ behavior.
 > Provider/budget/unsafe failures carry a `layer`; steps report `retries`/`repaired`.
 >
 > The richer `Response{cost,latency,...}` shape (the Phase-4 routing foundation) has
-> since landed on the seam — see Phase 4. Still open: wiring the `FaultProvider` into a
-> `--live` `evals/fault_injection.json` benchmark set.
+> since landed on the seam — see Phase 4. The `FaultProvider` is now also wired into an
+> offline fault-injection benchmark: `evals/fault_injection.json` + `scripts/fault_bench.py`
+> run the error-stack scenarios through the *real executor* (not just unit tests),
+> deterministically grade the outcome against each scenario's declared expectation, and
+> emit diff_runs/aggregate-compatible run artifacts — gated in CI.
 
 Fault-injection evals:
 
@@ -328,10 +338,23 @@ cost/latency fields). Pull a thin protocol forward into Phase 1/0 enabling work;
 CI must run without paid or local model dependencies, and must fail if any fault
 eval loses a blocker.
 
-## Phase 4: Observability-aware routing — **telemetry + reporting shipped (tasks 1–3)**
+## Phase 4: Observability-aware routing — **complete (tasks 1–4)**
 
 **Goal:** make provider/model routing operationally visible and eventually
 self-tuning.
+
+> **Status (task 4 — routing):** complete. `--provider routing` selects a concrete
+> `{provider, model}` candidate per `model_hint` from the `routing` policy in
+> `agent_config.yaml`. The decision engine (`routing.select_candidate`, pure) uses the
+> policy's **static priority** with no telemetry, and — given a *scoreboard* built from
+> an `aggregate.py` routing report (`scoreboard_from_report` → `by_provider_model`) —
+> the `blocker_pass_then_cost` objective ranks candidates by highest blocker pass rate,
+> then lowest per-step cost, after dropping any whose per-step latency exceeds
+> `max_latency_ms_per_step`. The `RoutingProvider` delegates to the chosen provider,
+> pins its model (the seam now takes an optional `model` override), and records every
+> decision + annotates `usage` with `routed_provider`/`routed_model`. This closes the
+> loop the telemetry was built for: **runs emit cost/latency → aggregate scores each
+> provider/model → the router picks the winner.** Proven offline by `tests/test_routing.py`.
 
 > **Status (task 3 — reporting):** `aggregate.py` now reads the per-step telemetry off
 > each run's `run.log` and reports **cost/latency per *passing* run** (a run that
@@ -358,15 +381,13 @@ self-tuning.
 > and `tests/test_telemetry.py` (executor accumulation + the `routing_summary` rollup),
 > gated by the CI Tests job.
 >
-> Still open (v2): task 4 (the routing policy file + a routing provider that acts on
-> the telemetry).
-
 1. Expand run-log events with provider, model, model_hint, prompt/completion
    tokens, `cost_usd` (when available), `latency_ms`, `retry_count`. ✅
 2. Add a per-agent routing summary to `summary.json`. ✅
 3. Teach `aggregate.py` to report cost/latency per *passing* run and blocker pass
    rate by provider/model, and to flag cost/latency regressions by agent. ✅
-4. Add an optional routing policy file:
+4. Add an optional routing policy file: ✅ (`routing:` in `agent_config.yaml`,
+   consumed by `--provider routing`)
 
    ```yaml
    routing:
@@ -378,23 +399,57 @@ self-tuning.
          - { provider: anthropic, model: claude-sonnet-4-6 }
    ```
 
-## Phase 5: Crew expansion with proof discipline
+## Phase 5: Crew expansion with proof discipline — **v1 shipped (governance gate + JD-Crew hardening)**
 
 **Goal:** prevent breadth from outrunning proof.
 
+> **Status:** v1 landed — the governance layer is now **enforced**, not just documented.
+> `scripts/governance.py` gates the repo against the mechanically-checkable rules with a
+> diff_runs-style exit code (0 clean · 1 violation · 2 load error), wired into the CI
+> Tests job: **R1** every eval carries a blocker, **R2** each crew's eval set covers all
+> four proof kinds (`happy_path`, `empty`, `schema_failure`, `evidence_grounding` — now a
+> first-class `kind` field on the eval schema), **R4** every crew station maps to a
+> registered agent and every edge declares its output contract. R3 (diff_runs artifact
+> compat) stays enforced at runtime; R5 (generic-agent growth) is a review-time judgment —
+> both reported as advisories. **JD-Crew hardening** is done: all evals now carry blockers
+> (eval 2's empty-case invariant included), every eval is tagged with its `kind`, and a
+> `schema_failure` eval was added to close the one real coverage gap the gate surfaced —
+> so the flagship crew passes its own governance. Proven offline by `tests/test_governance.py`.
+
 Rules:
 
-1. No new agent lands without blocker evals.
+1. No new agent lands without blocker evals. ✅ enforced (R1)
 2. No new crew lands without: one happy-path, one empty/no-result, one
-   schema/failure, and one anti-hallucination / evidence-grounding eval.
+   schema/failure, and one anti-hallucination / evidence-grounding eval. ✅ enforced (R2)
 3. Every new crew must produce run artifacts compatible with `diff_runs.py`.
-4. Every new dashboard station must map to a registry agent and output contract.
+   (enforced at runtime by `diff_runs.py`)
+4. Every new dashboard station must map to a registry agent and output contract. ✅ enforced (R4)
 5. Generic agent count grows only when an eval proves an existing agent cannot
-   cover the role.
+   cover the role. (review-time judgment; reported as advisory)
 
-First expansion candidates: **JD-Crew hardening** (give all six evals blockers)
-before any second flagship crew. Do not add a second crew until Phases 1 and 3 are
-complete.
+First expansion candidate **JD-Crew hardening** (give all evals blockers) is complete.
+
+The **second flagship crew has landed under the gate**: `dataops_crew` — a read-only
+pipeline (`data_engineering` → `reporting`) that ingests messy tabular data and produces
+a report grounded in it. It reuses existing registered agents (no new generic agents —
+rule 5), adds typed output contracts (`CleanedDataset`, `DataReport`), and ships its own
+four-kind + blockered eval set (`evals/dataops_evals.json`). Governance now **discovers
+every eval set under `evals/` and requires each registry crew to have a covering set** —
+so no crew lands without proof. Both crews pass R1/R2/R4; validated by
+`tests/test_governance.py`.
+
+> **Insight-to-Action crew (shipped):** a third crew, `insight_to_action_crew`
+> (`data_engineering` → `reporting` → `automation`), takes the DataOps pipeline one
+> stage further — the terminal `automation` station *proposes* side-effecting actions
+> and exercises the **Phase-3 Layer-3 unsafe-action escalation in a real crew**. It adds
+> a typed `ActionProposal` contract (every action carries `requires_approval`, a
+> `grounded_in` pointer back to the report, and an `audit_event`; `approval.status`
+> defaults to `pending`). Any irreversible or outward-facing proposed tool call is
+> blocked-and-escalated by the executor **before dispatch** (`layer="unsafe_action"`),
+> so an approval bypass fails twice — once at the proposal contract, once at the
+> executor seam. Offline throughout: side effects are represented via policy and
+> escalation, never performed. Four-kind + blockered eval set
+> (`evals/insight_to_action_evals.json`), proven by `tests/test_insight_to_action.py`.
 
 ---
 
@@ -435,13 +490,13 @@ exit-code contract:
 - ~~Add `duration_ms` + config fingerprint to `step_done` in `benchmark.py`.~~ **Done (Phase 1.x).**
 
 ### P1
-- ~~A fake provider / `Provider`-seam fault harness + Layer-1 proof.~~ **Done (Phase 3 v1).** A live `evals/fault_injection.json` benchmark set is still open.
+- ~~A fake provider / `Provider`-seam fault harness + Layer-1 proof; a fault-injection benchmark set.~~ **Done.** `scripts/fault_bench.py` runs `evals/fault_injection.json` through the real executor offline, gated in CI.
 - Dashboard diff event support + `diff_against_baseline.json` file-drop.
 - ~~Provider/model/cost/latency fields on run events.~~ **Done (Phase 4 v1).**
 - ~~Stable-field (`x-roboport`) annotations in `output.schema.json`.~~ **Done (Phase 1.x).**
 
 ### P2
-- ~~Aggregate cost-per-passing-run reports.~~ **Done (Phase 4 task 3).** Routing policy config still open.
+- ~~Aggregate cost-per-passing-run reports; routing policy config.~~ **Done (Phase 4 tasks 3–4).**
 - Analyzer handoff from `diff_runs.py`.
 - `evals/benchmarks/current_baseline.json` pointer + promotion rule.
 - CI job: benchmark smoke + fault-injection evals + `diff_runs --fail-on regression`.

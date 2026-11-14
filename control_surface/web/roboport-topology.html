@@ -82,14 +82,14 @@
         </circle>
 
         <!-- zone cells -->
-        <!-- Z1 Theragen (drilled / highlighted) -->
+        <!-- Z1 clinic (drilled / highlighted) -->
         <g>
           <circle cx="170" cy="150" r="52" fill="none" stroke="#36c6e0" stroke-opacity=".18" stroke-dasharray="4 8"/>
           <circle cx="170" cy="150" r="34" fill="#36c6e0" fill-opacity=".06"/>
           <circle cx="170" cy="150" r="62" fill="none" stroke="#36c6e0" stroke-opacity=".55" stroke-dasharray="3 5"/>
           <circle cx="170" cy="150" r="17" fill="#13202e" stroke="#36c6e0" stroke-width="1.6" filter="url(#glow)"/>
           <circle cx="170" cy="150" r="5" fill="#9fe4f2"/>
-          <text x="170" y="220" text-anchor="middle" class="lblb">theragen</text>
+          <text x="170" y="220" text-anchor="middle" class="lblb">clinic</text>
           <text x="170" y="234" text-anchor="middle" class="lbl" fill="#36c6e0">HIPAA · 6 agents</text>
           <text x="170" y="120" text-anchor="middle" class="tiny" fill="#36c6e0">◄ expanded below</text>
         </g>
@@ -134,7 +134,7 @@
         </g>
 
         <!-- ============ ZONE VIEW ============ -->
-        <text x="30" y="414" class="tiny" letter-spacing="2">ZONE VIEW · theragen — EXPANDED</text>
+        <text x="30" y="414" class="tiny" letter-spacing="2">ZONE VIEW · clinic — EXPANDED</text>
         <rect x="24" y="424" width="612" height="312" rx="12" fill="#0c1217" stroke="#1c2730"/>
 
         <!-- domain arcs (cross-cutting tags over stations) -->
@@ -194,7 +194,7 @@
         <li><code>zone_id</code> on agents / stations / tasks; <code>domain_id</code> on stations / tasks; <code>home_zone_id</code> on agents</li>
         <li>task state <code>in_transit</code> + <code>pipeline[]</code> hops + <code>hop_index</code></li>
         <li>events <code>zone.updated</code> <code>route.updated</code> <code>task.handoff</code> <code>agent.transfer</code></li>
-        <li>feed scoping: <code>?scope=network</code> (rollups) vs <code>?scope=zone:theragen</code> (firehose)</li>
+        <li>feed scoping: <code>?scope=network</code> (rollups) vs <code>?scope=zone:clinic</code> (firehose)</li>
       </ul>
 
       <div class="note">Semantic zoom keeps it legible: below a threshold a zone renders as one health gauge, not its 500 drones. One focus at a time — network shows zones, zone shows drones.</div>

@@ -43,3 +43,21 @@ Execute side-effecting actions against external systems with idempotency and aud
 
 - **Silent retry on 5xx that actually succeeded** — always check idempotency before retry
 - **Approval bypass** — never auto-approve, even on low-risk actions, without a config flag
+
+## As the terminal station of `insight_to_action_crew`
+
+When wired as the last stage of the Insight-to-Action crew, this agent consumes a
+`DataReport` and emits a typed **`ActionProposal`** (see
+`resources/schemas/output.schema.json`). It *proposes* — it does not execute:
+
+- Every `proposed_action` carries a `rationale` and a `grounded_in` pointer back to
+  a section/figure of the source report. No action is proposed for a claim the
+  report does not support.
+- Any irreversible or outward-facing action (`send_*`, `delete_*`, `post_*`, …)
+  sets `requires_approval: true` and leaves `approval.status: "pending"`. The
+  executor's Layer-3 unsafe-action policy independently blocks such a tool call
+  and escalates it (`layer="unsafe_action"`) — so an approval bypass fails twice:
+  once at the proposal contract, once at the executor seam.
+- Every proposal emits an `audit_event`, whether or not any action is approved.
+- An empty `proposed_actions` list is a valid outcome: "the insight warrants no
+  action" is a legitimate, auditable decision.

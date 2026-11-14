@@ -48,7 +48,7 @@ def _prices() -> dict[str, dict[str, tuple[float, float]]]:
         path = REPO / "config" / "pricing.yaml"
         if path.exists():
             try:
-                import yaml  # noqa: PLC0415
+                import yaml
                 raw = yaml.safe_load(path.read_text(encoding="utf-8"))
             except Exception:  # noqa: BLE001 — pricing degrades to defaults
                 raw = None
@@ -82,3 +82,23 @@ def cost_for(provider: str | None, model: str | None,
     cost = (int(prompt_tokens or 0) / 1_000_000) * inp \
         + (int(completion_tokens or 0) / 1_000_000) * out
     return round(cost, 6)
+
+
+def anthropic_usage_cost(model: str, usage) -> float | None:
+    """Include uncached, five-minute cache-write, and cache-read charges.
+
+    Missing usage fields cannot establish billing and retain the reservation.
+    This provider requests only default five-minute ephemeral cache entries.
+    """
+    keys = ('input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')
+    if usage is None or any(not hasattr(usage, key) for key in keys):
+        return None
+    price = _prices().get('anthropic', {}).get(model)
+    if price is None:
+        return None
+    counts = [getattr(usage, key) or 0 for key in keys]
+    if any(not isinstance(value, int) or value < 0 for value in counts):
+        return None
+    uncached, output, write, read = counts
+    input_price, output_price = price
+    return round(((uncached + 1.25 * write + .1 * read) * input_price + output * output_price) / 1_000_000, 8)

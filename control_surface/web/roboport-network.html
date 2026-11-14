@@ -311,17 +311,17 @@ function createNetworkBackend(){
     {station_id:"stn.publish",name:"Publish",order:6,hue:"#ff5a8a"},
   ];
   const ZONE_CFG=[
-    {zone_id:"zone.theragen",name:"theragen",color:"#36c6e0",tag:"HIPAA tenant",policy:"data-only",agents:6,nx:.27,ny:.36},
+    {zone_id:"zone.clinic",name:"clinic",color:"#36c6e0",tag:"HIPAA tenant",policy:"data-only",agents:6,nx:.27,ny:.36},
     {zone_id:"zone.jobsynk", name:"jobsynk", color:"#f2b134",tag:"region · us-w",policy:"elastic", agents:4,nx:.77,ny:.29},
     {zone_id:"zone.qqstudios",name:"qq-studios",color:"#4fd672",tag:"region · eu-c",policy:"elastic",agents:3,nx:.71,ny:.67},
     {zone_id:"zone.edge",    name:"edge·us-east",color:"#6c8cff",tag:"edge cell",  policy:"elastic", agents:2,nx:.50,ny:.19},
   ];
   const ROUTE_CFG=[
-    {route_id:"r.thg-job", a:"zone.theragen", b:"zone.jobsynk",  policy:"data-only"},
-    {route_id:"r.thg-edge",a:"zone.theragen", b:"zone.edge",     policy:"data-only"},
+    {route_id:"r.cln-job", a:"zone.clinic", b:"zone.jobsynk",  policy:"data-only"},
+    {route_id:"r.cln-edge",a:"zone.clinic", b:"zone.edge",     policy:"data-only"},
     {route_id:"r.job-qq",  a:"zone.jobsynk",  b:"zone.qqstudios",policy:"elastic"},
     {route_id:"r.qq-edge", a:"zone.qqstudios",b:"zone.edge",     policy:"elastic"},
-    {route_id:"r.thg-qq",  a:"zone.theragen", b:"zone.qqstudios",policy:"data-only"},
+    {route_id:"r.cln-qq",  a:"zone.clinic", b:"zone.qqstudios",policy:"data-only"},
   ];
   const NETCFG={energy_low_threshold:22,max_agents:12};
   const born=performance.now();
@@ -490,7 +490,7 @@ function createNetworkBackend(){
   }
 
   function networkSnapshot(){const zr=[...zones.values()].map(z=>z.rollup());const rate=zr.reduce((a,z)=>a+z.tasks_per_min,0),agentsTot=zr.reduce((a,z)=>a+z.agents_total,0),risk=zr.filter(z=>z.health!=="ok").length;
-    return{config:{network:"Theragen control plane",max_agents:NETCFG.max_agents},zones:zr,routes:routes.map(r=>({route_id:r.route_id,from_zone:r.a,to_zone:r.b,tasks_per_min:routeFlow(r),in_transit:r.in_transit,policy:r.policy,rev:r.rev})),transit:transit.map(x=>({task_id:x.task_id,route_id:x.route_id,from_zone:x.from_zone,to_zone:x.to_zone,t:x.t})),metrics:{tasks_per_min:rate,total_agents:agentsTot,zones:zones.size,cross_zone_in_flight:transit.length,at_risk:risk,uptime_s:Math.floor((performance.now()-born)/1000),ts:now()}};}
+    return{config:{network:"Roboport control plane",max_agents:NETCFG.max_agents},zones:zr,routes:routes.map(r=>({route_id:r.route_id,from_zone:r.a,to_zone:r.b,tasks_per_min:routeFlow(r),in_transit:r.in_transit,policy:r.policy,rev:r.rev})),transit:transit.map(x=>({task_id:x.task_id,route_id:x.route_id,from_zone:x.from_zone,to_zone:x.to_zone,t:x.t})),metrics:{tasks_per_min:rate,total_agents:agentsTot,zones:zones.size,cross_zone_in_flight:transit.length,at_risk:risk,uptime_s:Math.floor((performance.now()-born)/1000),ts:now()}};}
   function emitNetworkSnapshot(){netSeq++;const env={v:1,seq:netSeq,ts:now(),type:"snapshot",data:networkSnapshot(),_chan:"network"};for(const s of netSubs)s(env);}
 
   function handleCommand(cmd){
@@ -517,7 +517,7 @@ function createNetworkBackend(){
    PART B — FEED CLIENT  (the swappable transport seam, now scoped)
    setScope('network') or setScope('zone:<id>') flips channels. Going
    LIVE means replacing the body below with a WebSocket whose URL carries
-   the scope (?scope=zone:theragen) — PART C does not change:
+   the scope (?scope=zone:clinic) — PART C does not change:
      ws=new WebSocket(`${WS}/api/feed?scope=${scope}&token=${TOKEN}`)
      ws.onmessage=e=>route(JSON.parse(e.data))
    ===================================================================== */

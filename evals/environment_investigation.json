@@ -1,0 +1,28 @@
+{
+  "target": "environment_investigation",
+  "version": "1.0.0",
+  "evals": [
+    {
+      "id": 101,
+      "prompt": "Investigate tests/fixtures/rea_project using REA. Propose an evidence-backed improvement with validation and uncertainty; do not execute target code or modify the project.",
+      "context": {
+        "project_path": "tests/fixtures/rea_project"
+      },
+      "expectations": [
+        "Actual successful REA evidence exists and its hash matches the artifact",
+        "Final proposal copies the investigation evidence reference exactly",
+        "Every proposed change cites that evidence and includes validation and uncertainty",
+        "No target mutation and approval_required is true"
+      ],
+      "blockers": [
+        "Actual successful REA evidence exists and its hash matches the artifact",
+        "No target mutation and approval_required is true"
+      ],
+      "tags": [
+        "environment_investigation",
+        "rea",
+        "static"
+      ]
+    }
+  ]
+}

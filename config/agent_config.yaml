@@ -91,6 +91,7 @@ agent_overrides:
 defaults:
   temperature: 0.3
   max_tokens: 2048
+  context_tokens: 32768  # sent to Ollama as num_ctx; qwen3:14b at 32k fits tier A VRAM
   top_p: 0.95
   timeout_seconds: 60
   retries: 2  # call-level only — step-level retries are decided by orchestrator
@@ -108,6 +109,29 @@ budgets:
   per_agent:
     max_llm_calls: 5
     max_tool_calls: 15
+
+# -----------------------------------------------------------------------------
+# Observability-aware routing (Phase 4 task 4). Consulted only when the runtime
+# runs with `--provider routing` (or ROBOPORT_PROVIDER=routing); otherwise inert.
+# Per model_hint, the RoutingProvider picks a concrete {provider, model} candidate.
+# Without telemetry it uses the *static priority* (first candidate). Given a
+# scoreboard (an aggregate.py routing report's by_provider_model block), the
+# `blocker_pass_then_cost` objective ranks candidates by highest blocker pass
+# rate, then lowest per-step cost, after dropping any whose known per-step
+# latency exceeds `max_latency_ms_per_step`.
+# -----------------------------------------------------------------------------
+routing:
+  objective: blocker_pass_then_cost   # or "static" (always first candidate)
+  constraints:
+    max_latency_ms_per_step: 10000
+    max_usd_per_run: 5.00             # advisory; recorded, not yet enforced mid-run
+  candidates:
+    reasoning-strong:
+      - { provider: ollama,    model: qwen3:14b }
+      - { provider: anthropic, model: claude-sonnet-4-6 }
+    tool-use-capable:
+      - { provider: ollama,    model: qwen3:14b }
+      - { provider: anthropic, model: claude-sonnet-4-6 }
 
 # -----------------------------------------------------------------------------
 # Safety policy (Layer 3 of the error stack). `unsafe_actions` is a denylist of
@@ -162,6 +186,8 @@ policy:
 # refuses to dispatch a tool not whitelisted for the current agent.
 # -----------------------------------------------------------------------------
 tools:
+  environment_investigator: [rea_analyze_project]
+  improvement_proposer: []
   job_scout:        [search_linkedin, search_indeed, search_company_careers, fetch_url, dedupe_jobs, validate_url_active]
   technical_analyst: [fetch_jd_full, fetch_url, parse_jd_skills]
   compliance_risk:  [fetch_jd_full, fetch_url, lookup_jurisdiction]
@@ -190,3 +216,7 @@ output:
   log_level: info       # debug | info | warn | error
   save_intermediate: true   # write each agent's output as runs/<id>/<step>.json
   save_prompts: true        # write the literal prompt sent to each model call
+
+# Bounded static analysis profile; override approved roots locally.
+rea:
+  approved_roots: [tests/fixtures/rea_project, tests/fixtures/rea_empty_project]

@@ -59,6 +59,10 @@ The Strategist wears two hats deliberately. The career-coach hat finds reasons t
 
 ## Success criteria
 
+Ground recommendations in supplied candidate facts. Inferred job compliance requirements do not establish candidate familiarity or experience. When a compliance capability is absent from the profile, discuss that uncertainty in reasoning_against and avoid recommending a claim about it. Scores express model judgment, not measured hiring probabilities. Explicitly identify synthetic deployment inputs when used.
+
+Use the frozen evaluation_context as_of_date and timezone for all posting-date comparisons. Dates on or before that date are not future-dated; recency alone does not establish that a listing is active. Do not infer a project's domain or years of experience per skill from a general skills list and total experience. Recommend claiming data-pipeline experience only when data pipelines is explicitly supplied as a candidate skill. Otherwise disclose the unknown capability in reasoning_against and recommend verifying additional experience before any resume claim.
+
 - `fit_score` is reproducible from the inputs (same inputs → same score)
 - `reasoning_for` and `reasoning_against` are both non-empty when `verdict ∈ {apply, tailor_first}`
 - `recommended_actions` are specific (no "polish your resume")
@@ -67,3 +71,7 @@ The Strategist wears two hats deliberately. The career-coach hat finds reasons t
 ## Hand-off
 
 `CandidateMatch` flows to the Synthesizer. For high-priority matches, also flows to the Resume Tailor and Cover Letter Writer.
+
+## Fact-bound deployment selection
+
+When input.strategy_catalog is present, the supplied OUTPUT SCHEMA defines an intermediate selection: return option IDs, not prose, in reasoning_for, reasoning_against and recommended_actions. Include every mandatory_unknowns ID in reasoning_against. Select/rank supported options and supply bounded score, verdict and priority. Runtime renders source-bound text into the unchanged public CandidateMatch contract. Do not introduce any additional fields or reuse unsupported upstream claims.

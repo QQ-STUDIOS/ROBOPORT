@@ -1,0 +1,76 @@
+{
+  "$schema": "../resources/schemas/eval.schema.json",
+  "target": "dataops_crew",
+  "version": "0.1.0",
+  "_note": "Proof set for the read-only DataOps crew (data_engineering -> reporting). Covers all four Phase-5 proof kinds with blockers so the crew passes scripts/governance.py.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Ingest resources/datasets/sales_messy.csv (mixed encodings, an embedded totals row, irregular headers), clean it, then produce a weekly-sales report with Summary, Trends, and Data-Quality sections.",
+      "expected_output": "A CleanedDataset with a typed schema_doc and lineage, and a DataReport whose source_row_count matches the cleaned row_count.",
+      "expectations": [
+        "CleanedDataset.schema_doc.columns is non-empty and every column has a name and dtype",
+        "CleanedDataset.row_count excludes the embedded totals row",
+        "CleanedDataset.lineage_log records at least the load, the header-normalization, and the totals-row drop",
+        "DataReport.sections include headings 'Summary', 'Trends', and 'Data Quality'",
+        "DataReport.source_row_count equals CleanedDataset.row_count",
+        "Every numeric claim in the report is derivable from the cleaned dataset"
+      ],
+      "blockers": [
+        "DataReport.source_row_count equals CleanedDataset.row_count",
+        "Every numeric claim in the report is derivable from the cleaned dataset"
+      ],
+      "tags": ["dataops", "happy_path", "end_to_end"],
+      "kind": "happy_path"
+    },
+    {
+      "id": 2,
+      "prompt": "Run the DataOps crew on an input file that has a header row but zero data rows.",
+      "expected_output": "The crew halts cleanly with a 'no data' surface; reporting does not fabricate a report over an empty dataset.",
+      "expectations": [
+        "CleanedDataset.row_count == 0",
+        "No DataReport with nonzero source_row_count is produced",
+        "The run surfaces a 'no data' / empty-input message",
+        "reporting does not invent rows, figures, or trends"
+      ],
+      "blockers": [
+        "No DataReport with nonzero source_row_count is produced"
+      ],
+      "tags": ["dataops", "edge_case", "empty_results"],
+      "kind": "empty"
+    },
+    {
+      "id": 3,
+      "prompt": "Same as eval 1, but data_engineering's first response is schema-invalid (CleanedDataset is missing schema_doc.columns). Exercises the Layer-1 schema-repair path before reporting runs.",
+      "expected_output": "The CleanedDataset either recovers via at most one repair pass or the step fails cleanly; no schema-invalid dataset ever reaches reporting.",
+      "expectations": [
+        "data_engineering output validates against the CleanedDataset contract before reporting runs",
+        "If the one repair pass does not fix it, the step status is 'failed' with a schema-layer error and no DataReport is produced",
+        "reporting never consumes a CleanedDataset missing schema_doc.columns",
+        "At most one schema-repair pass is attempted"
+      ],
+      "blockers": [
+        "reporting never consumes a CleanedDataset missing schema_doc.columns"
+      ],
+      "tags": ["dataops", "schema_failure", "error_stack"],
+      "kind": "schema_failure"
+    },
+    {
+      "id": 4,
+      "prompt": "Run the DataOps crew on a dataset of exactly 128 rows after cleaning. Verify the report's figures are grounded in the dataset and never invented.",
+      "expected_output": "Every number in the DataReport traces to the CleanedDataset; the report does not state totals, counts, or trends that the data does not support.",
+      "expectations": [
+        "DataReport.source_row_count == 128",
+        "Every figure in DataReport.figures references a column that exists in CleanedDataset.schema_doc.columns",
+        "No numeric claim in the report exceeds or contradicts the cleaned dataset's actual values",
+        "The report cites the lineage_log for any transformation it describes"
+      ],
+      "blockers": [
+        "No numeric claim in the report exceeds or contradicts the cleaned dataset's actual values",
+        "DataReport.source_row_count == 128"
+      ],
+      "tags": ["dataops", "anti_hallucination", "evidence_grounding"],
+      "kind": "evidence_grounding"
+    }
+  ]
+}

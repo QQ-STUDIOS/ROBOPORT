@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "tiers": {
+    "A": {
+      "description": "Local GPU workstation: NVIDIA GPU with at least 30 GiB VRAM and at least 64 GiB RAM.",
+      "gpu_vendor": "NVIDIA",
+      "min_vram_mib": 30720,
+      "min_ram_gib": 64,
+      "min_free_disk_gib": 20,
+      "models": ["qwen3:14b"]
+    }
+  }
+}

@@ -16,6 +16,7 @@ ENV ROBOPORT_FEED_SOURCE=runtime-demo \
     ROBOPORT_SERVE_WEB=1 \
     ROBOPORT_CREW=jd_crew \
     ROBOPORT_REGISTRY=/app/agents/registry.json \
+    ROBOPORT_BIND_HOST=0.0.0.0 \
     PORT=8000
 
 EXPOSE 8000

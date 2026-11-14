@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -75,6 +75,24 @@ jobs:
 
       - name: Run test suite
         run: python -m pytest tests/ -q
+
+      - name: Validate evals, registry and example output
+        # the same check Setup-Roboport.ps1 runs at install time
+        run: python scripts/validate.py --all
+
+      - name: Crew-expansion governance gate
+        run: |
+          # the repo must satisfy the Phase-5 expansion rules (blockers, proof
+          # kinds, station/contract integrity)
+          python scripts/governance.py --quiet
+          echo "governance gate verified"
+
+      - name: Offline fault-injection suite
+        run: |
+          # the error stack (retry/repair/quiet-200, budget, unsafe-action) must
+          # behave as declared, exercised through the real executor via FaultProvider
+          python scripts/fault_bench.py --quiet --out "$RUNNER_TEMP/fault-injection"
+          echo "fault-injection suite verified"
 
       - name: diff_runs regression-gate smoke
         run: |
@@ -99,7 +117,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 

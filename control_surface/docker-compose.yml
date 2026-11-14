@@ -13,7 +13,7 @@ services:
       dockerfile: control_surface/Dockerfile
     image: roboport-control-surface
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"           # host loopback only
     environment:
       ROBOPORT_FEED_SOURCE: runtime-demo  # synthetic jd_crew — no model needed
       ROBOPORT_SERVE_WEB: "1"

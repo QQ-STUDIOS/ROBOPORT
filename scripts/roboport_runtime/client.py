@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .providers import Provider, get_provider
+from .budget import governed_chat
 
 REPO = Path(__file__).resolve().parent.parent.parent
 
@@ -21,7 +22,15 @@ def _provider_cached() -> Provider:
 
 
 def provider() -> Provider:
-    return _provider_cached()
+    # Providers capture configuration when built, so a runtime config scope
+    # gets its own instance instead of the process-wide one.
+    from .config import scope_cache
+    cache = scope_cache()
+    if cache is None:
+        return _provider_cached()
+    if 'provider' not in cache:
+        cache['provider'] = get_provider()
+    return cache['provider']
 
 
 def health_check() -> None:
@@ -39,17 +48,24 @@ def call_model_json(
     user_prompt: str,
     model_hint: str = "any",
     schema: dict | None = None,
+    user_prompt_fallbacks: list[str] | None = None,
 ) -> dict[str, Any]:
     """One-shot JSON call with no tools. Used by planner + grader."""
     p = provider()
-    out = p.chat_with_tools(
+    out = governed_chat(p,
+        message_fallbacks=([[{"role": "user", "content": prompt}] for prompt in user_prompt_fallbacks]
+                           if user_prompt_fallbacks is not None else None),
         system=system_spec,
         messages=[{"role": "user", "content": user_prompt}],
         tools=None,
         force_json=True,
         model_hint=model_hint,
     )
-    return _parse_json(out["content"])
+    result = _parse_json(out["content"])
+    if schema is not None:
+        import jsonschema
+        jsonschema.validate(result, schema)
+    return result
 
 
 def _parse_json(text: str) -> dict[str, Any]:

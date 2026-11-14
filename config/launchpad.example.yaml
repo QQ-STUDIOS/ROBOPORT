@@ -1,0 +1,7 @@
+# Copy to the persistent data root as launchpad/policy.yaml.
+# Enroll named operators/reviewers through launchpad_admin.py; enable only
+# locally approved profiles. Nothing is enabled by this example.
+schema_version: 1
+# Setup writes the machine it was installed on; a station pack may set its own.
+environment_id: MY-WORKSTATION
+profiles: {}

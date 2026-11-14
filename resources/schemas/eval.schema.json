@@ -46,6 +46,11 @@
         "tags": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["happy_path", "empty", "schema_failure", "evidence_grounding"],
+          "description": "Phase-5 proof-discipline category. A crew's eval set must cover all four kinds (scripts/governance.py)."
         }
       }
     }
