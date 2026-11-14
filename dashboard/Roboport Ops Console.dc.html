@@ -1261,7 +1261,8 @@ class Component extends DCLogic {
 
   function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.isContentEditable)return;
     if(e.key==="Tab"&&window.parent!==window)return;
-    if(window.parent!==window&&["r","h"].includes(e.key.toLowerCase())){e.preventDefault();D.sr.textContent="Commands are unavailable in the read-only demo";return;}
+    if(e.ctrlKey||e.metaKey||e.altKey)return;
+    if(window.parent!==window&&selected?.type==="agent"&&["r","h"].includes(e.key.toLowerCase())){e.preventDefault();D.sr.textContent="Commands are unavailable in the read-only console";return;}
     if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
     if(e.key==="Tab"){e.preventDefault();showSummary=!showSummary;return;}
     if(e.key==="Escape"){if(showSummary){showSummary=false;return;}clearSelection();return;}
@@ -1351,6 +1352,7 @@ class Component extends DCLogic {
   if(window.parent!==window){
     backend.handleCommand=cmd=>({command_id:cmd.command_id,status:"rejected",reason:"Read-only demo embedding; commands are unavailable"});
     const root=document.getElementById("rbp");
+    const readonlyHint=root.querySelector('.hint');if(readonlyHint)readonlyHint.textContent="Read-only console · commands are unavailable · Tab moves focus · click to inspect";
     const disableCommands=()=>{for(const button of root.querySelectorAll('#btn-agent,#btn-queue,[data-cmd]:not([data-cmd="follow"]):not([data-cmd="focus"]):not([data-cmd="home"])')){
       if(!button.disabled)button.disabled=true;
       button.title="Commands are unavailable in the read-only demo";
@@ -1370,7 +1372,8 @@ class Component extends DCLogic {
     if(now-lastPanel>110){refreshPanels();lastPanel=now;}
     if(now-lastRec>500){recordFrame();lastRec=now;}
   }
-  function rafLoop(now){step(now);if(!readySent&&window.parent!==window){readySent=true;window.parent.postMessage({type:"roboport-demo-ready"},"*");}requestAnimationFrame(rafLoop);}
+  function signalReady(){if(!readySent&&window.parent!==window){readySent=true;window.parent.postMessage({type:"roboport-demo-ready"},"*");}}
+  function rafLoop(now){step(now);signalReady();requestAnimationFrame(rafLoop);}
   requestAnimationFrame(rafLoop);
   setInterval(()=>{if(document.hidden)step(performance.now());},80);
 
@@ -1462,6 +1465,7 @@ class Component extends DCLogic {
   }
   
     window.__feed=feed;
+    step(performance.now());signalReady();
   }
 }
 </script>

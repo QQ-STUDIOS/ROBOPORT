@@ -73,7 +73,7 @@ def test_embedded_console_preserves_tab_navigation(tmp_path):
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const src=fs.readFileSync(process.argv[2],'utf8');
 const handler=src.match(/function onKey\(e\)\{[\s\S]*?\n  \}/)[0];
-const ctx={window:{parent:{}},document:{activeElement:{tagName:'BUTTON'},getElementById:()=>({offsetParent:{}})},PROPS:{embedded:true},D:{sr:{}}};
+const ctx={window:{parent:{}},document:{activeElement:{tagName:'BUTTON'},getElementById:()=>({offsetParent:{}})},PROPS:{embedded:true},D:{sr:{}},selected:{type:'agent'}};
 vm.createContext(ctx);vm.runInContext(handler,ctx);
 for(const shiftKey of [false,true]){
  let prevented=false;
@@ -83,6 +83,10 @@ for(const shiftKey of [false,true]){
 for(const key of ['r','h']){
  let prevented=false;ctx.onKey({key,target:{tagName:'BUTTON'},preventDefault(){prevented=true;}});
  assert(prevented);assert(ctx.D.sr.textContent.includes('unavailable'));
+}
+for(const modifier of ['ctrlKey','metaKey','altKey']){
+ let prevented=false;ctx.onKey({key:'r',[modifier]:true,target:{tagName:'BUTTON'},preventDefault(){prevented=true;}});
+ assert(!prevented,'browser shortcuts must remain available');
 }
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],
@@ -101,11 +105,13 @@ const code=src.match(/\/\/ BEGIN standalone-readonly([\s\S]*?)\/\/ END standalon
 for(const embedded of [false,true]){
  const button={disabled:false,style:{}}, backend={handleCommand:()=>({status:'accepted'})};
  const w={};w.parent=embedded?{}:w;
- const ctx={window:w,backend,document:{getElementById:()=>({querySelectorAll:()=>[button]})},MutationObserver:class{observe(){}}};
+ const hint={};
+ const ctx={window:w,backend,document:{getElementById:()=>({querySelectorAll:()=>[button],querySelector:()=>hint})},MutationObserver:class{observe(){}}};
  vm.runInNewContext(code,ctx);
  assert.equal(backend.handleCommand({command_id:'c1'}).status,embedded?'rejected':'accepted');
  assert.equal(button.disabled,embedded);
  assert.equal(!!button.hidden,embedded);
+ if(embedded)assert(hint.textContent.includes('commands are unavailable'));
 }
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(REPO / 'dashboard/Roboport Ops Console.dc.html')],
