@@ -103,8 +103,8 @@ def test_a_plan_step_id_cannot_escape_the_run_directory(tmp_path, monkeypatch):
 def test_only_blocker_misses_set_blocker_failed(tmp_path, monkeypatch):
     from roboport_runtime import grader
     (tmp_path / 'final_output.json').write_text('{"e":"proof"}')
-    rows = [{'expectation_id': 0, 'finding': 'SUPPORTED', 'citations': [{'source': 'final_output', 'quote': 'proof'}]},
-            {'expectation_id': 1, 'finding': 'CONTRADICTED', 'citations': [{'source': 'final_output', 'quote': 'proof'}]}]
+    rows = [{'expectation_id': 0, 'finding': 'SUPPORTED', 'citations': [{'source': 'final_output', 'pointer': '/e'}]},
+            {'expectation_id': 1, 'finding': 'CONTRADICTED', 'citations': [{'source': 'final_output', 'pointer': '/e'}]}]
     monkeypatch.setattr(grader, "load_agent_spec", lambda p: "")
     monkeypatch.setattr(grader, "call_model_json", lambda **k: k["prompt_selected"](k["user_prompt"]) or {"results": rows})
     out = grader.call_grader(["a", "b"], None, tmp_path, blockers=['a'])
@@ -234,7 +234,7 @@ def test_the_ram_allowance_matches_setup():
 def test_declared_blockers_decide_blocker_failed(tmp_path, monkeypatch):
     from roboport_runtime import grader
     (tmp_path / 'final_output.json').write_text('{"e":"proof"}')
-    rows = [{'expectation_id': 0, 'finding': 'CONTRADICTED', 'citations': [{'source': 'final_output', 'quote': 'proof'}]}]
+    rows = [{'expectation_id': 0, 'finding': 'CONTRADICTED', 'citations': [{'source': 'final_output', 'pointer': '/e'}]}]
     monkeypatch.setattr(grader, "load_agent_spec", lambda p: "")
     monkeypatch.setattr(grader, "call_model_json", lambda **k: k["prompt_selected"](k["user_prompt"]) or {"results": rows})
     assert grader.call_grader(["a"], None, tmp_path)["blocker_failed"] is False

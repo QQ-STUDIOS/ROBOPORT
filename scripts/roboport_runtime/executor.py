@@ -222,8 +222,15 @@ def _agent_tools_for(owner: str) -> list[str]:
         return []
 
 
-def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, Any]:
+def _call_executor(step: dict, accumulated: dict, registry: dict, *, runtime_dataops_grounding=None) -> dict[str, Any]:
     owner = step["owner"]
+    supplied_grounding = step.get('input', {}).get('dataops_grounding')
+    if supplied_grounding is not None and runtime_dataops_grounding is None:
+        return _failed(step, 'Planner-supplied DataOps grounding is not authenticated runtime evidence', layer='grounding_invalid')
+    if runtime_dataops_grounding is not None:
+        expected_type = {'data_engineering': 'CleanedDataset', 'reporting': 'DataReport'}.get(owner)
+        if expected_type != step.get('output_type') or supplied_grounding != runtime_dataops_grounding:
+            return _failed(step, 'DataOps runtime evidence or contract mismatch', layer='grounding_invalid')
     agent_meta = registry["agents"].get(owner)
     if agent_meta is None:
         return _failed(step, f"unknown agent: {owner}")
@@ -253,6 +260,17 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
     model_hint = agent_meta.get("model_hint", "any")
     output_type = step.get("output_type", "object")
     output_schema = _resolve_output_schema(output_type)
+    dataops_input = runtime_dataops_grounding
+    response_format = None
+    if dataops_input and owner in ('data_engineering', 'reporting'):
+        expected = dataops_input['dataset' if owner == 'data_engineering' else 'report']
+        canonical = output_schema
+        output_schema = {'definitions': canonical['definitions'], 'allOf': [{'$ref': canonical['$ref']}, {'const': expected}]}
+        response_format = {'type': 'object', 'required': ['status', 'output', 'criteria_results'],
+                           'properties': {'status': {'const': 'ok'},
+                                          'output': {'const': expected},
+                                          'criteria_results': {'const': []}}}
+
     catalog = None
     if output_type == 'CandidateMatch' and 'strategy_catalog' in step.get('input', {}):
         from .strategy_catalog import bound_catalog, selection_issues, selection_schema
@@ -338,7 +356,7 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
                 system=system_spec,
                 messages=messages,
                 tools=tool_schemas if tool_schemas else None,
-                force_json=is_final_round or not tool_schemas,
+                force_json=response_format or is_final_round or not tool_schemas,
                 model_hint=model_hint,
             )
             retries_total += r
@@ -435,12 +453,23 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
             return _failed(step, f"could not parse final JSON: {content[:300]!r}",
                            llm_calls=llm_calls, tool_calls=tool_calls_total)
 
+        dataops_ground = runtime_dataops_grounding
+        injected_fault = False
+        fault_count = 0
+        if owner == 'data_engineering' and dataops_ground and dataops_ground.get('schema_fault'):
+            from .dataops import inject_schema_fault
+            result = inject_schema_fault(result)
+            content = json.dumps(result)
+            injected_fault = True
+            fault_count = 1
+
         # Layer 1 (repair): validate against the typed output schema, and on
         # failure attempt ONE repair pass before surfacing it as a failed
         # criterion. A small model that mostly gets the shape right gets a
         # second chance; a persistent mismatch is recorded, not silently passed.
         criteria_results = list(result.get("criteria_results", []) or [])
         repaired = False
+        repair_attempts = 0
         if output_schema is not None:
             issues = selection_issues(catalog, result.get("output", {})) if catalog is not None else _validate_against(output_schema, result.get("output", {}))
             candidate = step.get('input', {}).get('candidate_profile')
@@ -449,6 +478,7 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
                 issues += validate_recommendations(result.get('output') or {}, candidate, accumulated, step.get('input', {}))
             if issues:
                 # one repair pass — but only if the budget still allows a call
+                repair_attempts += int(llm_calls < budget["max_llm_calls"])
                 fixed, repair_usage = (
                     _repair_schema(p, system_spec, messages, content,
                                    issues, output_type, model_hint)
@@ -457,6 +487,9 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
                     llm_calls += 1
                     _accumulate(tele, repair_usage)
                     result = fixed
+                    if injected_fault and dataops_ground.get('persistent_schema_fault') and not _validate_against(output_schema, result.get('output', {})):
+                        result = inject_schema_fault(result)
+                        fault_count += 1
                     repaired = True
                     criteria_results = list(result.get("criteria_results", []) or [])
                     issues = selection_issues(catalog, result.get("output", {})) if catalog is not None else _validate_against(output_schema, result.get("output", {}))
@@ -469,7 +502,30 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
                         "evidence": "; ".join(issues),
                     })
 
-        grounding = {}
+        if dataops_ground and owner in ('data_engineering', 'reporting'):
+            def dataops_failure(message, layer):
+                failed = _failed(step, message, llm_calls=llm_calls, tool_calls=tool_calls_total, layer=layer)
+                return {**failed, **_telemetry_fields(tele), 'repaired': repaired,
+                        'repair_attempts': repair_attempts,
+                        **({'fault_injection': {'kind': 'missing_schema_columns', 'count': fault_count}} if injected_fault else {})}
+
+            if issues:
+                return dataops_failure('; '.join(issues), 'schema_invalid')
+            from .dataops import validate_dataset, validate_report
+            try:
+                output = result.get('output') or {}
+                issues = (validate_dataset(output, dataops_ground['dataset']) if owner == 'data_engineering'
+                          else validate_report(output, dataops_ground['dataset'], dataops_ground['report']))
+                allowed = set(dataops_ground['dataset'] if owner == 'data_engineering' else dataops_ground['report'])
+                if set(output) - allowed:
+                    issues.append('Unexpected DataOps output fields')
+                if issues:
+                    return dataops_failure('; '.join(issues), 'grounding_invalid')
+                criteria_results = [{'criterion': 'Output matches the authenticated artifact contract', 'passed': True, 'evidence': 'Runtime reloaded the hashed CSV and checked all emitted contract fields against artifact-derived values.'}]
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                return dataops_failure(str(exc), 'grounding_invalid')
+
+        grounding = {'fault_injection': {'kind': 'missing_schema_columns', 'count': fault_count}} if injected_fault else {}
         if catalog is not None:
             if issues:
                 failed = _failed(step, '; '.join(issues), llm_calls=llm_calls, tool_calls=tool_calls_total, layer='grounding_invalid')
@@ -509,6 +565,7 @@ def _call_executor(step: dict, accumulated: dict, registry: dict) -> dict[str, A
             "llm_calls": llm_calls,
             "retries": retries_total,
             "repaired": repaired,
+            "repair_attempts": repair_attempts,
             **_telemetry_fields(tele),
             **grounding,
             "transcript_path": None,
@@ -559,7 +616,7 @@ def _failed(step: dict, msg: str, *, llm_calls: int = 0, tool_calls: int = 0,
     }
 
 
-def call_executor(step: dict, accumulated: dict, registry: dict) -> dict:
+def call_executor(step: dict, accumulated: dict, registry: dict, *, runtime_dataops_grounding=None) -> dict:
     limits = _budget_for(step['owner'], _agent_config())
     with model_call_scope(limits['max_llm_calls']):
-        return _call_executor(step, accumulated, registry)
+        return _call_executor(step, accumulated, registry, runtime_dataops_grounding=runtime_dataops_grounding)

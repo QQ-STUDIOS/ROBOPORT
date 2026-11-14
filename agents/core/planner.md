@@ -43,13 +43,14 @@ For each step, pick an agent from the registry. Prefer deterministic agents over
 ### Step 5 — Declare contracts
 
 Each step must declare:
-- `input_schema` — what it consumes
-- `output_schema` — what it produces (must match the next step's input)
+- `input` — concrete input data or prior step references
+- `output_type` — an existing typed contract (not a filename)
+- `wave` — a nonnegative integer ordering dependencies
 - `success_criteria` — verifiable post-conditions
 
 ### Step 6 — Emit the plan
 
-Output a JSON object conforming to `resources/schemas/plan.schema.json` (see template below).
+Output a JSON object conforming to the supplied OUTPUT JSON SCHEMA (see template below).
 
 ## Output format
 
@@ -61,6 +62,7 @@ Output a JSON object conforming to `resources/schemas/plan.schema.json` (see tem
     {
       "id": "s1",
       "owner": "job_scout",
+      "wave": 0,
       "input": {"query": "..."},
       "output_type": "list[Job]",
       "success_criteria": ["jobs.length >= 5", "each job has a source URL"],

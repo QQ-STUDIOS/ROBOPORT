@@ -22,26 +22,23 @@ and compares your assessment with a separate blinded assessment.
   Missing outputs, omitted step evidence, and unexecuted measurements are not
   proof of success. A plan or proposal does not prove execution.
 
-For SUPPORTED or CONTRADICTED, provide at least one citation with the exact
-source name and a nonblank, verbatim quote from that source. Quote the supplied
-compact JSON representation when citing JSON; do not paraphrase or invent it.
-Cite enough context to distinguish relevant values from unrelated fields.
-INSUFFICIENT may use an empty citations array. Never return a verdict, free-text
-explanation of a verdict, pass rate, or blocker flag.
+For SUPPORTED or CONTRADICTED, provide at least one citation with a source name
+and a JSON pointer into its supplied JSON value. For JSONL run_log, treat the
+source as an array of records, e.g. /0/event. A pointer uses / for object keys or
+array indices; escape ~ as ~0 and / within a key as ~1. The runtime resolves each
+pointer and supplies the quotation itself. Never copy or paraphrase evidence.
+An unresolved or unavailable reference fails verification. INSUFFICIENT may use
+an empty citations array. Never return a verdict, score or blocker flag.
 
-Weak or trivial assertions can still be SUPPORTED when the evidence establishes
-them. Critique the quality of the eval separately in meta_critique; never turn
-that critique into a failure of a true assertion.
+For an assertion of the form "If A, then B", it is SUPPORTED when artifacts
+establish A is false, or establish both A and B. It is INSUFFICIENT if A cannot
+be determined. A successful repair makes a conditional about failed repair
+inapplicable, not unverified; cite the recorded repair and successful output.
 
-Example output:
+Weak assertions can still be SUPPORTED. Critique eval quality separately in
+meta_critique; never turn that critique into failure of a true assertion.
 
+Example:
 ```json
-{
-  "results": [
-    {"expectation_id": 0, "finding": "SUPPORTED",
-     "citations": [{"source": "final_output", "quote": "\"completed_count\":3"}]},
-    {"expectation_id": 1, "finding": "INSUFFICIENT", "citations": []}
-  ],
-  "meta_critique": ["A field equality alone does not prove a full workflow completed."]
-}
+{"results":[{"expectation_id":0,"finding":"SUPPORTED","citations":[{"source":"final_output","pointer":"/summary/total_jobs"}]}],"meta_critique":[]}
 ```

@@ -193,7 +193,7 @@ def _safe_step_id(sid) -> bool:
 
 
 def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=None,
-            config: dict | None = None, defer_completion: bool = False) -> dict:
+            config: dict | None = None, defer_completion: bool = False, live: bool = False) -> dict:
     """Execute a single (eval × run) pair. Returns a small summary.
 
     If `feed` (a roboport_runtime.feed_log.FeedLog) is provided, the run also
@@ -213,11 +213,21 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
         run_log.run_start(crew)
     _t_run = _time.perf_counter()
 
-    plan = call_planner(eval_obj["prompt"], context={**eval_obj.get("context", {}), "target": crew}, registry=registry)
-    (run_dir / "plan.json").write_text(json.dumps(plan, indent=2))
-    jsonl_append(log, {"event": "plan_emitted", "ts": datetime.now(timezone.utc).isoformat()})
+    context = {**eval_obj.get("context", {}), "target": crew}
+    dataops = None
+    if crew == 'dataops_crew' and live:
+        from roboport_runtime.dataops import prepare_context
+        context['data_source'] = eval_obj.get('data_source', context.get('data_source'))
+        dataops = prepare_context(context, run_dir / 'artifacts')
+        context['artifact_facts'] = dataops['facts']
+    plan = call_planner(eval_obj["prompt"], context=context, registry=registry)
     unsafe = [s.get("id") if isinstance(s, dict) else s for s in plan.get("steps", [])
               if not isinstance(s, dict) or not _safe_step_id(s.get("id"))]
+    ids = [step.get('id') for step in plan.get('steps', []) if isinstance(step, dict)]
+    if not unsafe:
+        artifact_ids = [sid.casefold() for sid in ids]
+        if len(artifact_ids) != len(set(artifact_ids)) or (dataops is not None and 'schema_failure_probe' in artifact_ids):
+            unsafe = ['duplicate or reserved step IDs']
     if unsafe:
         error = f"plan rejected: unsafe step id(s) {unsafe!r}"
         if run_log is not None and not defer_completion:
@@ -225,6 +235,27 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
         (run_dir / "final_output.json").write_text(json.dumps({"status": "failed", "error": error}, indent=2))
         return {"status": "failed", "step_failed": None, "error": error, "steps": [],
                 "run_summary": _run_summary([], 0, 0, _t_run, _time)}
+
+    if dataops is not None:
+        expected = [('data_engineering', 'CleanedDataset'), ('reporting', 'DataReport')]
+        if [(s.get('owner'), s.get('output_type')) for s in plan['steps']] != expected:
+            raise ValueError('DataOps plan must preserve the ordered CleanedDataset -> DataReport crew contract')
+        for wave, step in enumerate(plan['steps']):
+            step['wave'] = wave
+            step['input'] = {'dataops_grounding': dataops,
+                             'instruction': 'The runtime has actually processed the source CSV. Return the supplied dataset contract for data_engineering or supplied report contract for reporting, exactly. Do not invent or rewrite artifact facts or report text.'}
+            step['allowed_tools'] = []
+
+    (run_dir / "plan.json").write_text(json.dumps(plan, indent=2))
+    jsonl_append(log, {"event": "plan_emitted", "ts": datetime.now(timezone.utc).isoformat()})
+    if dataops is not None and dataops['schema_fault']:
+        from roboport_runtime.dataops import run_failure_probe
+        probe = run_failure_probe(dataops, registry, call_executor, run_dir)
+        jsonl_append(log, {'event': 'controlled_negative_probe', 'step_id': 'schema_failure_probe',
+                           'status': probe['status'], 'layer': probe['layer'],
+                           'expected_failure': True, 'report_produced': False,
+                           'repair_attempts': probe['repair_attempts'], 'llm_calls': probe['llm_calls']})
+
 
     if feed is not None:
         from roboport_runtime.feed_log import stations_from_plan  # lazy
@@ -252,7 +283,8 @@ def run_one(eval_obj: dict, run_dir: Path, registry: dict, feed=None, run_log=No
             run_log.step_start(sid, owner, wave=int(step.get("wave", 0)))
 
         _t_step = _time.perf_counter()
-        result = call_executor(step, accumulated, registry)
+        result = (call_executor(step, accumulated, registry, runtime_dataops_grounding=dataops)
+                  if dataops is not None else call_executor(step, accumulated, registry))
         dur_ms = int((_time.perf_counter() - _t_step) * 1000)
 
         jsonl_append(log, {
@@ -355,13 +387,13 @@ def execute_run(ev: dict, run_dir: Path, registry: dict, *, config: dict, live: 
     metadata = {'mode': 'live' if live else 'synthetic', 'run_id': run_dir.resolve().as_posix(),
                 'started_at': datetime.now(timezone.utc).isoformat(), 'eval_id': ev['id'],
                 'target': ev.get('target'), 'telemetry_run_id': getattr(run_log, 'run_id', None), 'feed_path': str(feed.path.resolve()) if feed else None, 'ops_log_path': str(run_log.path.resolve()) if run_log else None, 'config': {k: config.get(k) for k in ('models', 'defaults', 'budgets', 'policy')},
-                'expectations': ev.get('expectations', []), 'input_sha256': hashlib.sha256(json.dumps({'prompt': ev['prompt'], 'context': ev.get('context', {})}, sort_keys=True).encode()).hexdigest()}
+                'expectations': ev.get('expectations', []), 'data_source': ev.get('data_source'), 'input_sha256': hashlib.sha256(json.dumps({'prompt': ev['prompt'], 'context': ev.get('context', {}), 'data_source': ev.get('data_source')}, sort_keys=True).encode()).hexdigest()}
     # Persist before the first provider call, so failed startup is auditable.
     (run_dir / 'provenance.json').write_text(json.dumps(metadata, indent=2))
     grading = None
     with run_budget(budget):
         try:
-            outcome = run_one(ev, run_dir, registry, config=config, feed=feed, run_log=run_log, defer_completion=True)
+            outcome = run_one(ev, run_dir, registry, config=config, feed=feed, run_log=run_log, defer_completion=True, live=live)
             budget.remaining_seconds()
             if grade and outcome['status'] == 'ok':
                 grading = call_grader(ev['expectations'], run_dir / 'run.log', run_dir, blockers=ev.get('blockers'))

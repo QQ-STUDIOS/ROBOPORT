@@ -23,7 +23,7 @@ class GradingBackend:
     def chat_with_tools(self, **kwargs):
         self.calls.append(kwargs)
         return {'content': json.dumps({'results': [
-            {'expectation_id': 0, 'finding': 'SUPPORTED', 'citations': [{'source': 'final_output', 'quote': 'final-proof'}]}
+            {'expectation_id': 0, 'finding': 'SUPPORTED', 'citations': [{'source': 'final_output', 'pointer': '/proof'}]}
         ]}),
                 'tool_calls': [], 'usage': {'cost_usd': 0.0}}
 
@@ -138,7 +138,7 @@ def test_blank_evidence_cannot_pass_a_declared_blocker(tmp_path, monkeypatch, ev
     backend, _ = setup_grading(tmp_path, monkeypatch)
     backend.chat_with_tools = lambda **kwargs: {'content': json.dumps({
         'results': [{'expectation_id': 0, 'finding': 'SUPPORTED',
-                     'citations': [{'source': 'final_output', 'quote': evidence}]}]}), 'usage': {'cost_usd': 0}}
+                     'citations': [{'source': 'final_output', 'pointer': '/' + evidence}]}]}), 'usage': {'cost_usd': 0}}
     with config.runtime_config_scope(backend.config), budget.run_budget(budget.RunBudget({})):
         result = grader.call_grader(['final evidence exists'], None, tmp_path,
                                     blockers=['final evidence exists'])

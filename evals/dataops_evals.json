@@ -1,12 +1,12 @@
 {
   "$schema": "../resources/schemas/eval.schema.json",
   "target": "dataops_crew",
-  "version": "0.1.0",
-  "_note": "Proof set for the read-only DataOps crew (data_engineering -> reporting). Covers all four Phase-5 proof kinds with blockers so the crew passes scripts/governance.py.",
+  "version": "0.2.0",
+  "_note": "Artifact-backed synthetic CSV evals. Paths are materialized repository fixtures; the schema failure case explicitly injects one missing required field at the executor boundary.",
   "evals": [
     {
       "id": 1,
-      "prompt": "Ingest resources/datasets/sales_messy.csv (mixed encodings, an embedded totals row, irregular headers), clean it, then produce a weekly-sales report with Summary, Trends, and Data-Quality sections.",
+      "prompt": "Read resources/datasets/sales_messy.csv (synthetic UTF-8 CSV; whitespace, numeric thousands separators, a missing numeric cell, and an embedded TOTAL row). Normalize headers and values, exclude TOTAL, preserve nulls, and produce the grounded weekly-sales Summary, Trends, and Data Quality sections.",
       "expected_output": "A CleanedDataset with a typed schema_doc and lineage, and a DataReport whose source_row_count matches the cleaned row_count.",
       "expectations": [
         "CleanedDataset.schema_doc.columns is non-empty and every column has a name and dtype",
@@ -20,12 +20,23 @@
         "DataReport.source_row_count equals CleanedDataset.row_count",
         "Every numeric claim in the report is derivable from the cleaned dataset"
       ],
-      "tags": ["dataops", "happy_path", "end_to_end"],
-      "kind": "happy_path"
+      "tags": [
+        "dataops",
+        "happy_path",
+        "end_to_end"
+      ],
+      "kind": "happy_path",
+      "files": [
+        "resources/datasets/sales_messy.csv"
+      ],
+      "data_source": {
+        "path": "resources/datasets/sales_messy.csv",
+        "synthetic": true
+      }
     },
     {
       "id": 2,
-      "prompt": "Run the DataOps crew on an input file that has a header row but zero data rows.",
+      "prompt": "Read resources/datasets/sales_empty.csv, a materialized header-only CSV. Produce a zero-row cleaned artifact and surface no data without fabricated figures or trends.",
       "expected_output": "The crew halts cleanly with a 'no data' surface; reporting does not fabricate a report over an empty dataset.",
       "expectations": [
         "CleanedDataset.row_count == 0",
@@ -36,28 +47,51 @@
       "blockers": [
         "No DataReport with nonzero source_row_count is produced"
       ],
-      "tags": ["dataops", "edge_case", "empty_results"],
-      "kind": "empty"
+      "tags": [
+        "dataops",
+        "edge_case",
+        "empty_results"
+      ],
+      "kind": "empty",
+      "files": [
+        "resources/datasets/sales_empty.csv"
+      ],
+      "data_source": {
+        "path": "resources/datasets/sales_empty.csv",
+        "synthetic": true
+      }
     },
     {
       "id": 3,
-      "prompt": "Same as eval 1, but data_engineering's first response is schema-invalid (CleanedDataset is missing schema_doc.columns). Exercises the Layer-1 schema-repair path before reporting runs.",
-      "expected_output": "The CleanedDataset either recovers via at most one repair pass or the step fails cleanly; no schema-invalid dataset ever reaches reporting.",
+      "prompt": "Read resources/datasets/sales_messy.csv and produce the weekly-sales report. The controlled synthetic harness removes schema_doc.columns from the first data_engineering JSON before validation; recover through exactly one existing schema-repair pass before reporting. The harness also executes an isolated persistent-fault probe that removes columns again after repair, proving failure containment without scheduling a probe report.",
+      "expected_output": "The primary CleanedDataset recovers through exactly one repair before reporting. A separate actual persistent-fault probe fails at the schema layer after one repair and never schedules reporting.",
       "expectations": [
         "data_engineering output validates against the CleanedDataset contract before reporting runs",
-        "If the one repair pass does not fix it, the step status is 'failed' with a schema-layer error and no DataReport is produced",
+        "The isolated persistent-fault probe record steps/schema_failure_probe.json has status 'failed', layer 'schema_invalid', repair_attempts 1, expected_failure true, and report_produced false",
         "reporting never consumes a CleanedDataset missing schema_doc.columns",
-        "At most one schema-repair pass is attempted"
+        "At most one schema-repair pass is attempted per primary data_engineering execution and per isolated persistent-fault probe execution"
       ],
       "blockers": [
         "reporting never consumes a CleanedDataset missing schema_doc.columns"
       ],
-      "tags": ["dataops", "schema_failure", "error_stack"],
-      "kind": "schema_failure"
+      "tags": [
+        "dataops",
+        "schema_failure",
+        "error_stack"
+      ],
+      "kind": "schema_failure",
+      "files": [
+        "resources/datasets/sales_messy.csv"
+      ],
+      "data_source": {
+        "path": "resources/datasets/sales_messy.csv",
+        "synthetic": true,
+        "schema_fault": true
+      }
     },
     {
       "id": 4,
-      "prompt": "Run the DataOps crew on a dataset of exactly 128 rows after cleaning. Verify the report's figures are grounded in the dataset and never invented.",
+      "prompt": "Read resources/datasets/sales_128.csv, a materialized synthetic CSV containing exactly 128 detail rows. Normalize the CSV and produce a weekly-sales report with all numeric claims grounded in the artifact.",
       "expected_output": "Every number in the DataReport traces to the CleanedDataset; the report does not state totals, counts, or trends that the data does not support.",
       "expectations": [
         "DataReport.source_row_count == 128",
@@ -69,8 +103,19 @@
         "No numeric claim in the report exceeds or contradicts the cleaned dataset's actual values",
         "DataReport.source_row_count == 128"
       ],
-      "tags": ["dataops", "anti_hallucination", "evidence_grounding"],
-      "kind": "evidence_grounding"
+      "tags": [
+        "dataops",
+        "anti_hallucination",
+        "evidence_grounding"
+      ],
+      "kind": "evidence_grounding",
+      "files": [
+        "resources/datasets/sales_128.csv"
+      ],
+      "data_source": {
+        "path": "resources/datasets/sales_128.csv",
+        "synthetic": true
+      }
     }
   ]
 }
