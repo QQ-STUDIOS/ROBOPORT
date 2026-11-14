@@ -60,6 +60,13 @@ def test_ops_console_page_policy(server):
     assert "http://" not in html and "https://" not in html
 
 
+def test_console_build_reproduces_shipped_assets(tmp_path):
+    subprocess.run([sys.executable, str(REPO / 'scripts/build_opsconsole.py'),
+                    str(DASH / 'Roboport Ops Console.dc.html'), str(tmp_path)], check=True)
+    for path in ('opsconsole.html', 'assets/opsconsole.css', 'assets/opsconsole.js'):
+        assert (tmp_path / path).read_bytes() == (DASH / path).read_bytes(), path
+
+
 def test_launch_pad_page_stays_unframeable(server):
     status, headers, _ = get(server, "/")
     assert status == 200
@@ -269,7 +276,7 @@ def test_console_hides_unmeasured_readings_and_rebuilds_incidents():
     assert '(PROPS.embedded?"docked":"charge")' in js       # no "charge 100%" when docked
     assert "(PROPS.embedded?0:a.energy/100)" in js
     assert 'if(!PROPS.embedded)ctx.fillText("ctx "' in js     # token use is not measured
-    assert "for(const al of d.alerts)pushIncident(al)" in js  # snapshot incidents survive a reload
+    # Incident reconstruction and repeated snapshots are exercised in test_console_design.py.
 
 
 def test_launch_form_defaults_match_the_gateway():

@@ -43,6 +43,11 @@ _subscribers: list = []
 _subscribers_lock = threading.Lock()
 _history: list = []            # every broadcast envelope, replayed to new clients
 _HISTORY_CAP = 8000
+try:
+    from .feed_state import SnapshotStore
+except ImportError:  # Direct execution: python dashboard/bridge.py
+    from feed_state import SnapshotStore
+_snapshot_store = SnapshotStore(_HISTORY_CAP)
 _seq = 0
 _seq_lock = threading.Lock()
 
@@ -56,6 +61,7 @@ def broadcast(envelope: dict) -> None:
     data = json.dumps(envelope)
     dead = []
     with _subscribers_lock:
+        _snapshot_store.accept(envelope)
         # Keep a bounded history so a client that connects after events were
         # emitted (a finished run, or a reconnect) still gets the full picture.
         _history.append(data)
@@ -63,11 +69,15 @@ def broadcast(envelope: dict) -> None:
             del _history[: len(_history) - _HISTORY_CAP]
         for q in _subscribers:
             try:
-                q.append(data)
+                if len(q) >= _HISTORY_CAP:
+                    q.clear()
+                    q.append(json.dumps(_snapshot_store.snapshot()))
+                else:
+                    q.append(data)
             except Exception:
                 dead.append(q)
         for q in dead:
-            _subscribers.remove(q)
+            _subscribers[:] = [existing for existing in _subscribers if existing is not q]
 
 def make_envelope(type_: str, data: dict) -> dict:
     return {
@@ -678,7 +688,8 @@ class Handler(BaseHTTPRequestHandler):
         with _subscribers_lock:
             # Atomically snapshot history + register, so no envelope is both
             # replayed and queued (the lock blocks broadcast() in between).
-            backlog = list(_history)
+            current = _snapshot_store.snapshot()
+            backlog = [json.dumps(current)] if current else []
             _subscribers.append(queue)
 
         # The session was checked before this response started. Re-check it
@@ -699,8 +710,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.flush()
             while True:
                 recheck()
-                if queue:
-                    data = queue.pop(0)
+                with _subscribers_lock:
+                    data = queue.pop(0) if queue else None
+                if data is not None:
                     msg = f"data: {data}\n\n"
                     self.wfile.write(msg.encode())
                     self.wfile.flush()
@@ -713,8 +725,7 @@ class Handler(BaseHTTPRequestHandler):
             pass
         finally:
             with _subscribers_lock:
-                if queue in _subscribers:
-                    _subscribers.remove(queue)
+                _subscribers[:] = [existing for existing in _subscribers if existing is not queue]
 
     # The embedded Ops Console renders a canvas and design markup with inline
     # style attributes, so this one page allows inline styles. Scripts stay

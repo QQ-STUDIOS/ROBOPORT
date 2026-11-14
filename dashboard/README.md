@@ -59,7 +59,7 @@ Modes, selected by URL (no source edits):
 | URL | Backend |
 |---|---|
 | *(none)* | in-page **mock** — fully interactive |
-| `?api=http://localhost:4242` | **SSE** live feed from `bridge.py` (replays history on connect, then tails) |
+| `?api=http://localhost:4242` | **SSE** live feed from `bridge.py` (current-state snapshot on connect, then live updates) |
 | `?drop` (or `?live`) | **file-drop** — drag any `run.log` / `*.jsonl` onto the canvas, no server |
 
 `serve.py` is an alternative server with a run browser and replay/`--watch`
@@ -309,3 +309,9 @@ ROBOPORT/
   scripts/
   workflows/
 ```
+
+## Live snapshot and replay semantics
+
+Live clients join with an authoritative current-state snapshot, including bounded recent logs, incidents and telemetry. Slow subscribers receive coalesced snapshots rather than unbounded backlogs; socket writes do not hold the broadcast lock. Reconnection restores snapshot evidence without duplicating histories or throughput. A requested live adapter that fails to load displays an unavailable state instead of substituting mock data.
+
+The static Launch Pad demo embeds a read-only console: command controls and run-file imports are unavailable, and rejected drops explain why. Open the standalone console to import run files. The authenticated Launch Pad remains a separate gateway-backed surface.

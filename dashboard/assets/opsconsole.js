@@ -10,6 +10,7 @@ class Component extends DCLogic {
   boot(){
   "use strict";
   const PROPS=this.props||{};
+  let sourceMode=PROPS.embedded?"gateway":"demo";
   if(PROPS.embedded){const r0=document.getElementById("rbp");if(r0)r0.classList.add("embedded","readonly");}
   const FEED_LABEL=PROPS.embedded?"feed · gateway":"feed · mock";
   const INIT_AGENTS=Math.max(1,Math.min(12,PROPS.initialAgents??5));
@@ -349,21 +350,43 @@ class Component extends DCLogic {
   }
   function dockSlot(i){const ring=46,n=12,ang=(i%n)/n*Math.PI*2+performance.now()*0.00002;return{x:cx+Math.cos(ang)*ring,y:cy+Math.sin(ang)*ring};}
 
+  function resetSnapshotEvidence(d){
+    for(const map of [stnThru,stnLat,agentHistory,agentCtx,nodeAlerts])map.clear();
+    for(const list of [sparks,srcPackets,chainPackets,logEntries,toasts,incidents])list.length=0;
+    renderToasts();
+    const derived=d.derived||{},now=performance.now(),wall=Number.isFinite(d.observed_at_ms)?d.observed_at_ms:Date.now();
+    for(const [id,rows] of Object.entries(derived.throughput_ms||{}))stnThru.set(id,rows.filter(at=>wall-at<60000).map(at=>now-(wall-at)));
+    for(const [id,rows] of Object.entries(derived.latencies||{}))stnLat.set(id,rows.slice(-30));
+    for(const [id,rows] of Object.entries(derived.agent_history||{}))agentHistory.set(id,rows.slice(0,10));
+    hist.rate=(d.metrics_history||[]).map(m=>m.tasks_per_min);
+    hist.queued=(d.metrics_history||[]).map(m=>m.queued);
+    peakRate=d.peak_rate??Math.max(0,...hist.rate);doneDelta=0;dockCounter=0;
+    for(const row of (d.recent_logs||[]))logEntries.push({t:hhmm(row.ts),html:row.html});
+    for(const alert of [...(d.recent_incidents||d.alerts||[])].reverse())pushIncident(alert);
+    for(const alert of (d.alerts||[]))pushNodeAlert(alert);
+    if(d.history_limited)logEntries.unshift({t:"",html:"Older task history is limited; recent evidence and current state are shown."});
+    logDirty=true;incDirty=true;telDirty=true;
+  }
   function hydrate(d){
+    resetSnapshotEvidence(d);
     M.config=d.config;M.stations.clear();
     for(const c of d.config.stations)M.stations.set(c.station_id,{...c,state:"idle",worker_agent_id:null,drain:false,queue_depth:0,rev:-1,x:0,y:0,pulse:0});
-    for(const s of d.stations){const st=M.stations.get(s.station_id);Object.assign(st,s);}
+    for(const s of d.stations){const st=M.stations.get(s.station_id);if(st)Object.assign(st,s);}
     positionStations();M.agents.clear();for(const a of d.agents)addClientAgent(a);
     M.tasks.clear();for(const t of d.tasks)M.tasks.set(t.task_id,t);
     M.metrics=d.metrics;prevDone=d.metrics.completed_total;
-    if(PROPS.embedded&&Array.isArray(d.alerts)){incidents.length=0;for(const al of d.alerts)pushIncident(al);incDirty=true;}
     populateInjector();renderStationLoadShell();
   }
   function addClientAgent(dto){
     const slot=dockSlot(dockCounter++);
     const a={...dto,x:slot.x,y:slot.y,_prev:dto.state,trail:[],bob:Math.random()*6.28,spin:Math.random()*6.28,
       _slot:dockCounter%12,travelDur:0,travelT:0,p0:null,p1:null,p2:null,carry:null,_resultPending:false,tag:""};
-    M.agents.set(a.agent_id,a);return a;
+    M.agents.set(a.agent_id,a);
+    if(a.state==="dispatched"||a.state==="returning"){
+      a.p0={x:a.x,y:a.y};const target=a.state==="dispatched"?(M.stations.get(a.station_id)||{x:cx,y:cy}):{x:cx,y:cy};
+      const points=path(a.p0,target,1);a.p1=points[1];a.p2=points[2];a.travelDur=a.eta_s||1;a.travelT=0;
+    }
+    return a;
   }
   function applyAgent(dto){
     let a=M.agents.get(dto.agent_id);
@@ -406,6 +429,7 @@ class Component extends DCLogic {
     nodeAlerts.set(id,{kind:al.kind,born:performance.now(),ttl_ms:(al.ttl_s||7)*1000,col});
   }
   function route(env){
+    if(replay)return;
     pushWire(env);
     switch(env.type){
       case "snapshot":hydrate(env.data);break;
@@ -701,8 +725,18 @@ class Component extends DCLogic {
     const txt="⌖ following "+a.agent_id+" · "+actLabel(a)+" · drag, Esc or F to release";ctx.font="500 11px 'JetBrains Mono',monospace";const tw=ctx.measureText(txt).width+18,bx=Math.round(W/2-tw/2),by=48;
     roundRect(ctx,bx,by,tw,24,5);ctx.fillStyle="rgba(8,13,19,0.92)";ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=0.7;ctx.stroke();ctx.globalAlpha=1;ctx.fillStyle=col;ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(txt,bx+9,by+12);PLACED.push({x:bx,y:by,w:tw,h:24});ctx.restore();
   }
+  function modeBadge(){
+    if(replay)return "REPLAY · recorded frames";
+    return {live:"LIVE · observed feed",file:"FILE · drop mode",import:"IMPORTED · run data",gateway:"GATEWAY · observed agents"}[sourceMode]||"DEMO · simulated backend";
+  }
+  function feedLabel(){
+    return {live:"feed · live",file:"feed · file-drop",import:"feed · imported",gateway:"feed · gateway"}[sourceMode]||"feed · mock";
+  }
+  function updateSourceLabel(){
+    el("feed-status").textContent=feedLabel();
+  }
   function drawModeBadge(){
-    const txt=replay?"REPLAY · recorded frames":(PROPS.embedded?"GATEWAY · observed agents":"DEMO · simulated backend"),col=replay?T.dispatch:(PROPS.embedded?T.return:T.work);
+    const txt=modeBadge(),col=sourceMode==="demo"?T.work:T.dispatch;
     ctx.save();ctx.font="700 10px 'JetBrains Mono',monospace";const tw=ctx.measureText(txt).width+22,bx=W-12-tw,by=H-156-30;
     roundRect(ctx,bx,by,tw,22,4);ctx.fillStyle="rgba(8,13,19,0.9)";ctx.fill();ctx.strokeStyle=col;ctx.globalAlpha=0.7;ctx.lineWidth=1;ctx.stroke();ctx.globalAlpha=1;
     ctx.fillStyle=col;ctx.beginPath();ctx.arc(bx+10,by+11,3,0,6.283);ctx.fill();ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(txt,bx+18,by+11.5);PLACED.push({x:bx,y:by,w:tw,h:22});ctx.restore();
@@ -1050,6 +1084,10 @@ class Component extends DCLogic {
   /* ── Applied Proving Ground view ───────────────────────────────────── */
   function drawAPG(){
     drawGrid();
+    const scale=Math.min(1,H/850,W/900);
+    ctx.save();ctx.scale(scale,scale);drawAPGContent(W/scale,H/scale);ctx.restore();
+  }
+  function drawAPGContent(W,H){
     if(W<600){ctx.fillStyle='rgba(138,157,168,0.5)';ctx.font='400 11px JetBrains Mono,monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('APG view requires wider canvas',W/2,H/2);return;}
     const PAD=36,LW=Math.max(180,W*0.38),RX=PAD+LW+28,RW=Math.max(200,W-RX-PAD);
     const AMBER="#f2b134",TEAL="#36c6e0",VIOLET="#c98bff",GREEN="#4fd672",ALERT="#ff5a52";
@@ -1078,12 +1116,13 @@ class Component extends DCLogic {
       {id:"Restructure",label:"Restructure", sub:"local stage only",     hue:VIOLET, gate:"NoChange",     artifact:"*-org-restructure-plan.csv"},
       {id:"RAG",        label:"RAG / Pinecone",sub:"workflow memory",    hue:VIOLET, gate:null,           artifact:"agent-memory-index.jsonl"},
     ];
-    const NP=PHASES.length,nodeH=(BOT-TOP)/(NP-0.5),nodeW=LW-8,nodeR=7;
+    const PIPE_BOTTOM=BOT-184;
+    const NP=PHASES.length,nodeH=(PIPE_BOTTOM-TOP)/(NP-0.5),nodeW=LW-8,nodeR=7;
     const nx=PAD+LW/2;
 
     // Spine line
     ctx.save();ctx.strokeStyle="rgba(54,198,224,0.12)";ctx.lineWidth=1.5;ctx.setLineDash([4,8]);
-    ctx.beginPath();ctx.moveTo(nx,TOP+16);ctx.lineTo(nx,BOT-16);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+    ctx.beginPath();ctx.moveTo(nx,TOP+16);ctx.lineTo(nx,PIPE_BOTTOM-16);ctx.stroke();ctx.setLineDash([]);ctx.restore();
 
     const t2=performance.now()*0.001;
     PHASES.forEach((ph,i)=>{
@@ -1371,6 +1410,20 @@ class Component extends DCLogic {
     D.stnLoad.innerHTML=M.config.stations.map(s=>'<div class="stnrow" data-sid="'+s.station_id+'"><div class="nm"><span class="sd" style="color:'+s.hue+'"></span>'+s.name+'</div><div class="track"><i id="ld-'+s.station_id.replace(/\./g,"-")+'" style="width:0%;background:'+s.hue+';box-shadow:0 0 6px '+s.hue+'"></i></div><div class="q" id="q-'+s.station_id.replace(/\./g,"-")+'">—</div></div>').join("");
     el("stn-count").textContent=M.config.stations.length+" steps";
   }
+  function replaceRoster(html){
+    const roster=D.roster,scroll=roster.scrollTop,template=document.createElement('template');
+    template.innerHTML=html;
+    const existing=new Map([...roster.children].map(row=>[row.dataset.aid,row])),wanted=new Set();
+    let cursor=roster.firstElementChild;
+    for(const fresh of [...template.content.children]){
+      const id=fresh.dataset.aid,row=existing.get(id)||fresh;wanted.add(id);
+      if(row!==fresh){if(row.innerHTML!==fresh.innerHTML)row.innerHTML=fresh.innerHTML;row.className=fresh.className;row.setAttribute('aria-selected',fresh.getAttribute('aria-selected'));}
+      if(row!==cursor)roster.insertBefore(row,cursor);
+      cursor=row.nextElementSibling;
+    }
+    for(const row of existing.values())if(!wanted.has(row.dataset.aid))row.remove();
+    roster.scrollTop=scroll;
+  }
   function refreshPanels(){
     const m=M.metrics;
     D.rate.textContent=m.tasks_per_min;D.done.textContent=m.completed_total;D.active.textContent=m.active_agents+"/"+m.total_agents;
@@ -1378,11 +1431,11 @@ class Component extends DCLogic {
     D.dDone.textContent=(doneDelta>0?"▲ +"+doneDelta:"· steady")+"/min";D.dDone.className="delta"+(doneDelta>0?" up":"");
     const s=m.uptime_s;D.up.textContent=String((s/60)|0).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
     D.rosterCount.textContent=M.agents.size;
-    D.roster.innerHTML=[...M.agents.values()].map(a=>{
+    replaceRoster([...M.agents.values()].map(a=>{
       const col=stateColor(a),sc=(selected&&selected.type==="agent"&&selected.id===a.agent_id)?" sel":"";
       const tokPct=Math.round((a.tokens_used||0)/(a.token_budget||60000)*100),tokWarn=tokPct>85;
       return'<div class="agent'+sc+'" role="option" tabindex="0" data-aid="'+a.agent_id+'" aria-selected="'+(sc?"true":"false")+'"><span class="pip" style="color:'+col+';background:'+col+'"></span><div class="who"><div class="name">'+a.agent_id+(a.hold?'<span class="lock">⏸</span>':'')+'</div><div class="act">'+actLabel(a)+'</div></div><div class="cell"><div class="bar"><i style="width:'+a.energy+'%;background:'+ecolor(a.energy)+';box-shadow:0 0 6px '+ecolor(a.energy)+'"></i></div><div class="pct">'+Math.round(a.energy)+'%</div><div class="bar" style="margin-top:2px"><i style="width:'+tokPct+'%;background:'+(tokWarn?T.alert:T.steelDim)+'"></i></div></div></div>';
-    }).join("");
+    }).join(""));
     if(logDirty){D.log.innerHTML=logEntries.map(e=>'<div class="logline"><span class="t">'+e.t+'</span><span class="m">'+e.html+'</span></div>').join("");logDirty=false;}
     renderQueue();renderTelemetry();if(incDirty)renderIncidents();if(selected)renderInspector();
     el("btn-agent").disabled=M.config&&M.agents.size>=M.config.max_agents;
@@ -1531,6 +1584,7 @@ class Component extends DCLogic {
   function announce(){if(!selected){D.sr.textContent="Selection cleared.";return;}if(selected.type==="agent"){const a=M.agents.get(selected.id);if(a)D.sr.textContent=a.agent_id+" selected. "+actLabel(a)+". Energy "+Math.round(a.energy)+" percent.";}else if(selected.type==="station"){D.sr.textContent=M.stations.get(selected.id).name+" station selected.";}else if(selected.type==="port")D.sr.textContent="Hub overview selected.";else{const nd=selNode();D.sr.textContent=(nd?nd.label:"Node")+" selected.";}}
 
   function hitTest(px,py){
+    if(view==="apg")return null;
     if(view==="flow"){const o=ordered(),n=o.length;for(let i=0;i<n;i++){const p=flowPos(i,n);if(Math.hypot(p.x-px,p.y-py)<22)return{type:"station",id:o[i].station_id};}const h=flowHub();if(Math.hypot(h.x-px,h.y-py)<26)return{type:"port"};return null;}
     if(view==="dag"){for(const st of M.stations.values()){const p=dagNodePos(st.station_id);if(p&&Math.hypot(p.x-px,p.y-py)<28)return{type:"station",id:st.station_id};}return null;}
     if(MINI&&px>=MINI.x&&px<=MINI.x+MINI.w&&py>=MINI.y&&py<=MINI.y+MINI.h)return null;
@@ -1586,6 +1640,9 @@ class Component extends DCLogic {
   el("insp-close").addEventListener("click",clearSelection);
 
   function onKey(e){if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.isContentEditable)return;
+    if(e.ctrlKey||e.metaKey||e.altKey)return;
+    if(e.code==="Space"&&e.target.closest?.("button,a,[role=button],[role=option]"))return;
+    if(window.parent!==window&&selected?.type==="agent"&&["r","h"].includes(e.key.toLowerCase())){e.preventDefault();D.sr.textContent="Commands are unavailable in the read-only console";return;}
     if(PROPS.embedded){const r0=document.getElementById("rbp");if(!r0||r0.offsetParent===null)return;if(e.key==="Tab")return;}
     if(e.code==="Space"){e.preventDefault();el("btn-play").click();return;}
     if(e.key==="Tab"){e.preventDefault();showSummary=!showSummary;return;}
@@ -1654,7 +1711,7 @@ class Component extends DCLogic {
     el("rl-state").textContent="⏱ "+(idx+1)+"/"+frames.length;
   }
   function enterReplay(){if(replay||frames.length<2)return;replay=true;el("replaybar").classList.add("on");el("btn-replay").classList.add("on");el("feed-status").textContent="feed · replay";const sc=el("rl-scrub");sc.max=frames.length-1;sc.value=frames.length-1;applyReplay(frames.length-1);}
-  function exitReplay(){if(!replay)return;replay=false;el("replaybar").classList.remove("on");el("btn-replay").classList.remove("on");el("feed-status").textContent=FEED_LABEL;feed.connect();last=performance.now();}
+  function exitReplay(){if(!replay)return;replay=false;el("replaybar").classList.remove("on");el("btn-replay").classList.remove("on");updateSourceLabel();if(sourceMode==="import")applyReplay(frames.length-1);else feed.connect();last=performance.now();}
 
   function pushToast(al){toasts.push({...al,born:performance.now()});if(toasts.length>4)toasts.shift();renderToasts();setTimeout(()=>{toasts.splice(0,toasts.length,...toasts.filter(t=>t.alert_id!==al.alert_id));renderToasts();},(al.ttl_s||5)*1000);}
   function renderToasts(){const k={info:"info",warning:"warn",critical:"bad"};D.toasts.innerHTML=toasts.map(t=>'<div class="toast '+(k[t.kind]||"info")+'" data-tid="'+t.alert_id+'"><div class="tx"><div class="th">'+t.title+'</div><div class="tb">'+t.body+'</div></div><div class="tg">'+Math.round((performance.now()-t.born)/1000)+'s</div></div>').join("");}
@@ -1666,9 +1723,10 @@ class Component extends DCLogic {
   new ResizeObserver(()=>{DPR=Math.min(window.devicePixelRatio||1,2);layout();}).observe(canvas);
   const backend=PROPS.embedded?createGatewayBackend():createMockBackend();
   const feed=createFeed(backend);
-  layout();feed.onEnvelope(route);feed.connect();
+  updateSourceLabel();
+  layout();feed.onEnvelope(env=>{if(sourceMode!=="import")route(env);});feed.connect();
 
-  let last=performance.now(),lastPanel=0,lastRec=0;
+  let last=performance.now(),lastPanel=0,lastRec=0,readySent=false;
   function step(now){
     if(replay)return;let dt=(now-last)/1000;last=now;if(dt>0.05)dt=0.05;
     const sdt=running?dt*simSpeed:0;
@@ -1677,7 +1735,8 @@ class Component extends DCLogic {
     if(now-lastPanel>110){refreshPanels();lastPanel=now;}
     if(now-lastRec>500){recordFrame();lastRec=now;}
   }
-  function rafLoop(now){step(now);requestAnimationFrame(rafLoop);}
+  function signalReady(){if(!readySent&&window.parent!==window){readySent=true;window.parent.postMessage({type:"roboport-demo-ready"},"*");}}
+  function rafLoop(now){step(now);signalReady();requestAnimationFrame(rafLoop);}
   requestAnimationFrame(rafLoop);
   setInterval(()=>{if(document.hidden)step(performance.now());},80);
 
@@ -1694,6 +1753,7 @@ class Component extends DCLogic {
     return null;
   }
   function buildAndReplayRun(plan,finalOut,stepOutputs,runLog){
+    replay=false;el("replaybar").classList.remove("on");el("btn-replay").classList.remove("on");
     const evts=[];let seq2=0;
     const mk=(type,data)=>({v:1,seq:++seq2,ts:new Date().toISOString(),type,data});
     // Initial snapshot from current config
@@ -1736,7 +1796,7 @@ class Component extends DCLogic {
   }
   function loadRunFiles(files){
     let plan=null,finalOut=null,stepOutputs={},runLog=[];let pending=files.length;
-    const done=()=>{if(--pending>0)return;buildAndReplayRun(plan,finalOut,stepOutputs,runLog);};
+    const done=()=>{if(--pending>0)return;sourceMode="import";updateSourceLabel();buildAndReplayRun(plan,finalOut,stepOutputs,runLog);};
     for(const file of files){
       const name=file.name.toLowerCase();const reader=new FileReader();
       reader.onload=e=>{const text=e.target.result;
@@ -1751,13 +1811,21 @@ class Component extends DCLogic {
     }
     if(!files.length)pushLog('<span style="color:var(--work)">no files selected</span>');
   }
-  document.getElementById('run-file-input').addEventListener('change',e=>{if(PROPS.embedded){e.target.value='';return;}loadRunFiles([...e.target.files]);e.target.value='';});
+  function rejectEmbeddedImport(e){
+    if(window.parent===window)return false;
+    e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='none';canvas.style.outline='';
+    const notice="Run imports are unavailable in embedded consoles; open the standalone viewer.";
+    if(D.sr.textContent!==notice)D.sr.textContent=notice;const hint=root.querySelector('.hint');if(hint&&hint.textContent!==notice)hint.textContent=notice;
+    return true;
+  }
+  document.getElementById('run-file-input').addEventListener('change',e=>{if(PROPS.embedded){e.target.value='';return;}if(rejectEmbeddedImport(e)){e.target.value='';return;}loadRunFiles([...e.target.files]);e.target.value='';});
   // Canvas drop zone for run files
-  canvas.addEventListener('dragover',e=>{e.preventDefault();canvas.style.outline='2px dashed #4fd672';});
+  canvas.addEventListener('dragover',e=>{if(rejectEmbeddedImport(e))return;e.preventDefault();canvas.style.outline='2px dashed #4fd672';});
   canvas.addEventListener('dragleave',()=>{canvas.style.outline='';});
-  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';if(PROPS.embedded)return;const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
+  canvas.addEventListener('drop',e=>{e.preventDefault();canvas.style.outline='';if(PROPS.embedded)return;if(rejectEmbeddedImport(e))return;const files=[...e.dataTransfer.files];if(files.length)loadRunFiles(files);});
   
     window.__feed=feed;
+    step(performance.now());signalReady();
   }
 }
 const props = { embedded: true, initialAgents: 5, autoEnqueue: false, showWire: true };

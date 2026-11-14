@@ -414,14 +414,17 @@
   function createSSEBackend(apiUrl, onEnvelope) {
     const state = makeState();
     let connected = false;
+    let closed = false;
     const sse = new EventSource(apiUrl + "/events");
 
     sse.onopen = function () {
+      if (closed) return;
       connected = true;
       console.log("[ROBOPORT adapter] SSE connected to", apiUrl);
     };
 
     sse.onmessage = function (e) {
+      if (closed) return;
       let ev;
       try { ev = JSON.parse(e.data); } catch { return; }
       // If the server already sends console envelopes, pass through directly
@@ -431,6 +434,7 @@
     };
 
     sse.onerror = function () {
+      if (closed) return;
       if (connected) {
         onEnvelope(envelope("alert.raised", {
           alert_id: "al_sse_err", kind: "critical",
@@ -441,7 +445,7 @@
       }
     };
 
-    return { close() { sse.close(); } };
+    return { close() { closed = true; sse.close(); } };
   }
 
   // ── Public adapter backend (implements the console's backend contract) ─
@@ -451,15 +455,15 @@
     let lastSeq = 0;
 
     function push(env) {
-      lastSeq = env.seq;
-      subs.forEach(cb => cb(env));
+      // Wire sequence numbers may have gaps (IDs also consume server numbers).
+      // Number only envelopes actually delivered to this console subscription.
+      const delivered = { ...env, source_seq: env.seq, seq: ++lastSeq };
+      subs.forEach(cb => cb(delivered));
     }
 
     const apiUrl = opts.apiUrl || (new URLSearchParams(location.search).get("api") || "").replace(/\/$/, "");
 
-    if (apiUrl) {
-      createSSEBackend(apiUrl, push);
-    }
+    let stream = null;
 
     // File-drop wiring
     document.addEventListener("dragover", e => e.preventDefault());
@@ -474,7 +478,14 @@
 
     return {
       subscribe(cb) { subs.push(cb); return () => { const i = subs.indexOf(cb); if (i >= 0) subs.splice(i, 1); }; },
-      getSnapshot() { push(envelope("snapshot", makeSnapshot("live"))); },
+      getSnapshot() {
+        if (apiUrl) {
+          // Reconnect to replay the server's authoritative snapshot + history.
+          // Never replace live observations with client-side fixture agents.
+          if (stream) stream.close();
+          stream = createSSEBackend(apiUrl, push);
+        } else push(envelope("snapshot", makeSnapshot("file-drop")));
+      },
       handleCommand(cmd) { return { command_id: cmd.command_id, status: "accepted", note: "live mode — commands are display-only" }; },
       tick() { /* driven by SSE / file replay */ },
       CONFIG: { stations: STATIONS, energy_low_threshold: 22, max_agents: 12, token_budget_default: 2048 },

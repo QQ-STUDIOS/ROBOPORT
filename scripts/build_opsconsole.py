@@ -30,6 +30,22 @@ assert "fonts.googleapis" not in css
 markup = one(r"</helmet>(.*?)</x-dc>", src).group(1).strip("\n")
 logic = one(r'<script type="text/x-dc" data-dc-script[^>]*>(.*?)</script>', src).group(1)
 
+# Standalone design pages support URL-selected demo/live backends. The generated
+# station page gets its props and observations only from the gateway host.
+logic = logic.replace(
+    'Object.assign({},this.props||{},new URLSearchParams(location.search).get("embedded")==="1"?{embedded:true}:{})',
+    'this.props||{}',
+)
+logic = logic.replace('let sourceMode="demo";', 'let sourceMode=PROPS.embedded?"gateway":"demo";')
+logic, seams = re.subn(
+    r'  const _q=new URLSearchParams\(location.search\),_api=_q.get\("api"\);.*?: createMockBackend\(\);',
+    '  const backend=createMockBackend();', logic, flags=re.S,
+)
+assert seams == 1, seams
+logic = re.sub(r'  // BEGIN standalone-readonly\n.*?  // END standalone-readonly\n', '', logic, flags=re.S)
+logic = logic.replace('  // ?embedded=1 lets a host page (dashboard/launchpad/) iframe the console in embedded mode.\n', '')
+logic = re.sub(r'  /\* Live feed seam \(dashboard/feed_adapter.js\):.*?\*/\n', '', logic, flags=re.S)
+
 # ---- markup -------------------------------------------------------------
 assert markup.count("feed · mock") == 1
 markup = markup.replace("feed · mock", "feed · gateway")
@@ -48,7 +64,6 @@ logic = sub(
     '  const FEED_LABEL=PROPS.embedded?"feed · gateway":"feed · mock";',
     logic,
 )
-logic = sub('el("feed-status").textContent="feed · mock";', 'el("feed-status").textContent=FEED_LABEL;', logic)
 
 GATEWAY_BACKEND = r'''
   /* ── GATEWAY BACKEND (Roboport station) ──────────────────────────────
@@ -90,9 +105,6 @@ logic = sub(
     logic,
 )
 # The canvas badge and the energy counter describe the mock backend.
-logic = sub('const txt=replay?"REPLAY · recorded frames":"DEMO · simulated backend",col=replay?T.dispatch:T.work;',
-            'const txt=replay?"REPLAY · recorded frames":(PROPS.embedded?"GATEWAY · observed agents":"DEMO · simulated backend"),col=replay?T.dispatch:(PROPS.embedded?T.return:T.work);',
-            logic)
 low_cell = """'<div class="sc"><span class="d" style="color:'+T.alert+'"></span><span class="n">'+low+'</span><span class="l">low cell</span></div>'"""
 logic = sub(low_cell, "(PROPS.embedded?'':" + low_cell + ")", logic)
 energy_field = """<div class="f"><div class="k">energy</div><div class="v">'+Math.round(a.energy)+'%</div></div>"""
@@ -123,12 +135,6 @@ logic = sub(
 )
 # A snapshot replaces the console's state; carry the gateway's open incidents
 # (failed steps) into the incident log so a reload or resync keeps them.
-logic = sub(
-    "    populateInjector();renderStationLoadShell();\n  }",
-    "    if(PROPS.embedded&&Array.isArray(d.alerts)){incidents.length=0;for(const al of d.alerts)pushIncident(al);incDirty=true;}\n"
-    "    populateInjector();renderStationLoadShell();\n  }",
-    logic,
-)
 # The design's proving-ground panel names a real SharePoint tenant; ship a placeholder.
 logic, tenants = re.subn(r"[a-z0-9-]+\.sharepoint\.com", "contoso.sharepoint.com", logic)
 assert tenants == 1, tenants
@@ -148,8 +154,6 @@ logic = sub(
     logic,
 )
 # The ?api= SSE mode would connect to an arbitrary endpoint; the gateway feed replaces it.
-live = one(r"\n  // SSE live mode: \?api=.*?fsEl\.textContent='feed · live \('\+API_BASE\+'\)';\n  \}\n", logic)
-logic = logic[: live.start()] + "\n" + logic[live.end():]
 assert "EventSource" not in logic and "fetch(" not in logic
 assert "location.search" not in logic
 
