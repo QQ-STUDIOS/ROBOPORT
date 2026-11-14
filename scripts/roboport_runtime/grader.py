@@ -132,13 +132,17 @@ def call_grader(
 
     rows = result.get('results') or []
     matched = len(rows) == len(expectations) and sorted(r.get('expectation', '') for r in rows) == sorted(expectations)
-    passed = sum(r.get('verdict') == 'PASS' and bool(r.get('evidence')) for r in rows)
+    def evidenced_pass(row):
+        evidence = row.get('evidence')
+        return row.get('verdict') == 'PASS' and isinstance(evidence, str) and bool(evidence.strip())
+
+    passed = sum(evidenced_pass(r) for r in rows)
     result['pass_rate'] = passed / len(expectations) if expectations and matched else 0.0
     # Acceptance (every expectation PASS) is pass_rate == 1.0; blocker_failed
     # reports only blocker-class misses, which aggregate and diff_runs key on.
     declared = set(blockers or [])
     blocker_miss = any((r.get('blocker') or r.get('expectation') in declared)
-                       and not (r.get('verdict') == 'PASS' and r.get('evidence')) for r in rows)
+                       and not evidenced_pass(r) for r in rows)
     result['blocker_failed'] = not matched or blocker_miss or bool(result.get('blocker_failed'))
     return {
         "run_id": outputs_dir.name,

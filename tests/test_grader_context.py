@@ -129,3 +129,16 @@ def test_anthropic_fallbacks_use_token_counts(tmp_path, monkeypatch, routed, fit
     if routed:
         assert len(router.decisions) == 1
         assert all(k['model'] == 'claude-sonnet-4-6' for k in counted)
+
+
+@pytest.mark.parametrize('evidence', ['', ' ', '\n\t'])
+def test_blank_evidence_cannot_pass_a_declared_blocker(tmp_path, monkeypatch, evidence):
+    backend, _ = setup_grading(tmp_path, monkeypatch)
+    backend.chat_with_tools = lambda **kwargs: {'content': json.dumps({
+        'results': [{'expectation': 'final evidence exists', 'verdict': 'PASS', 'evidence': evidence}],
+        'pass_rate': 1, 'blocker_failed': False}), 'usage': {'cost_usd': 0}}
+    with config.runtime_config_scope(backend.config), budget.run_budget(budget.RunBudget({})):
+        result = grader.call_grader(['final evidence exists'], None, tmp_path,
+                                    blockers=['final evidence exists'])
+    assert result['pass_rate'] == 0
+    assert result['blocker_failed']
