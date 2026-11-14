@@ -680,6 +680,7 @@ class Component extends DCLogic {
   function resetSnapshotEvidence(d){
     for(const map of [stnThru,stnLat,agentHistory,agentCtx,nodeAlerts])map.clear();
     for(const list of [sparks,srcPackets,chainPackets,logEntries,toasts,incidents])list.length=0;
+    renderToasts();
     const derived=d.derived||{},now=performance.now(),wall=Number.isFinite(d.observed_at_ms)?d.observed_at_ms:Date.now();
     for(const [id,rows] of Object.entries(derived.throughput_ms||{}))stnThru.set(id,rows.filter(at=>wall-at<60000).map(at=>now-(wall-at)));
     for(const [id,rows] of Object.entries(derived.latencies||{}))stnLat.set(id,rows.slice(-30));
@@ -2036,7 +2037,7 @@ class Component extends DCLogic {
     el("rl-state").textContent="⏱ "+(idx+1)+"/"+frames.length;
   }
   function enterReplay(){if(replay||frames.length<2)return;replay=true;el("replaybar").classList.add("on");el("btn-replay").classList.add("on");el("feed-status").textContent="feed · replay";const sc=el("rl-scrub");sc.max=frames.length-1;sc.value=frames.length-1;applyReplay(frames.length-1);}
-  function exitReplay(){if(!replay)return;replay=false;el("replaybar").classList.remove("on");el("btn-replay").classList.remove("on");updateSourceLabel();feed.connect();last=performance.now();}
+  function exitReplay(){if(!replay)return;replay=false;el("replaybar").classList.remove("on");el("btn-replay").classList.remove("on");updateSourceLabel();if(sourceMode==="import")applyReplay(frames.length-1);else feed.connect();last=performance.now();}
 
   function pushToast(al){toasts.push({...al,born:performance.now()});if(toasts.length>4)toasts.shift();renderToasts();setTimeout(()=>{toasts.splice(0,toasts.length,...toasts.filter(t=>t.alert_id!==al.alert_id));renderToasts();},(al.ttl_s||5)*1000);}
   function renderToasts(){const k={info:"info",warning:"warn",critical:"bad"};D.toasts.innerHTML=toasts.map(t=>'<div class="toast '+(k[t.kind]||"info")+'" data-tid="'+t.alert_id+'"><div class="tx"><div class="th">'+t.title+'</div><div class="tb">'+t.body+'</div></div><div class="tg">'+Math.round((performance.now()-t.born)/1000)+'s</div></div>').join("");}
@@ -2072,7 +2073,7 @@ class Component extends DCLogic {
     new MutationObserver(disableCommands).observe(root,{subtree:true,childList:true,attributes:true,attributeFilter:["disabled"]});
   }
   // END standalone-readonly
-  layout();feed.onEnvelope(route);feed.connect();
+  layout();feed.onEnvelope(env=>{if(sourceMode!=="import")route(env);});feed.connect();
 
   let last=performance.now(),lastPanel=0,lastRec=0,readySent=false;
   function step(now){
@@ -2101,6 +2102,7 @@ class Component extends DCLogic {
     return null;
   }
   function buildAndReplayRun(plan,finalOut,stepOutputs,runLog){
+    replay=false;el("replaybar").classList.remove("on");el("btn-replay").classList.remove("on");
     const evts=[];let seq2=0;
     const mk=(type,data)=>({v:1,seq:++seq2,ts:new Date().toISOString(),type,data});
     // Initial snapshot from current config

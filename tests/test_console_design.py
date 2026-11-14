@@ -61,11 +61,11 @@ assert.equal(posted.length,1);assert.equal(posted[0].type,'roboport-demo-ready')
 ready.readySent=false;posted.length=0;ready.performance={now:()=>0};ready.feed={};
 vm.runInContext(src.slice(src.indexOf('    window.__feed=feed;'),src.indexOf('\n  }\n}',src.indexOf('    window.__feed=feed;'))),ready);
 assert.equal(posted.length,1,'readiness must not depend on a foreground animation callback');
-const evidence={stnThru:new Map(),stnLat:new Map(),agentHistory:new Map(),agentCtx:new Map(),nodeAlerts:new Map(),
+const evidence={D:{toasts:{innerHTML:'stale banner'}},stnThru:new Map(),stnLat:new Map(),agentHistory:new Map(),agentCtx:new Map(),nodeAlerts:new Map(),
  sparks:[1],srcPackets:[1],chainPackets:[1],logEntries:[1],toasts:[1],incidents:[1],hist:{rate:[99],queued:[99]},
  performance:{now:()=>1000},Date,hhmm:()=> 'now'};
 evidence.pushIncident=al=>evidence.incidents.unshift(al);evidence.pushNodeAlert=()=>{};
-vm.createContext(evidence);vm.runInContext(fn('resetSnapshotEvidence'),evidence);
+vm.createContext(evidence);vm.runInContext(src.match(/function renderToasts\(\)\{[^\n]+/)[0]+'\n'+fn('resetSnapshotEvidence'),evidence);
 const snapshot={observed_at_ms:1000000,derived:{throughput_ms:{s:[999900]},latencies:{s:[3]},agent_history:{a:[{task_id:'t'}]}},
  recent_logs:[{html:'server log'}],recent_incidents:[{alert_id:'new'},{alert_id:'old'}],metrics_history:[{tasks_per_min:1,queued:0}]};
 evidence.resetSnapshotEvidence(snapshot);evidence.resetSnapshotEvidence(snapshot);
@@ -74,6 +74,13 @@ assert.equal(evidence.stnThru.get('s')[0],900,'use server observation time despi
 assert.equal(evidence.logEntries.length,1);assert.equal(evidence.incidents.length,2);assert.equal(evidence.toasts.length,0);
 assert.equal(evidence.incidents[0].alert_id,'new');
 assert.equal(evidence.hist.rate.length,1);assert.equal(evidence.chainPackets.length,0);
+assert.equal(evidence.D.toasts.innerHTML,'','cleared toast state must clear the visible banners');
+const imported=[];
+const load={replay:true,sourceMode:'import',M:{config:{stations:[]},stations:new Map()},SC:[],frames:[{}],selected:null,
+ el:()=>({classList:{remove(){}}}),refreshPanels(){},render(){},pushLog(){}};
+load.route=env=>{if(!load.replay)imported.push(env);};
+vm.createContext(load);vm.runInContext(fn('buildAndReplayRun'),load);load.buildAndReplayRun(null,null,{},[]);
+assert(!load.replay);assert.equal(imported[0].type,'snapshot');
 const moving={M:{agents:new Map(),stations:new Map([['s',{x:20,y:30}]])},dockCounter:0,cx:100,cy:100,dockSlot:()=>({x:0,y:0})};
 vm.createContext(moving);
 vm.runInContext(src.match(/function path\([^\n]+/)[0]+'\n'+src.match(/function bez\([^\n]+/)[0]+'\n'+fn('addClientAgent'),moving);
