@@ -41,6 +41,7 @@ logic, seams = re.subn(
     '  const backend=createMockBackend();', logic, flags=re.S,
 )
 assert seams == 1, seams
+logic = re.sub(r'  // BEGIN standalone-readonly\n.*?  // END standalone-readonly\n', '', logic, flags=re.S)
 logic = logic.replace('  // ?embedded=1 lets a host page (dashboard/launchpad/) iframe the console in embedded mode.\n', '')
 logic = re.sub(r'  /\* Live feed seam \(dashboard/feed_adapter.js\):.*?\*/\n', '', logic, flags=re.S)
 

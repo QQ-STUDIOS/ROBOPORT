@@ -18,6 +18,7 @@ const state = {
   section: "launch",
   narrow: false,
   fleetMode: "topology",
+  consoleFailed: false,
   selMission: "M-0004",
   showPlan: false,
   savedAt: null,
@@ -163,7 +164,8 @@ function renderLaunch() {
         <label class="field"><span class="field__label">Project root <span class="t-amber">· not within an approved root (none configured)</span></span><input class="input" type="text" name="root" value="${esc(d.root)}" spellcheck="false"></label>
         <div class="form-row form-row--180">
           <label class="field"><span class="field__label">Crew / version</span><select class="input" name="crew">
-            ${[["JD-Crew v0.9.3", "JD-Crew v0.9.3 · local registry (unreconciled)"], ["REA investigation v0.2.0", "REA investigation v0.2.0 · local registry"]].map(([v, l]) => `<option value="${v}"${d.crew === v ? " selected" : ""}>${l}</option>`).join("")}
+            <option value="${DEFAULT_DRAFT.crew}">${DEFAULT_DRAFT.crew} · demo components</option>
+            <option disabled>REA investigation · demo components unavailable</option>
           </select></label>
           <label class="field"><span class="field__label">Data classification</span><select class="input" name="dataClass">
             ${["Internal", "Restricted", "Regulated"].map(v => `<option value="${v}"${d.dataClass === v ? " selected" : ""}>${v}</option>`).join("")}
@@ -267,7 +269,7 @@ function renderFleet() {
   const canvas = !state.narrow && state.fleetMode === "topology";
   const topoOn = state.fleetMode === "topology" && !state.narrow;
   const body = canvas
-    ? `<div class="stage"><iframe src="${CONSOLE_SRC}" sandbox="allow-scripts allow-downloads" title="Ops Console — Port, Flow and DAG topology (demo backend)" loading="lazy"></iframe></div>`
+    ? `<div class="stage"><iframe id="fleet-console" src="${CONSOLE_SRC}" sandbox="allow-scripts allow-downloads" title="Ops Console — Port, Flow and DAG topology (demo backend)" loading="eager"></iframe></div>`
     : `<div class="card card--flush">
         <div class="roster-head">Roster · fixture snapshot · ${FLEET.length} agents</div>
         ${FLEET.map(a => {
@@ -295,6 +297,7 @@ function renderFleet() {
       </div>
     </div>
     <div class="lede">Topology embeds the Ops Console (Port / Flow / DAG) on its demo backend. The table is the accessible equivalent — a fixture snapshot of the same roster, not synchronized with the animation. “+ Agent” in the console enters no registration flow here; agent creation requires registration and evaluation gates.</div>
+    ${state.consoleFailed ? '<p role="status">Topology could not start. Showing the fixture roster; check CDN connectivity before retrying.</p>' : ""}
     ${body}
   </section>`;
 }
@@ -388,14 +391,30 @@ const RENDER = { launch: renderLaunch, missions: renderMissions, fleet: renderFl
 // ── render + routing ────────────────────────────────────────────────────
 
 function renderNav() {
+  const focused = document.activeElement?.closest?.('#nav [data-section]')?.dataset.section;
   $("nav").innerHTML = NAV.map(([id, label, glyph]) =>
     `<button type="button" class="nav__btn" data-action="go" data-section="${id}"${state.section === id ? ' aria-current="page"' : ""}><span class="nav__glyph" aria-hidden="true">${glyph}</span>${label}</button>`
   ).join("");
+  if (focused) document.querySelector(`#nav [data-section="${state.section}"]`)?.focus();
+}
+
+let fleetBootTimer;
+function watchFleetBoot() {
+  clearTimeout(fleetBootTimer);
+  const frame = document.getElementById('fleet-console');
+  if (state.section !== 'fleet' || state.fleetMode !== 'topology' || state.narrow || !frame) return;
+  fleetBootTimer = setTimeout(() => {
+    if (document.getElementById('fleet-console') !== frame) return;
+    state.consoleFailed = true;
+    state.fleetMode = 'table';
+    render();
+  }, 10000);
 }
 
 function render() {
   renderNav();
   $("main").innerHTML = RENDER[state.section]();
+  watchFleetBoot();
 }
 
 function go(section) {
@@ -446,6 +465,7 @@ function loadDraft() {
     if (!raw) return;
     const d = JSON.parse(raw);
     state.draft = { ...state.draft, ...(d.draft || {}) };
+    state.draft.crew = DEFAULT_DRAFT.crew;
     state.savedAt = d.savedAt || null;
   } catch { /* ignore corrupt or blocked storage */ }
 }
@@ -455,6 +475,7 @@ const NUMERIC = new Set(["calls", "minutes", "context"]);
 function onDraftInput(e) {
   const el = e.target;
   if (!el.name || !(el.name in state.draft)) return;
+  if (el.name === 'crew' && el.value !== DEFAULT_DRAFT.crew) return;
   state.draft = { ...state.draft, [el.name]: NUMERIC.has(el.name) ? Number(el.value) : el.value };
   $("plan-card").innerHTML = renderPlanCard();
   $("reviewer-req").textContent = reviewerReq(state.draft);
@@ -478,6 +499,7 @@ const ACTIONS = {
   "fleet-mode": el => {
     if (state.fleetMode === el.dataset.mode) return;
     state.fleetMode = el.dataset.mode;
+    state.consoleFailed = false;
     render();
     document.querySelector(`[data-action="fleet-mode"][data-mode="${state.fleetMode}"]`)?.focus();
   },
@@ -495,6 +517,12 @@ function init() {
   });
   root.addEventListener("input", onDraftInput);
   window.addEventListener("popstate", () => { state.section = sectionFromUrl(); render(); });
+  window.addEventListener('message', e => {
+    const frame = document.getElementById('fleet-console');
+    if (frame && e.source === frame.contentWindow && e.data?.type === '__dc_booted') {
+      clearTimeout(fleetBootTimer);
+    }
+  });
 
   // Narrow layouts force the accessible table; widening restores the topology.
   // A media query measures the viewport including any scrollbar, so the taller topology view
