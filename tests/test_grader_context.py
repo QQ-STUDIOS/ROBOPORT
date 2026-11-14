@@ -95,3 +95,37 @@ def test_an_oversized_base_fails_closed_without_dispatch(tmp_path, monkeypatch):
     assert result['pass_rate'] == 0 and result['blocker_failed']
     assert result['results'][0]['verdict'] == 'INCONCLUSIVE'
     assert not backend.calls
+
+
+@pytest.mark.parametrize('routed', [False, True])
+@pytest.mark.parametrize('fits', ['steps', 'notice', 'base', 'none'])
+def test_anthropic_fallbacks_use_token_counts(tmp_path, monkeypatch, routed, fits):
+    backend, router = setup_grading(tmp_path, monkeypatch, routed)
+    backend.name = 'anthropic'
+    backend.model_for = lambda hint: 'claude-sonnet-4-6'
+    backend.config['defaults']['context_tokens'] = 512
+    router.policy['candidates']['reasoning-strong'] = [
+        {'provider': 'anthropic', 'model': 'claude-sonnet-4-6'}]
+    counted = []
+    def count_tokens(**kwargs):
+        counted.append(kwargs)
+        prompt = kwargs['messages'][0]['content']
+        kind = 'steps' if 'x' * 100 in prompt else 'notice' if 'omitted' in prompt else 'base'
+        return 100 if kind == fits else 600
+    backend.count_input_tokens = count_tokens
+    with config.runtime_config_scope(backend.config):
+        result = grade(tmp_path)
+    if fits == 'none':
+        assert result['blocker_failed'] and result['pass_rate'] == 0
+        assert not backend.calls
+        assert len(counted) == 3
+    else:
+        assert result['pass_rate'] == 1, result
+        assert backend.calls == [counted[-1]]
+        prompt = backend.calls[0]['messages'][0]['content']
+        assert ('x' * 100 in prompt) == (fits == 'steps')
+        assert ('omitted' in prompt) == (fits == 'notice')
+        assert len(counted) == {'steps': 1, 'notice': 2, 'base': 3}[fits]
+    if routed:
+        assert len(router.decisions) == 1
+        assert all(k['model'] == 'claude-sonnet-4-6' for k in counted)

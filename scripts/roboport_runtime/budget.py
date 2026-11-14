@@ -146,13 +146,23 @@ def governed_chat(p, *, message_fallbacks: list[list[dict]] | None = None, **kwa
     if routed is not None:
         p, model, decision = routed
         kwargs['model'] = model
+    selected_prompt = None
     if message_fallbacks is not None:
         # Pick evidence at the dispatch boundary, after routing pins the model.
         # Every candidate includes all required evidence; only supporting
         # evidence/notices may be omitted. Never truncate artifacts to fit.
+        defaults = (getattr(p, 'config', {}).get('defaults') or {})
+        completion = int(defaults.get('max_tokens', 2048))
+        context = int(defaults.get('context_tokens', 8192))
         for messages in [kwargs['messages'], *message_fallbacks]:
             kwargs['messages'] = messages
-            if fits_local_context(config=getattr(p, 'config', {}), **kwargs):
+            if p.name in ('ollama', 'fault'):
+                selected_prompt = local_prompt_ceiling(kwargs)
+            elif p.name == 'anthropic':
+                selected_prompt = p.count_input_tokens(**kwargs)
+            else:
+                raise BudgetExceeded('provider has no enforceable paid token/price contract')
+            if selected_prompt + completion <= context:
                 break
         else:
             raise BudgetExceeded('input exceeds configured context ceiling')
@@ -174,7 +184,11 @@ def governed_chat(p, *, message_fallbacks: list[list[dict]] | None = None, **kwa
         defaults = config.get('defaults') or {}
         completion = int(defaults.get('max_tokens', 2048))
         context = int(defaults.get('context_tokens', 8192))
-        if local:
+        if selected_prompt is not None:
+            # Reuse the count for the exact selected request, including paid
+            # token counts, rather than calling the token-count endpoint twice.
+            prompt = selected_prompt
+        elif local:
             # Reject oversized context rather than silently truncating evidence.
             prompt = local_prompt_ceiling(kwargs)
         else:
