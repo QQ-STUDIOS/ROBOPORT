@@ -87,16 +87,18 @@ def _bind(target, pointer, value):
     if not isinstance(pointer, str) or not pointer.startswith('/') or re.search(r'~(?![01])', pointer):
         raise ValueError('Invalid planner binding target')
     parts = [p.replace('~1', '/').replace('~0', '~') for p in pointer[1:].split('/')]
-    current = target
-    for part in parts[:-1]:
-        if part not in current:
-            current[part] = {}
-        if not isinstance(current[part], dict):
-            raise ValueError('Planner input binding overlap')
-        current = current[part]
-    if parts[-1] in current:
+    if len(parts) != 1:
+        raise ValueError('Nested planner destinations are unsupported; copy an intact context object')
+    if parts[0] in target:
         raise ValueError('Planner input binding collision')
-    current[parts[-1]] = value
+    target[parts[0]] = value
+
+
+def _field_name(context, pointer):
+    _pointer(context, pointer)
+    if not pointer or not isinstance(_pointer(context, pointer.rsplit('/', 1)[0]), dict):
+        raise ValueError('Field binding must select an existing named context property')
+    return pointer.rsplit('/', 1)[1].replace('~1', '/').replace('~0', '~')
 
 
 def _draft_schema(available, context):
@@ -104,29 +106,31 @@ def _draft_schema(available, context):
     contracts = list(load_output_schema(REPO)['definitions'])
     contracts += ['list[' + name + ']' for name in contracts]
     pointers = _context_paths(context)
-    def context_schema(pointer_schema, target_pattern):
+    def context_schema(pointer_schema, placement):
         return {'type': 'object', 'additionalProperties': False,
-            'required': ['source', 'pointer', 'target'], 'properties': {
+            'required': ['source', 'pointer', 'placement'], 'properties': {
                 'source': {'const': 'context'}, 'pointer': pointer_schema,
-                'target': {'type': 'string', 'pattern': target_pattern}}}
-    context_variants = []
+                'placement': {'const': placement}}}
     if len(pointers) < 256:
-        objects = [pointer for pointer in pointers if isinstance(_pointer(context, pointer), dict)]
-        fields = [pointer for pointer in pointers if pointer not in objects]
-        if objects:
-            context_variants.append(context_schema({'enum': objects}, '^(/.*)?$'))
-        if fields:
-            context_variants.append(context_schema({'enum': fields}, '^/.+'))
+        roots = [pointer for pointer in pointers if isinstance(_pointer(context, pointer), dict)]
+        fields = [pointer for pointer in pointers if pointer and isinstance(_pointer(context, pointer.rsplit('/', 1)[0]), dict)]
+        root_binding = context_schema({'enum': roots}, 'root')
+        field_variants = [context_schema({'enum': fields}, 'field')] if fields else []
     else:
-        context_variants.append(context_schema({'type': 'string', 'pattern': r'^(?:/(?:[^~/]|~[01])*)*$'}, '^(/.*)?$'))
+        pointer_schema = {'type': 'string', 'pattern': r'^(?:/(?:[^~/]|~[01])*)*$'}
+        root_binding = context_schema(pointer_schema, 'root')
+        field_variants = [context_schema(pointer_schema, 'field')]
     step_binding = {'type': 'object', 'additionalProperties': False,
         'required': ['source', 'step_index'], 'properties': {
             'source': {'const': 'step'}, 'step_index': {'type': 'integer', 'minimum': 0, 'maximum': 31}}}
+    binding_array = {'oneOf': [
+        {'type': 'array', 'minItems': 1, 'maxItems': 1, 'items': root_binding},
+        {'type': 'array', 'uniqueItems': True, 'items': {'oneOf': [*field_variants, step_binding]}}]}
     step = {'type': 'object', 'additionalProperties': False,
         'required': ['owner', 'output_type', 'success_criteria', 'input_bindings', 'input_literals', 'depends_on'],
         'properties': {'owner': {'enum': list(available)}, 'output_type': {'enum': contracts},
             'success_criteria': {'type': 'array', 'minItems': 1, 'items': {'type': 'string'}},
-            'input_bindings': {'type': 'array', 'uniqueItems': True, 'items': {'oneOf': [*context_variants, step_binding]}},
+            'input_bindings': binding_array,
             'input_literals': {'type': 'object'},
             'depends_on': {'type': 'array', 'uniqueItems': True, 'items': {'type': 'integer', 'minimum': 0, 'maximum': 31}}}}
     plan = {'type': 'object', 'additionalProperties': False, 'required': ['goal', 'deliverable', 'steps'],
@@ -172,10 +176,20 @@ def _compile_plan(proposal, context, available):
             return result['steps'][value]
         for dependency in item.get('depends_on', []):
             earlier(dependency)
+        roots = [b for b in bindings if b.get('source') == 'context' and b.get('placement') == 'root']
+        if roots and (len(bindings) != 1 or inputs or owner == 'improvement_proposer'):
+            raise ValueError('Root planner input binding collision with other input bindings or control fields')
         prior_outputs = {}
         for binding in bindings:
             if binding['source'] == 'context':
-                _bind(inputs, binding['target'], _pointer(context, binding['pointer']))
+                value = _pointer(context, binding['pointer'])
+                if binding['placement'] == 'root':
+                    _bind(inputs, '', value)
+                elif binding['placement'] == 'field':
+                    key = _field_name(context, binding['pointer'])
+                    _bind(inputs, '/' + key.replace('~', '~0').replace('/', '~1'), value)
+                else:
+                    raise ValueError('Unknown planner context placement')
             elif binding['source'] == 'step':
                 source = earlier(binding['step_index'])
                 if source['id'] in prior_outputs:
@@ -243,13 +257,18 @@ def call_planner(goal: str, context: dict, registry: dict) -> dict[str, Any]:
     if structured:
         schema = _draft_schema(available, context)
         system_spec += (
-            '\nUse structured input_bindings. Select context values by exact JSON pointer; do not copy their contents into input_literals. '
-            'A target of empty string binds the selected whole object as the entire input: this preserves its exact shape. '
-            'For one complete object from a context array use pointer /items/0 and target empty string, not a new wrapper. '
-            'Arrays and scalar values always require a named target /field, such as /transactions or /untrusted_text; they cannot be whole object inputs. Use empty target only for object values. '
-            'Each step binding names only a zero-based earlier step_index, with no target. Runtime groups these references under input.prior_outputs keyed by actual step IDs. Never write <ID>.output or any free-text dependency. '
-            'depends_on lists zero-based earlier control dependencies. Runtime owns IDs, references, waves and execution flags. '
-            'Use input_literals only for constants not supplied in context. Reject unavailable capabilities with the rejection branch; never invent a rejection output contract.')
+            '\nUse structured input_bindings. Select context values by JSON pointer and placement; never invent destination strings. '
+            'placement root copies ONE complete OBJECT as the entire input. It must be the only binding and input_literals must be empty. '
+            'For a complete object from a context array, select /items/0 with placement root to preserve its exact input shape. '
+            'placement field copies a named context property under its ORIGINAL field name. Select /transactions or /untrusted_text with placement field. '
+            'For multiple objects such as /job and /candidate, use placement field for each so both names and values are preserved. '
+            'Each step binding names only a zero-based earlier step_index. Runtime groups output references under input.prior_outputs keyed by actual step IDs. '
+            'Never emit <ID>.output or free-text dependencies. depends_on lists earlier control dependencies. '
+            'Runtime owns IDs, references, waves and flags. input_literals holds only constants absent from context. '
+            'An improvement_proposer must depend on exactly one environment_investigator and use field bindings or output references; runtime supplies its investigation_step control ID. '
+            'Reject unavailable capabilities using the rejection branch.')
+    scheduling = ('Declare depends_on for control dependencies; runtime assigns waves. ' if structured else
+                  'Group independent steps into the same `wave`. ')
     user = (
         f"GOAL\n{goal}\n\n"
         f"CONTEXT\n{json.dumps(context, ensure_ascii=False, allow_nan=False)}\n\n"
@@ -258,7 +277,7 @@ def call_planner(goal: str, context: dict, registry: dict) -> dict[str, Any]:
         "Produce a plan as JSON conforming to the schema. "
         "Set `owner` on every step to one of the available agent ids. "
         "Execution flags are assigned from registry metadata. "
-        "Group independent steps into the same `wave`. Output JSON ONLY."
+        + scheduling + "Output JSON ONLY."
     )
 
     plan = call_model_json(
