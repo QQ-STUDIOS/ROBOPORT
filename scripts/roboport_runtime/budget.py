@@ -105,6 +105,7 @@ class RunBudget:
             self.reservations[rid] = cost
             self.llm_calls += 1
             self._persist()
+            self.remaining_seconds()
             return rid
 
     def settle_model_call(self, reservation_id: str, usage: dict | None) -> None:
@@ -136,6 +137,7 @@ class RunBudget:
                 raise BudgetExceeded('run tool call budget exhausted')
             self.tool_calls += 1
             self._persist()
+            self.remaining_seconds()
 
     def snapshot(self) -> dict:
         return {'llm_calls': self.llm_calls, 'tool_calls': self.tool_calls,

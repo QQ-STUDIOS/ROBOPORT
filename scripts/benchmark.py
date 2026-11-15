@@ -380,7 +380,7 @@ def _run_summary(durations_ms, llm_total, tool_total, t_run_start, _time) -> dic
 def execute_run(ev: dict, run_dir: Path, registry: dict, *, config: dict, live: bool,
                 grade: bool, feed=None, run_log=None) -> tuple[dict, dict | None]:
     """One budget/provenance boundary includes planning through grading."""
-    from roboport_runtime.budget import RunBudget, run_budget
+    from roboport_runtime.budget import BudgetPersistenceError, RunBudget, run_budget
     budget = RunBudget(config)
     budget.artifact_dir = run_dir.resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -406,11 +406,16 @@ def execute_run(ev: dict, run_dir: Path, registry: dict, *, config: dict, live: 
             (run_dir / 'final_output.json').write_text(json.dumps(outcome, indent=2))
             jsonl_append(run_dir / 'run.log', {'event': 'run_failed', 'error': str(exc)})
         finally:
+            try:
+                budget._persist()
+            except BudgetPersistenceError as exc:
+                outcome.update(status='failed', error=f'budget finalization failed: {exc}')
+                (run_dir / 'final_output.json').write_text(json.dumps(outcome, indent=2))
+                jsonl_append(run_dir / 'run.log', {'event': 'run_failed', 'layer': 'budget_finalization', 'error': str(exc)})
             if feed is not None:
                 feed.crew_end(status=outcome['status'], error=outcome.get('error'))
             if run_log is not None:
                 run_log.run_complete({**outcome.get('run_summary', {}), 'status': outcome['status'], 'error': outcome.get('error')})
-            (run_dir / 'budget.json').write_text(json.dumps(budget.snapshot(), indent=2))
     metadata.update({'status': outcome['status'], 'finished_at': datetime.now(timezone.utc).isoformat()})
     (run_dir / 'provenance.json').write_text(json.dumps(metadata, indent=2))
     return outcome, grading

@@ -122,3 +122,72 @@ def test_persistence_failure_prevents_provider_dispatch(tmp_path,monkeypatch):
     with budget.run_budget(b),pytest.raises(OSError):
         budget.governed_chat(p,system='',messages=[{'role':'user','content':'test'}],tools=None,force_json=True,model_hint='any')
     assert p.calls==0 and b.llm_calls==1
+
+
+def test_successful_slow_persist_cannot_authorize_expired_tool(tmp_path,monkeypatch):
+    now=[0]
+    b=budget.RunBudget({'budgets':{'per_run':{'max_wall_seconds':.5}}},clock=lambda:now[0]);b.artifact_dir=tmp_path
+    original=Path.replace
+    def slow(source,target):
+        result=original(source,target);now[0]=1;return result
+    monkeypatch.setattr(Path,'replace',slow)
+    with pytest.raises(budget.BudgetExceeded):b.consume_tool_call()
+    assert json.loads((tmp_path/'budget.json').read_text())['tool_calls']==1
+
+
+def test_benchmark_finalizer_does_not_truncate_preserved_budget(tmp_path,monkeypatch):
+    import benchmark
+    path=tmp_path/'budget.json';path.write_text('{"sentinel":"last valid snapshot"}')
+    before=path.read_bytes();attempts=[]
+    def fail_replace(source,target):attempts.append(source);raise denied()
+    def run_one(*args,**kwargs):
+        budget.current_budget().consume_tool_call()
+        pytest.fail('dispatch must stop')
+    monkeypatch.setattr(benchmark,'run_one',run_one)
+    monkeypatch.setattr(budget,'_WINDOWS',True)
+    monkeypatch.setattr(Path,'replace',fail_replace)
+    monkeypatch.setattr(budget.time,'sleep',lambda _:None)
+    outcome,grade=benchmark.execute_run({'id':1,'prompt':'test'},tmp_path,{},config={},live=True,grade=False)
+    assert outcome['status']=='failed' and grade is None
+    assert path.read_bytes()==before
+    assert not list(tmp_path.glob('*.tmp'))
+
+
+def test_benchmark_finalizer_failure_changes_success_to_failure(tmp_path,monkeypatch):
+    import benchmark
+    path=tmp_path/'budget.json';path.write_text('{"sentinel":"last valid snapshot"}')
+    before=path.read_bytes()
+    monkeypatch.setattr(benchmark,'run_one',lambda *a,**k:{'status':'ok','steps':[]})
+    monkeypatch.setattr(budget,'_WINDOWS',True)
+    def fail(source,target):raise denied()
+    monkeypatch.setattr(Path,'replace',fail)
+    monkeypatch.setattr(budget.time,'sleep',lambda _:None)
+    outcome,_=benchmark.execute_run({'id':1,'prompt':'test'},tmp_path,{},config={},live=True,grade=False)
+    assert outcome['status']=='failed'
+    assert path.read_bytes()==before
+    assert json.loads((tmp_path/'provenance.json').read_text())['status']=='failed'
+
+
+def test_slow_reservation_persist_cannot_dispatch_expired_model(tmp_path,monkeypatch):
+    now=[0]
+    b=budget.RunBudget({'budgets':{'per_run':{'max_wall_seconds':.5}}},clock=lambda:now[0]);b.artifact_dir=tmp_path
+    class Backend:
+        name='ollama';config={'defaults':{'context_tokens':100000,'max_tokens':16}};calls=0
+        def model_for(self,hint):return 'qwen3:14b'
+        def chat_with_tools(self,**kwargs):self.calls+=1;return {'content':'{}','usage':{'cost_usd':0}}
+    original=Path.replace
+    def slow(source,target):
+        result=original(source,target);now[0]=1;return result
+    monkeypatch.setattr(Path,'replace',slow);p=Backend()
+    with budget.run_budget(b),pytest.raises(budget.BudgetExceeded):
+        budget.governed_chat(p,system='',messages=[{'role':'user','content':'test'}],tools=None,force_json=True,model_hint='any')
+    assert p.calls==0
+
+
+def test_finished_model_accounting_can_persist_after_deadline(tmp_path):
+    now=[0]
+    b=budget.RunBudget({'budgets':{'per_run':{'max_wall_seconds':.5}}},clock=lambda:now[0]);b.artifact_dir=tmp_path
+    reservation=b.reserve_model_call('qwen3:14b',10,10,True);now[0]=1
+    b.settle_model_call(reservation,{'cost_usd':0})
+    saved=json.loads((tmp_path/'budget.json').read_text())
+    assert saved['llm_calls']==1 and saved['reserved_usd']==0 and saved['elapsed_seconds']==1
