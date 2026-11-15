@@ -29,7 +29,10 @@ def _parse(text):
     def invalid(value):
         raise Missing('non-finite JSON number')
     def number(value):
-        parsed = Decimal(value)
+        try:
+            parsed = Decimal(value)
+        except ArithmeticError as exc:
+            raise Missing('invalid numeric operand') from exc
         if len(parsed.as_tuple().digits) > 1000 or abs(parsed.as_tuple().exponent) > 1000:
             raise Missing('numeric operand exceeds supported precision or exponent')
         return parsed

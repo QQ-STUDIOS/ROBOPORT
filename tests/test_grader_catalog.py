@@ -51,7 +51,7 @@ def test_runtime_checks_override_two_false_acceptances(tmp_path, monkeypatch):
     assert all(r['assessments'][0]['finding']=='SUPPORTED' for r in result['results'])
 
 
-@pytest.mark.parametrize('payload,expected', [('{"answer":2,"answer":1}', 'INCONCLUSIVE'), ('{"answer":9007199254740993.0}', 'FAIL')])
+@pytest.mark.parametrize('payload,expected', [('{"answer":2,"answer":1}', 'INCONCLUSIVE'), ('{"answer":1e999999999999999999999999999999}', 'INCONCLUSIVE'), ('{"answer":9007199254740993.0}', 'FAIL')])
 def test_grader_preserves_strict_operands(tmp_path, monkeypatch, payload, expected):
     from roboport_runtime import client, grader, budget
     (tmp_path/'final_output.json').write_text(payload)

@@ -80,7 +80,7 @@ def test_hash_equality():
 
 
 @pytest.mark.parametrize('payload', ['{"answer":NaN}', '{"answer":Infinity}',
-    '{"answer":1,"answer":2}', '{"answer":1e1000000000}'])
+    '{"answer":1,"answer":2}', '{"answer":1e1000000000}', '{"answer":1e999999999999999999999999999999}'])
 def test_malformed_or_unbounded_json_fails_closed(payload):
     assert check_assertion('answer is 1', {'final_output': payload})['verdict'] == 'INCONCLUSIVE'
 
