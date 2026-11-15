@@ -126,3 +126,11 @@ def test_typed_contract_prose_is_not_a_final_output_path():
 def test_invalid_literal_never_falls_back_to_consensus(literal):
     result = check_assertion('answer is ' + literal, sources({'answer': 1}))
     assert result is not None and result['verdict'] == 'INCONCLUSIVE'
+
+
+def test_ambiguous_predicates_are_not_bare_string_constants():
+    for value in ['', 'empty']:
+        assert check_assertion('The error field is empty', sources({'error':value})) is None
+    assert check_assertion('answer is correct', sources({'answer':'correct'})) is None
+    assert check_assertion('answer is "correct"', sources({'answer':'correct'}))['verdict']=='PASS'
+    assert check_assertion('The run status is ok', sources({'status':'ok'}))['verdict']=='PASS'

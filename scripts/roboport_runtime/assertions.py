@@ -71,8 +71,6 @@ def _literal(text):
         except (ValueError, TypeError):
             pass
         raise Missing('invalid literal')
-    if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', text):
-        return text
     raise Unsupported('unsupported literal')
 
 
@@ -95,7 +93,8 @@ def check_assertion(expectation: str, sources: dict[str, str]) -> dict | None:
         if '.' in scalar[1] and not scalar[1].startswith('final_output.'):
             return None
         try:
-            expected = _literal(scalar[2])
+            # Only runtime status enums have defined unquoted string semantics.
+            expected = scalar[2] if scalar[1] in ('status', 'final_output.status') and scalar[2] in ('ok', 'failed') else _literal(scalar[2])
         except Unsupported:
             return None
         except Missing as exc:
