@@ -84,6 +84,9 @@ def check_assertion(expectation: str, sources: dict[str, str]) -> dict | None:
         return None
     expected = None
     if scalar:
+        # Dotted type/contract prose is not an explicit artifact path.
+        if '.' in scalar[1] and not scalar[1].startswith('final_output.'):
+            return None
         try:
             expected = _literal(scalar[2])
         except Missing:

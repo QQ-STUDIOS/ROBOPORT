@@ -73,7 +73,7 @@ def _reference_schema(sources):
             continue
         queue = deque([('', root)])
         pointers = []
-        while queue and len(pointers) < 128:
+        while queue and len(pointers) < 16:
             pointer, value = queue.popleft()
             pointers.append(pointer)
             if isinstance(value, dict):
@@ -84,7 +84,7 @@ def _reference_schema(sources):
                 continue
             # Bound traversal memory as well as the generated schema.
             for key, child in children:
-                if len(queue) + len(pointers) >= 128:
+                if len(queue) + len(pointers) >= 16:
                     break
                 token = str(key).replace('~', '~0').replace('/', '~1')
                 queue.append((pointer + '/' + token, child))

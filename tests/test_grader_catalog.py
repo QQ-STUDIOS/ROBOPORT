@@ -23,7 +23,7 @@ def test_every_catalog_pointer_resolves_and_catalog_is_bounded():
     sources={"final_output": json.dumps({"many": [{"value":i} for i in range(10000)]})}
     schema=_reference_schema(sources)
     paths=schema["oneOf"][0]["properties"]["pointer"]["enum"]
-    assert "" in paths and len(paths) <= 128
+    assert "" in paths and len(paths) <= 16
     for pointer in paths:
         _pointer_value(sources["final_output"], pointer)
 

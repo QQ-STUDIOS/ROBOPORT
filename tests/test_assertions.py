@@ -115,3 +115,8 @@ def test_extraction_requires_unambiguous_plan_binding():
     s = sources({'summary': {'row_count': 1}}, [37])
     s.pop('plan')
     assert check_assertion(a, s)['verdict'] == 'INCONCLUSIVE'
+
+
+def test_typed_contract_prose_is_not_a_final_output_path():
+    assert check_assertion('CleanedDataset.row_count == 0', {}) is None
+    assert check_assertion('final_output.nested.row_count == 0', {})['verdict'] == 'INCONCLUSIVE'
