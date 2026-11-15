@@ -35,13 +35,15 @@ vm.createContext(ctx);
 vm.runInContext(line('  const STATION_HUES=')+'\n'+line('  function normalizeStation(')+'\n'+fn('hydrate'),ctx);
 // Shape of bridge.py's snapshot: config stations have only id/order/wave, and a
 // station update may name a station outside the config.
-ctx.hydrate({config:{stations:[{station_id:'job_scout',order:0,wave:0},{station_id:'custom_step',order:1,wave:1}]},
+ctx.hydrate({config:{stations:[{station_id:'job_scout',order:0,wave:0},{station_id:'custom_step',order:1,wave:1},{station_id:'constructor',order:2,wave:2},{station_id:'__proto__',order:3,wave:3}]},
   stations:[{station_id:'job_scout',state:'working',rev:3},{station_id:'unknown',state:'idle',rev:1}],
   agents:[],tasks:[],metrics:{completed_total:0}});
 const a=ctx.M.stations.get('job_scout'),b=ctx.M.stations.get('custom_step');
 assert.equal(a.hue,'#7ea6ff');assert.equal(a.name,'job_scout');assert.equal(a.state,'working');
 assert.equal(b.hue,'#8a9da8');assert.equal(b.label,'custom_step');assert.deepEqual([...b.sources],[]);
 assert(!ctx.M.stations.has('unknown'));
+// Station IDs that name Object.prototype members must not pick up inherited values as hues.
+assert.equal(ctx.M.stations.get('constructor').hue,'#8a9da8');assert.equal(ctx.M.stations.get('__proto__').hue,'#8a9da8');
 assert(ctx.M.config.stations.every(s=>typeof s.hue==='string'));
 ''', encoding='utf-8')
     subprocess.run([node, str(driver), str(source)], check=True, cwd=REPO)
