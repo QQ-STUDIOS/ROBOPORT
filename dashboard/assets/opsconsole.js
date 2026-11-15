@@ -32,7 +32,7 @@ class Component extends DCLogic {
   /* Live configs (bridge.py, serve.py) carry only station_id/order/wave; fill the
      display fields the canvas reads so a sparse config cannot crash rendering. */
   const STATION_HUES={job_scout:"#7ea6ff",technical_analyst:"#36c6e0",compliance_risk:"#c98bff",application_strategist:"#f2b134",synthesizer:"#4fd672",salary_estimator:"#ff8f6b",resume_tailor:"#ff5a8a",cover_letter_writer:"#80d8c8"};
-  function normalizeStation(c){const id=c.station_id;return{name:id,label:id,hue:STATION_HUES[id]||"#8a9da8",sources:[],...c};}
+  function normalizeStation(c){const id=c.station_id;return{name:id,label:id,hue:Object.hasOwn(STATION_HUES,id)?STATION_HUES[id]:"#8a9da8",sources:[],...c};}
   function createMockBackend(){
     const SC=[
       {station_id:"job_scout",name:"job_scout",label:"Scout",order:0,wave:0,hue:"#7ea6ff",det:false,model_hint:"tool-use-capable",model:"qwen3:14b",temperature:0.2,max_tokens:2048,contract_out:"list[Job]",llm_calls:1,tool_calls:5,
