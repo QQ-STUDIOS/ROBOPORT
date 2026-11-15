@@ -50,7 +50,11 @@ def call_planner(goal: str, context: dict, registry: dict) -> dict[str, Any]:
     planner_meta = registry["agents"]["planner"]
     system_spec = load_agent_spec(planner_meta["path"])
 
-    available = {name: meta.get("role", "") for name, meta in registry["agents"].items()}
+    available = {
+        name: {"role": meta.get("role", ""),
+               "deterministic": meta.get("deterministic") is True}
+        for name, meta in registry["agents"].items()
+    }
     crews = registry.get('crews', {})
     schema = deepcopy(PLAN_SCHEMA)
     schema['properties']['steps']['minItems'] = 1
@@ -70,10 +74,11 @@ def call_planner(goal: str, context: dict, registry: dict) -> dict[str, Any]:
     user = (
         f"GOAL\n{goal}\n\n"
         f"CONTEXT\n{context or '(none)'}\n\n"
-        f"AVAILABLE AGENTS (id -> role)\n{available}\n\n"
+        f"AVAILABLE AGENTS (id -> registry metadata)\n{available}\n\n"
         f"AVAILABLE CREWS\n{json.dumps(crews)}\n\n"
         "Produce a plan as JSON conforming to the schema. "
         "Set `owner` on every step to one of the available agent ids. "
+        "Copy `deterministic` from that owner's registry metadata. "
         "Group independent steps into the same `wave`. Output JSON ONLY."
     )
 
@@ -83,6 +88,17 @@ def call_planner(goal: str, context: dict, registry: dict) -> dict[str, Any]:
         model_hint=planner_meta.get("model_hint", "any"),
         schema=schema,
     )
+    # Execution properties come from the authenticated registry, not model claims.
+    for step in plan.get("steps", []):
+        owner = step.get("owner")
+        if owner not in available:
+            raise ValueError(f"Unknown planner step owner: {owner!r}")
+        step["deterministic"] = available[owner]["deterministic"]
+    if context.get("target") == "dataops_crew":
+        steps = plan.get("steps", [])
+        contracts = [(step.get("owner"), step.get("output_type")) for step in steps]
+        if contracts != [("data_engineering", "CleanedDataset"), ("reporting", "DataReport")]:
+            raise ValueError("DataOps requires ordered data_engineering/CleanedDataset and reporting/DataReport steps")
     plan.setdefault("estimated_llm_calls", len(plan.get("steps", [])))
     plan.setdefault("estimated_tool_calls", 0)
     plan.setdefault("fallback", "n/a")
