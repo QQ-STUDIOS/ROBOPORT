@@ -80,14 +80,21 @@ def _normalize_assertion(text):
     These are language rules, not evidence-derived predicates. Natural-language
     field aliases have fixed meanings; arbitrary bare words are never literals.
     """
+    # Existing canonical identifiers always name their literal artifact field.
+    if re.fullmatch(r'The reported [A-Za-z_]\w* equals the (sum of all recorded transaction amounts|number of recorded transactions|number of negative transaction amounts)', text):
+        return text
     original = text
     text = text.removesuffix('.')
     field = r'([A-Za-z_]\w*|row count|refund count|total|source hash)'
     aliases = {'row count': 'row_count', 'refund count': 'refund_count',
                'total': 'total_amount', 'source hash': 'source_sha256'}
-    def name(value):
-        return aliases.get(value, value)
-    subject = r'The (?:reported |summary |report )?' + field
+    def name(match):
+        # A reported syntactic identifier is always literal, even when an
+        # alternate operator or terminal period brought it through this rule.
+        literal = match[1] == 'reported' and re.fullmatch(r'[A-Za-z_]\w*', match[2])
+        value = match[2] if literal else aliases.get(match[2], match[2])
+        return 'final_output.summary.' + value if match[1] == 'summary' else value
+    subject = r'The (?:(reported|summary|report) )?' + field
     operands = {
         r'(?:the (?:arithmetic )?sum of (?:all recorded transaction amounts|the amounts in the successful extraction records)|SUM\(extracted transaction amounts\))': 'sum of all recorded transaction amounts',
         r'(?:the (?:number of recorded transactions|length of the extracted transaction list)|COUNT\(extracted transactions\))': 'number of recorded transactions',
@@ -96,16 +103,19 @@ def _normalize_assertion(text):
     for operand, canonical in operands.items():
         match = re.fullmatch(subject + r' (?:equals|matches|is exactly) ' + operand, text)
         if match:
-            return f'The reported {name(match[1])} equals the {canonical}'
+            return f'The reported {name(match)} equals the {canonical}'
     match = re.fullmatch(subject + r' counts every extracted transaction whose amount is below zero', text)
     if match:
-        return f'The reported {name(match[1])} equals the number of negative transaction amounts'
+        return f'The reported {name(match)} equals the number of negative transaction amounts'
     match = re.fullmatch(subject + r' value is the JSON boolean (true|false)', text)
     if match:
-        return f'{name(match[1])} is {match[2]}'
+        return f'{name(match)} is {match[3]}'
     match = re.fullmatch(subject + r' field contains zero characters', text)
     if match:
-        return f'{name(match[1])} is an empty string'
+        return f'{name(match)} is an empty string'
+    match = re.fullmatch(r'The summary ([A-Za-z_]\w*)(?: field| flag)? (?:is|==) (.+)', text)
+    if match:
+        return f'final_output.summary.{match[1]} is {match[2]}'
     if text == 'The report source hash is identical to the successful extraction source hash':
         return 'The report source_sha256 equals the source_sha256 of the successful extraction step'
     return original
@@ -118,7 +128,7 @@ def check_assertion(expectation: str, sources: dict[str, str]) -> dict | None:
     INCONCLUSIVE. Numeric equality uses Decimal; booleans never equal numbers.
     """
     text = _normalize_assertion(expectation.strip())
-    aggregate = re.fullmatch(r'The reported ([A-Za-z_]\w*) equals the (sum of all recorded transaction amounts|number of recorded transactions|number of negative transaction amounts)', text)
+    aggregate = re.fullmatch(r'The reported ((?:final_output\.summary\.)?[A-Za-z_]\w*) equals the (sum of all recorded transaction amounts|number of recorded transactions|number of negative transaction amounts)', text)
     hash_match = text == 'The report source_sha256 equals the source_sha256 of the successful extraction step'
     boolean = re.fullmatch(r"The boolean at ([A-Za-z_]\w*)\['([^'\r\n]+)'\] is (true|false)", text)
     scalar = re.fullmatch(r'(?:The (?:reported |produced report |run )?)?((?:final_output\.)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)(?: field| flag)? (?:is|==) (.+)', text)
@@ -193,7 +203,8 @@ def check_assertion(expectation: str, sources: dict[str, str]) -> dict | None:
 
     try:
         if aggregate:
-            actual = report(aggregate[1])
+            field = aggregate[1]
+            actual = get('final_output', field.split('.')[1:]) if field.startswith('final_output.') else report(field)
             rows = extraction('transactions')
             if not isinstance(rows, list):
                 raise Missing('transactions must be an array')

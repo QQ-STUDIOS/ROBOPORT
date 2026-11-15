@@ -104,21 +104,29 @@ def _draft_schema(available, context):
     contracts = list(load_output_schema(REPO)['definitions'])
     contracts += ['list[' + name + ']' for name in contracts]
     pointers = _context_paths(context)
-    pointer_schema = ({'enum': pointers} if len(pointers) < 256 else
-                      {'type': 'string', 'pattern': r'^(?:/(?:[^~/]|~[01])*)*$'})
-    context_binding = {'type': 'object', 'additionalProperties': False,
-        'required': ['source', 'pointer', 'target'], 'properties': {
-            'source': {'const': 'context'}, 'pointer': pointer_schema,
-            'target': {'type': 'string', 'pattern': '^(/.*)?$'}}}
+    def context_schema(pointer_schema, target_pattern):
+        return {'type': 'object', 'additionalProperties': False,
+            'required': ['source', 'pointer', 'target'], 'properties': {
+                'source': {'const': 'context'}, 'pointer': pointer_schema,
+                'target': {'type': 'string', 'pattern': target_pattern}}}
+    context_variants = []
+    if len(pointers) < 256:
+        objects = [pointer for pointer in pointers if isinstance(_pointer(context, pointer), dict)]
+        fields = [pointer for pointer in pointers if pointer not in objects]
+        if objects:
+            context_variants.append(context_schema({'enum': objects}, '^(/.*)?$'))
+        if fields:
+            context_variants.append(context_schema({'enum': fields}, '^/.+'))
+    else:
+        context_variants.append(context_schema({'type': 'string', 'pattern': r'^(?:/(?:[^~/]|~[01])*)*$'}, '^(/.*)?$'))
     step_binding = {'type': 'object', 'additionalProperties': False,
-        'required': ['source', 'step_index', 'target'], 'properties': {
-            'source': {'const': 'step'}, 'step_index': {'type': 'integer', 'minimum': 0, 'maximum': 31},
-            'target': {'type': 'string', 'pattern': '^/.+'}}}
+        'required': ['source', 'step_index'], 'properties': {
+            'source': {'const': 'step'}, 'step_index': {'type': 'integer', 'minimum': 0, 'maximum': 31}}}
     step = {'type': 'object', 'additionalProperties': False,
         'required': ['owner', 'output_type', 'success_criteria', 'input_bindings', 'input_literals', 'depends_on'],
         'properties': {'owner': {'enum': list(available)}, 'output_type': {'enum': contracts},
             'success_criteria': {'type': 'array', 'minItems': 1, 'items': {'type': 'string'}},
-            'input_bindings': {'type': 'array', 'items': {'oneOf': [context_binding, step_binding]}},
+            'input_bindings': {'type': 'array', 'uniqueItems': True, 'items': {'oneOf': [*context_variants, step_binding]}},
             'input_literals': {'type': 'object'},
             'depends_on': {'type': 'array', 'uniqueItems': True, 'items': {'type': 'integer', 'minimum': 0, 'maximum': 31}}}}
     plan = {'type': 'object', 'additionalProperties': False, 'required': ['goal', 'deliverable', 'steps'],
@@ -164,15 +172,29 @@ def _compile_plan(proposal, context, available):
             return result['steps'][value]
         for dependency in item.get('depends_on', []):
             earlier(dependency)
+        prior_outputs = {}
         for binding in bindings:
             if binding['source'] == 'context':
-                value = _pointer(context, binding['pointer'])
+                _bind(inputs, binding['target'], _pointer(context, binding['pointer']))
             elif binding['source'] == 'step':
                 source = earlier(binding['step_index'])
-                value = source['id'] + '.output'
+                if source['id'] in prior_outputs:
+                    raise ValueError('Duplicate planner prior-output binding')
+                prior_outputs[source['id']] = source['id'] + '.output'
             else:
                 raise ValueError('Unknown planner binding source')
-            _bind(inputs, binding['target'], value)
+        if prior_outputs:
+            _bind(inputs, '/prior_outputs', prior_outputs)
+        if owner == 'improvement_proposer':
+            investigations = [result['steps'][d] for d in dependencies
+                              if result['steps'][d]['owner'] == 'environment_investigator'
+                              and result['steps'][d]['output_type'] == 'EnvironmentInvestigation']
+            if len(investigations) != 1:
+                raise ValueError('Improvement proposer requires one unambiguous investigation dependency')
+            investigation_id = investigations[0]['id']
+            if 'investigation_step' in inputs and inputs['investigation_step'] != investigation_id:
+                raise ValueError('Planner investigation control binding contradicts its dependency')
+            inputs['investigation_step'] = investigation_id
         wave = max((result['steps'][d]['wave'] + 1 for d in dependencies), default=0)
         result['steps'].append({'id': f's{index + 1}', 'owner': owner, 'wave': wave, 'input': inputs,
                                 'output_type': item['output_type'], 'success_criteria': item['success_criteria'],
@@ -224,8 +246,8 @@ def call_planner(goal: str, context: dict, registry: dict) -> dict[str, Any]:
             '\nUse structured input_bindings. Select context values by exact JSON pointer; do not copy their contents into input_literals. '
             'A target of empty string binds the selected whole object as the entire input: this preserves its exact shape. '
             'For one complete object from a context array use pointer /items/0 and target empty string, not a new wrapper. '
-            'Use target /field only when the goal requests a named field (for example /transactions or /untrusted_text). '
-            'Each step binding names a zero-based earlier step_index and target /field; never write <ID>.output or any free-text dependency. '
+            'Arrays and scalar values always require a named target /field, such as /transactions or /untrusted_text; they cannot be whole object inputs. Use empty target only for object values. '
+            'Each step binding names only a zero-based earlier step_index, with no target. Runtime groups these references under input.prior_outputs keyed by actual step IDs. Never write <ID>.output or any free-text dependency. '
             'depends_on lists zero-based earlier control dependencies. Runtime owns IDs, references, waves and execution flags. '
             'Use input_literals only for constants not supplied in context. Reject unavailable capabilities with the rejection branch; never invent a rejection output contract.')
     user = (

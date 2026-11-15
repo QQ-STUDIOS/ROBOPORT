@@ -168,3 +168,53 @@ def test_unambiguous_scalar_paraphrases(phrase, final, verdict):
 @pytest.mark.parametrize('phrase', ['The total probably matches the amounts.', 'The refund count counts some transactions.', 'answer is correct', 'SUM(all available values) is right'])
 def test_unsupported_paraphrases_remain_model_judgments(phrase):
     assert check_assertion(phrase, {}) is None
+
+@pytest.mark.parametrize('phrase,field,expected,wrong', [
+    ('The summary has_refunds value is the JSON boolean true.', 'has_refunds', True, False),
+    ('The summary error field contains zero characters', 'error', '', 'problem'),
+    ('The summary total is exactly the arithmetic sum of the amounts in the successful extraction records.', 'total_amount', 6, 18),
+    ('The summary row count matches the length of the extracted transaction list.', 'row_count', 3, 5),
+    ('The summary refund count counts every extracted transaction whose amount is below zero.', 'refund_count', 1, 2),
+    ('The summary flag is true', 'flag', True, False),
+])
+def test_summary_qualifier_is_an_exact_path(phrase, field, expected, wrong):
+    for final, verdict in [({field: expected}, 'INCONCLUSIVE'),
+                           ({field: expected, 'summary': {field: wrong}}, 'FAIL'),
+                           ({field: wrong, 'summary': {field: expected}}, 'PASS')]:
+        result = check_assertion(phrase, sources(final, [9, -4, 1]))
+        assert result is not None
+        assert result['verdict'] == verdict
+        if verdict != 'INCONCLUSIVE':
+            assert result['citations'][0]['pointer'] == '/summary/' + field
+
+
+@pytest.mark.parametrize('total,total_amount,verdict', [(27, 6, 'FAIL'), (6, 27, 'PASS')])
+def test_canonical_aggregate_identifier_is_never_aliased(total, total_amount, verdict):
+    phrase = 'The reported total equals the sum of all recorded transaction amounts'
+    result = check_assertion(phrase, sources({'total': total, 'total_amount': total_amount}, [9, -4, 1]))
+    assert result['verdict'] == verdict
+    assert result['citations'][0]['pointer'] == '/total'
+
+@pytest.mark.parametrize('phrase,field,expected', [
+    ('The summary net_amount equals SUM(extracted transaction amounts).', 'net_amount', 6),
+    ('The summary entries equals COUNT(extracted transactions).', 'entries', 3),
+    ('The summary reversals equals COUNT_NEGATIVE(extracted transaction amounts).', 'reversals', 1),
+    ('The summary row_count equals the number of recorded transactions', 'row_count', 3),
+    ('The summary error is an empty string', 'error', ''),
+])
+def test_all_summary_operator_forms_preserve_their_scope(phrase, field, expected):
+    assert check_assertion(phrase, sources({field: expected}, [9, -4, 1]))['verdict'] == 'INCONCLUSIVE'
+    result = check_assertion(phrase, sources({'summary': {field: expected}, field: 'contradiction'}, [9, -4, 1]))
+    assert result['verdict'] == 'PASS'
+    assert result['citations'][0]['pointer'] == '/summary/' + field
+
+@pytest.mark.parametrize('phrase', [
+    'The reported total equals the sum of all recorded transaction amounts.',
+    'The reported total equals SUM(extracted transaction amounts).',
+    'The reported total matches the arithmetic sum of the amounts in the successful extraction records.',
+])
+@pytest.mark.parametrize('total,total_amount,verdict', [(43, 6, 'FAIL'), (6, 43, 'PASS')])
+def test_reported_identifier_is_literal_across_operator_variants(phrase, total, total_amount, verdict):
+    result = check_assertion(phrase, sources({'total': total, 'total_amount': total_amount}, [9, -4, 1]))
+    assert result['verdict'] == verdict
+    assert result['citations'][0]['pointer'] == '/total'

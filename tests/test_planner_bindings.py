@@ -8,7 +8,7 @@ REG=json.loads((Path(__file__).resolve().parents[1]/'agents/registry.json').read
 def step(owner,kind,bindings,dependencies=None):
  return {'owner':owner,'output_type':kind,'success_criteria':['valid'],'input_bindings':bindings,'input_literals':{},'depends_on':dependencies or []}
 def context_binding(pointer,target=''):return {'source':'context','pointer':pointer,'target':target}
-def reference(index,target):return {'source':'step','step_index':index,'target':target}
+def reference(index,target=None):return {'source':'step','step_index':index}
 def run(monkeypatch,steps,context):
  response={'goal':'g','deliverable':'DataReport','steps':steps}
  monkeypatch.setattr(planner,'call_model_json',lambda **kw:copy.deepcopy(response))
@@ -27,14 +27,14 @@ def test_step_references_use_runtime_ids_and_dependency_waves(monkeypatch):
  context={'transactions':[{'id':'new','amount':'0'},{'id':'refund','amount':'-7.45'}]}
  plan=run(monkeypatch,[step('data_engineering','CleanedDataset',[context_binding('/transactions','/transactions')]),step('reporting','DataReport',[reference(0,'/dataset')],[0])],context)
  first,second=plan['steps'];assert first['input']==context
- assert second['input']=={'dataset':first['id']+'.output'}
+ assert second['input']=={'prior_outputs':{first['id']:first['id']+'.output'}}
  assert second['wave']>first['wave'] and not second['deterministic']
 
 
 def test_parallel_join_materializes_both_actual_references(monkeypatch):
  plan=run(monkeypatch,[step('technical_analyst','TechnicalAnalysis',[]),step('compliance_risk','ComplianceAnalysis',[]),step('application_strategist','CandidateMatch',[reference(0,'/technical'),reference(1,'/compliance')],[0,1])],{})
  a,b,c=plan['steps'];assert a['wave']==b['wave']<c['wave']
- assert c['input']=={'technical':a['id']+'.output','compliance':b['id']+'.output'}
+ assert c['input']=={'prior_outputs':{a['id']:a['id']+'.output',b['id']:b['id']+'.output'}}
 
 
 @pytest.mark.parametrize('bindings,deps',[([reference(1,'/future')],[]),([reference(0,'/self')],[0]),([context_binding('/absent','/x')],[])])
@@ -76,3 +76,34 @@ def test_large_context_can_bind_late_complete_record(monkeypatch):
  monkeypatch.setattr(planner,'call_model_json',valid_proposal)
  plan=planner.call_planner('Use exactly item 299 as the entire input',context,REG)
  assert plan['steps'][0]['input']=={'value':299,'orders':309}
+
+
+@pytest.mark.parametrize('pointer',['/transactions','/text'])
+def test_model_schema_rejects_nonobject_root_binding(monkeypatch,pointer):
+ import jsonschema
+ response={'goal':'g','deliverable':'DataReport','steps':[step('reporting','DataReport',[context_binding(pointer)])]}
+ def checked(**kwargs):
+  jsonschema.validate(response,kwargs['schema']);return copy.deepcopy(response)
+ monkeypatch.setattr(planner,'call_model_json',checked)
+ with pytest.raises(jsonschema.ValidationError):
+  planner.call_planner('Use named fields for arrays and text',{'transactions':[1,2],'text':'quoted'},REG)
+
+
+def test_reference_namespace_collision_does_not_overwrite_context(monkeypatch):
+ steps=[step('reporting','DataReport',[]),step('reporting','DataReport',[context_binding('/facts'),reference(0)],[0])]
+ with pytest.raises(ValueError,match='collision|overlap'):
+  run(monkeypatch,steps,{'facts':{'prior_outputs':{'s1':'trusted data'}}})
+
+
+def test_investigation_control_handoff_uses_actual_bare_step_id(monkeypatch):
+ plan=run(monkeypatch,[step('environment_investigator','EnvironmentInvestigation',[]),step('improvement_proposer','ImprovementProposal',[reference(0)],[0])],{})
+ investigation,proposal=plan['steps']
+ accumulated={investigation['id']:{'evidence':{'marker':'trusted upstream value'}}}
+ assert proposal['input']['investigation_step']==investigation['id']
+ assert accumulated[proposal['input']['investigation_step']]['evidence']['marker']=='trusted upstream value'
+ assert proposal['input']['prior_outputs']=={investigation['id']:investigation['id']+'.output'}
+
+
+def test_improvement_proposer_without_unique_investigation_fails_closed(monkeypatch):
+ with pytest.raises(ValueError,match='investigation'):
+  run(monkeypatch,[step('improvement_proposer','ImprovementProposal',[])],{})
