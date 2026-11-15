@@ -376,6 +376,21 @@ class Component extends DCLogic {
   const SHOW_WIRE=PROPS.showWire!==false;
 
   /* ── BACKEND ─────────────────────────────────────────────────────── */
+  /* JD crew hand-offs: the DAG view's fallback when a feed's config has no edges. */
+  const CREW_EDGES=[
+    {from:"job_scout",to:"technical_analyst",type:"list[Job]",optional:false},
+    {from:"job_scout",to:"compliance_risk",type:"list[Job]",optional:false},
+    {from:"technical_analyst",to:"application_strategist",type:"TechnicalAnalysis",optional:false},
+    {from:"compliance_risk",to:"application_strategist",type:"ComplianceAnalysis",optional:false},
+    {from:"application_strategist",to:"synthesizer",type:"CandidateMatch",optional:false},
+    {from:"synthesizer",to:"salary_estimator",type:"FinalReport",optional:true},
+    {from:"synthesizer",to:"resume_tailor",type:"FinalReport",optional:true},
+    {from:"synthesizer",to:"cover_letter_writer",type:"FinalReport",optional:true},
+  ];
+  /* Live configs (bridge.py, serve.py) carry only station_id/order/wave; fill the
+     display fields the canvas reads so a sparse config cannot crash rendering. */
+  const STATION_HUES={job_scout:"#7ea6ff",technical_analyst:"#36c6e0",compliance_risk:"#c98bff",application_strategist:"#f2b134",synthesizer:"#4fd672",salary_estimator:"#ff8f6b",resume_tailor:"#ff5a8a",cover_letter_writer:"#80d8c8"};
+  function normalizeStation(c){const id=c.station_id;return{name:id,label:id,hue:STATION_HUES[id]||"#8a9da8",sources:[],...c};}
   function createMockBackend(){
     const SC=[
       {station_id:"job_scout",name:"job_scout",label:"Scout",order:0,wave:0,hue:"#7ea6ff",det:false,model_hint:"tool-use-capable",model:"qwen3:14b",temperature:0.2,max_tokens:2048,contract_out:"list[Job]",llm_calls:1,tool_calls:5,
@@ -396,16 +411,6 @@ class Component extends DCLogic {
        sources:[{id:"load_profile",label:"load_profile",type:"dataset"}]},
     ]
     const CONFIG={stations:SC,energy_low_threshold:22,max_agents:12,token_budget_default:60000};
-    const CREW_EDGES=[
-      {from:"job_scout",to:"technical_analyst",type:"list[Job]",optional:false},
-      {from:"job_scout",to:"compliance_risk",type:"list[Job]",optional:false},
-      {from:"technical_analyst",to:"application_strategist",type:"TechnicalAnalysis",optional:false},
-      {from:"compliance_risk",to:"application_strategist",type:"ComplianceAnalysis",optional:false},
-      {from:"application_strategist",to:"synthesizer",type:"CandidateMatch",optional:false},
-      {from:"synthesizer",to:"salary_estimator",type:"FinalReport",optional:true},
-      {from:"synthesizer",to:"resume_tailor",type:"FinalReport",optional:true},
-      {from:"synthesizer",to:"cover_letter_writer",type:"FinalReport",optional:true},
-    ];
     const stationConfig=new Map();
     let seq=0,subs=[],born=performance.now();
     const stations=new Map(),agents=new Map(),tasks=new Map();
@@ -696,8 +701,8 @@ class Component extends DCLogic {
   }
   function hydrate(d){
     resetSnapshotEvidence(d);
-    M.config=d.config;M.stations.clear();
-    for(const c of d.config.stations)M.stations.set(c.station_id,{...c,state:"idle",worker_agent_id:null,drain:false,queue_depth:0,rev:-1,x:0,y:0,pulse:0});
+    M.config={...d.config,stations:(d.config.stations||[]).map(normalizeStation)};M.stations.clear();
+    for(const c of M.config.stations)M.stations.set(c.station_id,{...c,state:"idle",worker_agent_id:null,drain:false,queue_depth:0,rev:-1,x:0,y:0,pulse:0});
     for(const s of d.stations){const st=M.stations.get(s.station_id);if(st)Object.assign(st,s);}
     positionStations();M.agents.clear();for(const a of d.agents)addClientAgent(a);
     M.tasks.clear();for(const t of d.tasks)M.tasks.set(t.task_id,t);
@@ -1618,7 +1623,7 @@ class Component extends DCLogic {
     ctx.restore();
 
     // ── Roadmap goals — what SPT Mirror proves ──────────────────────
-    const rgY=rpY+58;
+    const rgY=rpY+66;
     const P0_PROOF=[
       {col:"#7ea6ff",g:"1. Preserve truth",   v:"every run writes timestamped manifests, logs, and RAG artifacts"},
       {col:"#36c6e0",g:"2. Compare behavior",  v:"run-over-run drift detectable via diff on sites.csv + file-inventory.csv"},
