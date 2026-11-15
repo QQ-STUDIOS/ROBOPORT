@@ -19,8 +19,9 @@ USAGE
   # Change port (default 4242)
   python dashboard/bridge.py --runs-dir runs/ --port 4242
 
-Then open the console:
-  Roboport Ops Console.dc.html?api=http://localhost:4242
+Then open the page this server prints (its /events stream is same-origin only):
+  replay (--log-file, --run-id, --diff):  http://localhost:4242/?api=http://localhost:4242
+  otherwise (Launch Pad gateway):         http://localhost:4242/
 
 REQUIRES
 --------
@@ -834,6 +835,15 @@ def convert_run(run_dir) -> list[dict]:
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+def _open_url(port: int) -> str:
+    """Where to point a browser. /events is same-origin only (no CORS), so the
+    page must come from this server: the standalone console in replay mode,
+    the Launch Pad otherwise."""
+    if globals().get('_replay_mode'):
+        return f"http://localhost:{port}/?api=http://localhost:{port}"
+    return f"http://localhost:{port}/"
+
+
 def main():
     parser = argparse.ArgumentParser(description="ROBOPORT Ops Console bridge server")
     group = parser.add_mutually_exclusive_group()
@@ -882,7 +892,7 @@ def main():
         print(f"[bridge] Diff overlay · verdict={diff.get('verdict')} · "
               f"{len(diff.get('agent_diffs', []))} agent diff(s)", flush=True)
         print(f"[bridge] Listening on http://localhost:{args.port}", flush=True)
-        print(f"[bridge] Open: Roboport Ops Console.dc.html?api=http://localhost:{args.port}", flush=True)
+        print(f"[bridge] Open: {_open_url(args.port)}", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
@@ -936,7 +946,7 @@ def main():
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"[bridge] Listening on http://localhost:{args.port}", flush=True)
-    print(f"[bridge] Open: Roboport Ops Console.dc.html?api=http://localhost:{args.port}", flush=True)
+    print(f"[bridge] Open: {_open_url(args.port)}", flush=True)
     if log_path:
         print(f"[bridge] Tailing: {log_path}", flush=True)
 
