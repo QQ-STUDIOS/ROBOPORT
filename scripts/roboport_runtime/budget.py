@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import time
 import uuid
 from contextlib import contextmanager
@@ -11,6 +12,13 @@ from threading import RLock
 from typing import Callable
 
 from .pricing import cost_for
+
+
+_WINDOWS = os.name == 'nt'
+
+
+class BudgetPersistenceError(OSError):
+    """Accounting could not be durably recorded; dispatch must stop."""
 
 
 class BudgetExceeded(RuntimeError):
@@ -28,13 +36,54 @@ class RunBudget:
         self.spent = 0.0
         self.reservations: dict[str, float] = {}
         self.lock = RLock()
+        self.persistence = {'replace_retries': 0, 'last_retry': None}
 
     def _persist(self):
-        if getattr(self, 'artifact_dir', None) is not None:
-            path = self.artifact_dir / 'budget.json'
-            temporary = path.with_suffix('.tmp')
-            temporary.write_text(json.dumps(self.snapshot()))
-            temporary.replace(path)
+        if getattr(self, 'artifact_dir', None) is None:
+            return
+        path = self.artifact_dir / 'budget.json'
+        # Readers on Windows may omit FILE_SHARE_DELETE. Keep replacement atomic
+        # and retry only this filesystem operation, never dispatch/accounting.
+        last_error = None
+        for attempt in range(1, 7):
+            if attempt > 1 and self.clock() - self.started >= self.limits['max_wall_seconds']:
+                raise BudgetPersistenceError(f'budget replace retry exceeded run wall limit: {path}') from last_error
+            temporary = path.with_name(f'.budget-{uuid.uuid4().hex}.tmp')
+            operation = 'write'
+            delay = None
+            try:
+                with temporary.open('x', encoding='utf-8') as stream:
+                    json.dump(self.snapshot(), stream)
+                operation = 'replace'
+                temporary.replace(path)
+                return
+            except OSError as exc:
+                last_error = exc
+                wait = .01 * 2 ** (attempt - 1)
+                remaining = self.limits['max_wall_seconds'] - (self.clock() - self.started)
+                if (operation == 'replace' and _WINDOWS
+                        and isinstance(exc, PermissionError)
+                        and getattr(exc, 'winerror', None) in (5, 32, 33)
+                        and attempt < 6 and remaining > wait):
+                    self.persistence['replace_retries'] += 1
+                    self.persistence['last_retry'] = {
+                        'operation': 'replace', 'path': str(path),
+                        'winerror': exc.winerror, 'attempt': attempt}
+                    delay = wait
+                else:
+                    raise BudgetPersistenceError(
+                        f'budget {operation} failed after {attempt} attempt(s): '
+                        f'{path}; errno={exc.errno}; '
+                        f'winerror={getattr(exc, "winerror", None)}; {exc}') from exc
+            finally:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    # A locked candidate may remain as evidence. Do not mask the
+                    # primary error or overwrite another writer's temporary file.
+                    pass
+            if delay is not None:
+                time.sleep(delay)
 
     def remaining_seconds(self) -> float:
         remaining = self.limits['max_wall_seconds'] - (self.clock() - self.started)
@@ -91,7 +140,9 @@ class RunBudget:
     def snapshot(self) -> dict:
         return {'llm_calls': self.llm_calls, 'tool_calls': self.tool_calls,
                 'spent_usd': self.spent, 'reserved_usd': sum(self.reservations.values()),
-                'elapsed_seconds': self.clock() - self.started, 'limits': self.limits}
+                'elapsed_seconds': self.clock() - self.started, 'limits': self.limits,
+                'persistence': {'replace_retries': self.persistence['replace_retries'],
+                                'last_retry': dict(self.persistence['last_retry']) if self.persistence['last_retry'] else None}}
 
 
 _current = ContextVar('roboport_run_budget', default=None)
