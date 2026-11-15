@@ -203,3 +203,21 @@ def test_unparseable_or_wrong_count_response_keeps_raw_audit(tmp_path, monkeypat
     assert result['review_required'] and result['blocker_failed']
     assert result['verification']['attempts'][0]['raw_response'] == raw
     assert result['verification']['attempts'][0]['error']
+
+@pytest.mark.parametrize('finding', ['CONTRADICTED', 'SUPPORTED'])
+def test_paraphrase_runtime_overrides_model_arithmetic_and_persists_schema(tmp_path, monkeypatch, finding):
+    import jsonschema
+    (tmp_path / 'plan.json').write_text(json.dumps({'steps': [{'id': 'load', 'owner': 'data_engineering'}]}))
+    (tmp_path / 'final_output.json').write_text('{"summary":{"refund_count":2}}')
+    (tmp_path / 'steps').mkdir()
+    (tmp_path / 'steps' / 'load.json').write_text(json.dumps({'status': 'ok', 'output': {'transactions': [{'amount': -12}, {'amount': 4}, {'amount': -3}, {'amount': 0}]}}))
+    response = {'results': [{'expectation_id': 0, 'finding': finding, 'citations': [{'source': 'final_output', 'pointer': '/summary/refund_count'}]}]}
+    backend = AssessmentBackend([response, response])
+    monkeypatch.setattr(client, 'provider', lambda: backend)
+    with budget.run_budget(budget.RunBudget({})):
+        result = grader.call_grader(['The refund count counts every extracted transaction whose amount is below zero.'], None, tmp_path)
+    assert result['results'][0]['verdict'] == 'PASS'
+    assert result['results'][0]['assessments'][0]['finding'] == finding
+    assert result['verification']['deterministic_coverage'] == 1
+    schema = json.loads((Path(__file__).resolve().parents[1] / 'resources/schemas/grading.schema.json').read_text())
+    jsonschema.validate(result, schema)

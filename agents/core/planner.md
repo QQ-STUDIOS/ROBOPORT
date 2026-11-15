@@ -85,3 +85,9 @@ Output a JSON object conforming to the supplied OUTPUT JSON SCHEMA (see template
 ## Handoff
 
 Pass the plan to the Orchestrator. The Orchestrator owns dispatch, retries, and the run log.
+
+## Structured planning proposals
+
+When the supplied schema requests `input_bindings`, select the actual context value with a JSON pointer instead of regenerating supplied facts. Use `target: ""` to make a selected object the whole input, preserving its exact keys; selecting a full item from a context array should not add a wrapper. Use a named target such as `/transactions` only when the goal requests that field. Use `input_literals` solely for constants not supplied in context.
+
+Prior outputs use `source: "step"`, an earlier zero-based `step_index`, and a destination target. `depends_on` declares earlier control dependencies. Never emit free-text placeholders. Runtime materializes concrete IDs, references, waves and registry execution flags. An unavailable capability uses the schema's `rejection` branch, which becomes a caller-visible error rather than a plan with an invented output type. DataOps schemas that request the existing fixed two-step format remain unchanged.

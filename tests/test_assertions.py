@@ -134,3 +134,37 @@ def test_ambiguous_predicates_are_not_bare_string_constants():
     assert check_assertion('answer is correct', sources({'answer':'correct'})) is None
     assert check_assertion('answer is "correct"', sources({'answer':'correct'}))['verdict']=='PASS'
     assert check_assertion('The run status is ok', sources({'status':'ok'}))['verdict']=='PASS'
+
+@pytest.mark.parametrize('amounts', [[4.25, -1.5, -2, 0, 9], [-8, 2, -3, -4, 1, -1]])
+@pytest.mark.parametrize('phrase,field,operation', [
+    ('The summary total is exactly the arithmetic sum of the amounts in the successful extraction records.', 'total_amount', 'sum'),
+    ('The reported row count matches the length of the extracted transaction list.', 'row_count', 'count'),
+    ('The refund count counts every extracted transaction whose amount is below zero.', 'refund_count', 'negative'),
+    ('The reported net_amount equals SUM(extracted transaction amounts).', 'net_amount', 'sum'),
+    ('The reported refunds equals COUNT_NEGATIVE(extracted transaction amounts).', 'refunds', 'negative'),
+])
+def test_unambiguous_aggregate_paraphrases(amounts, phrase, field, operation):
+    from decimal import Decimal
+    values = [Decimal(str(a)) for a in amounts]
+    expected = sum(values) if operation == 'sum' else len(values) if operation == 'count' else sum(a < 0 for a in values)
+    for delta, verdict in [(0, 'PASS'), (1, 'FAIL')]:
+        result = check_assertion(phrase, sources({'summary': {field: float(expected + delta)}}, amounts))
+        assert result is not None
+        assert result['verdict'] == verdict
+
+
+@pytest.mark.parametrize('phrase,final,verdict', [
+    ('The summary has_refunds value is the JSON boolean true.', {'summary': {'has_refunds': True}}, 'PASS'),
+    ('The summary has_refunds value is the JSON boolean true.', {'summary': {'has_refunds': 1}}, 'FAIL'),
+    ('The error field contains zero characters', {'error': ''}, 'PASS'),
+    ('The error field contains zero characters', {'error': 'x'}, 'FAIL'),
+    ('The report source hash is identical to the successful extraction source hash.', {'source_sha256': 'abc'}, 'PASS'),
+    ('The report source hash is identical to the successful extraction source hash.', {'source_sha256': 'bad'}, 'FAIL'),
+])
+def test_unambiguous_scalar_paraphrases(phrase, final, verdict):
+    assert check_assertion(phrase, sources(final, [4]))['verdict'] == verdict
+
+
+@pytest.mark.parametrize('phrase', ['The total probably matches the amounts.', 'The refund count counts some transactions.', 'answer is correct', 'SUM(all available values) is right'])
+def test_unsupported_paraphrases_remain_model_judgments(phrase):
+    assert check_assertion(phrase, {}) is None
