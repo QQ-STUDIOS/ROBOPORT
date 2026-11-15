@@ -1,45 +1,180 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://roboport.dev/schemas/grading.schema.json",
   "title": "GradingResult",
   "type": "object",
-  "required": ["run_id", "results", "pass_rate", "blocker_failed"],
+  "required": [
+    "run_id",
+    "results",
+    "pass_rate",
+    "blocker_failed"
+  ],
   "properties": {
-    "run_id": { "type": "string" },
+    "run_id": {
+      "type": "string"
+    },
     "target": {
       "type": "string",
       "description": "Agent or crew under evaluation."
     },
-    "eval_id": { "type": "integer" },
+    "eval_id": {
+      "type": "integer"
+    },
     "results": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["expectation", "verdict", "evidence"],
+        "required": [
+          "expectation",
+          "verdict",
+          "evidence"
+        ],
         "properties": {
-          "expectation": { "type": "string" },
-          "verdict":     { "type": "string", "enum": ["PASS", "FAIL", "INCONCLUSIVE"] },
-          "evidence":    { "type": "string" },
-          "blocker":     { "type": "boolean", "default": false }
+          "expectation": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "PASS",
+              "FAIL",
+              "INCONCLUSIVE"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "blocker": {
+            "type": "boolean",
+            "default": false
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/citation"
+            }
+          },
+          "deterministic_check": {
+            "type": "object",
+            "required": [
+              "verdict",
+              "evidence",
+              "citations",
+              "method"
+            ],
+            "properties": {
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "PASS",
+                  "FAIL",
+                  "INCONCLUSIVE"
+                ]
+              },
+              "evidence": {
+                "type": "string"
+              },
+              "citations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/citation"
+                }
+              },
+              "method": {
+                "const": "deterministic"
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },
-    "pass_rate":      { "type": "number", "minimum": 0, "maximum": 1 },
-    "blocker_failed": { "type": "boolean" },
-    "meta_critique":  { "type": "array", "items": { "type": "string" } },
+    "pass_rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "blocker_failed": {
+      "type": "boolean"
+    },
+    "meta_critique": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "review_required": {
       "type": "boolean",
       "description": "Assessment disagreement or unverifiable grading; always blocks acceptance."
     },
     "verification": {
       "type": "object",
-      "required": ["method", "assessments_completed"],
+      "required": [
+        "method",
+        "assessments_completed"
+      ],
       "properties": {
-        "method": { "const": "blinded_consensus" },
-        "assessments_completed": { "type": "integer", "minimum": 0, "maximum": 2 }
-      }
+        "method": {
+          "enum": [
+            "blinded_consensus",
+            "deterministic_checks_and_blinded_consensus"
+          ]
+        },
+        "assessments_completed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "deterministic_coverage": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "deterministic_checks_and_blinded_consensus"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "deterministic_coverage"
+            ]
+          }
+        }
+      ]
     },
-    "graded_at":      { "type": "string", "format": "date-time" }
+    "graded_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "definitions": {
+    "citation": {
+      "type": "object",
+      "required": [
+        "source",
+        "pointer",
+        "quote"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pointer": {
+          "type": "string",
+          "pattern": "^(?:/(?:[^~/]|~[01])*)*$"
+        },
+        "quote": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
   }
 }

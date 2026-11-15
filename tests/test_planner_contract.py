@@ -16,7 +16,8 @@ def model_plan(owner, output_type='DataReport', deterministic=True):
     return {'goal': 'g', 'deliverable': output_type, 'steps': [
         {'id': 's1', 'owner': owner, 'wave': 0, 'input': {},
          'output_type': output_type, 'success_criteria': ['valid output'],
-         'deterministic': deterministic}]}
+         'deterministic': deterministic, 'input_bindings': [],
+         'input_literals': {}, 'depends_on': []}]}
 
 
 @pytest.mark.parametrize('owner,kind,claimed,want', [

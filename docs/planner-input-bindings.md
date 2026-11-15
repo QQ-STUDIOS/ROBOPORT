@@ -1,0 +1,9 @@
+# Planner input contracts
+
+Generic planning uses structured bindings rather than regenerated input data. A context binding selects a JSON pointer and chooses one of two placements: `root` copies one complete object as the entire input; `field` copies a named context property under its original field name. A root binding is the sole binding and requires empty literal inputs. Fields from multiple context objects retain their names. Whole arrays are copied as field values. Array-element objects can be selected as exact root inputs. No free-form destination strings or nested field mutations are accepted.
+
+Step bindings identify earlier zero-based step slots. Runtime constructs `input.prior_outputs`, keyed by actual runtime step IDs and containing concrete ID.output references, and derives waves from data/control dependencies. Self/future or duplicate references and reserved-namespace collisions are rejected. Execution flags come from the registry. Literal inputs cannot contain dependency tokens; quoted context text remains data.
+
+Small contexts constrain source pointers by shape. Larger contexts accept pointer syntax and validate actual existence, root-object type and named-property selection during compilation, retaining access to late records. Bindings prove copying and reference integrity; arbitrary goal interpretation remains model judgment.
+
+Unavailable required_owner values are rejected before inference. A model refusal uses a dedicated error branch rather than an invented output contract. Contracts include installed station packs. Deterministic workflow and DataOps formats remain supported. Improvement proposers also receive a bare investigation_step control ID from their unique earlier environment-investigator dependency; conflicting or missing handoffs are rejected.

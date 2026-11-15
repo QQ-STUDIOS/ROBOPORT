@@ -85,3 +85,11 @@ Output a JSON object conforming to the supplied OUTPUT JSON SCHEMA (see template
 ## Handoff
 
 Pass the plan to the Orchestrator. The Orchestrator owns dispatch, retries, and the run log.
+
+## Structured planning proposals
+
+When the supplied schema requests `input_bindings`, each context binding selects an existing JSON pointer and `placement: root` or `placement: field`. Root copies one complete object as the entire input, so it is the only binding and input_literals is empty. Field copies a named context property under its original field name; select /transactions or /untrusted_text this way. Use field placements for multiple context objects such as /job and /candidate. A complete array-element object uses root placement. Do not invent destination paths or wrappers.
+
+A prior-output binding uses source step and an earlier zero-based step_index. Runtime creates prior_outputs keyed by actual IDs, derives waves from data/control dependencies, and applies registry flags. Structured proposals declare depends_on; do not emit wave, id, input, or deterministic fields forbidden by their schema. Refuse unavailable capabilities through the rejection branch. Improvement proposers depend on one environment-investigator; runtime supplies the bare investigation control ID.
+
+The earlier output example applies only to legacy schemas such as fixed DataOps. Always follow the supplied schema.
