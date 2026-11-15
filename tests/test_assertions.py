@@ -120,3 +120,9 @@ def test_extraction_requires_unambiguous_plan_binding():
 def test_typed_contract_prose_is_not_a_final_output_path():
     assert check_assertion('CleanedDataset.row_count == 0', {}) is None
     assert check_assertion('final_output.nested.row_count == 0', {})['verdict'] == 'INCONCLUSIVE'
+
+
+@pytest.mark.parametrize('literal', ['1e1001', '1e999999999999999999999999999999', '"unterminated'])
+def test_invalid_literal_never_falls_back_to_consensus(literal):
+    result = check_assertion('answer is ' + literal, sources({'answer': 1}))
+    assert result is not None and result['verdict'] == 'INCONCLUSIVE'

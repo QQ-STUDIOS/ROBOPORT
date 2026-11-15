@@ -16,6 +16,10 @@ class Missing(ValueError):
     pass
 
 
+class Unsupported(Missing):
+    pass
+
+
 def _pairs(items):
     result = {}
     for key, value in items:
@@ -69,7 +73,7 @@ def _literal(text):
         raise Missing('invalid literal')
     if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', text):
         return text
-    raise Missing('unsupported literal')
+    raise Unsupported('unsupported literal')
 
 
 def check_assertion(expectation: str, sources: dict[str, str]) -> dict | None:
@@ -92,8 +96,11 @@ def check_assertion(expectation: str, sources: dict[str, str]) -> dict | None:
             return None
         try:
             expected = _literal(scalar[2])
-        except Missing:
+        except Unsupported:
             return None
+        except Missing as exc:
+            return {'verdict': 'INCONCLUSIVE', 'evidence': str(exc),
+                    'citations': [], 'method': 'deterministic'}
     citations = []
 
     def get(source, parts):
