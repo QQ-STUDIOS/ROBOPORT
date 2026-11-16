@@ -2,7 +2,7 @@
 # Install with:  pip install -r requirements-dev.txt
 
 # Linter / formatter
-ruff>=0.15.20
+ruff>=0.17.5
 
 # Type checking
 mypy>=2.4.1
