@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Externally managed agent catalogue",
+  "description": "Read-only inventory. An entry never grants tools, dispatches a local run, or verifies execution. Keep organizational catalogues private; the local runtime registry remains authoritative for dispatch.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "agents"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "group",
+          "system",
+          "trigger",
+          "source",
+          "purpose",
+          "execution",
+          "runtimeEvidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]+$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "group": {
+            "type": "string",
+            "minLength": 1
+          },
+          "system": {
+            "type": "string",
+            "minLength": 1
+          },
+          "trigger": {
+            "enum": [
+              "on_request",
+              "scheduled",
+              "hybrid"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "format": "uri"
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1
+          },
+          "execution": {
+            "const": "external"
+          },
+          "runtimeEvidence": {
+            "const": "unverified"
+          },
+          "cadence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "timezone",
+              "schedule"
+            ],
+            "properties": {
+              "timezone": {
+                "type": "string",
+                "minLength": 1
+              },
+              "schedule": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
